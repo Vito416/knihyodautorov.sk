@@ -1,7 +1,7 @@
 <?php
 // book-detail.php
 // Získáme ID knihy z URL
-$bookId = isset($_GET['id']) ? intval($_GET['id']) : 0;
+//$bookId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 // TODO: Připojení k databázi
 // $db = new PDO(...);
@@ -16,7 +16,7 @@ $book = [
     'genre' => 'Fantasy'
 ];
 ?>
-<?php include 'header.php'; ?>
+<?php include 'partials/header.php'; ?>
 
 <main class="book-detail">
     <section class="book-hero">
@@ -56,4 +56,4 @@ $book = [
     </section>
 </main>
 
-<?php include 'footer.php'; ?>
+<?php include 'partials/footer.php'; ?>

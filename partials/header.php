@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/css/about.css" />
   <link rel="stylesheet" href="/css/books.css" />
   <link rel="stylesheet" href="/css/contact.css" />
+  <link rel="stylesheet" href="/css/book-detail.css" />
   <link rel="stylesheet" href="/css/footer.css" /></head>
 
 <body>
