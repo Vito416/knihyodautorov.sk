@@ -2,7 +2,7 @@
     <div class="footer-overlay"></div>
     <div class="footer-content">
         <div class="footer-logo">
-            <img src="assets/logo.png" alt="Knihy od Autorov" onerror="this.src='assets/logo-fallback.png';">
+            <img src="assets/logoobdelnikbezpozadi.png" alt="Knihy od Autorov" onerror="this.src='assets/logoobdelnikbezpozadi.png';">
             <h2>Knihy od Autorov</h2>
             <p>Propojujeme autory a čtenáře – podpora i pro české a slovenské autory.</p>
         </div>

@@ -27,8 +27,8 @@
   <div class="container header-container">
     <div class="logo">
       <a href="index.php" title="Domov">
-        <img src="assets/logoobdelnikbezpozadi.png" alt="knihyodautorov.sk Logo">
-      <!--  onerror="this.onerror=null; this.src='assets/logoobdelnikbezpozadi.png'" -->
+        <img src="assets/logoobdelnikbezpozadi.png" alt="knihyodautorov.sk Logo" onerror="this.onerror=null; this.src='assets/logoobdelnikbezpozadi.png'">
+       
       </a>
     </div>
     <nav class="main-nav" role="navigation" aria-label="Hlavné menu">
