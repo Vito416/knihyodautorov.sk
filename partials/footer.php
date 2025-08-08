@@ -32,3 +32,4 @@
         <p>© <?php echo date("Y"); ?> Knihy od Autorov | Část výdělku věnujeme na podporu Babyboxů ❤️</p>
     </div>
 </footer>
+</html>

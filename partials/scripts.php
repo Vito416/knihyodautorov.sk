@@ -14,5 +14,4 @@
 <script src="js/books.js" defer></script>
 <script src="js/authors.js" defer></script>
 <script src="js/contact.js" defer></script>
-<script src="js/book-detail.js" defer></script>
 <script src="js/footer.js" defer></script>
