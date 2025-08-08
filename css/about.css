@@ -1,0 +1,115 @@
+.about-section {
+    position: relative;
+    padding: 100px 20px;
+    background: linear-gradient(rgba(255,255,255,0.96), rgba(250,240,225,0.96)),
+                url('../assets/paper-texture.jpg');
+    background-size: cover;
+    background-attachment: fixed;
+    overflow: hidden;
+}
+
+.about-container {
+    max-width: 1300px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 40px;
+}
+
+.about-content {
+    flex: 1 1 550px;
+    animation: fadeInLeft 1.2s ease forwards;
+}
+
+.about-title {
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 25px;
+    color: #4a2c0a;
+    text-shadow: 1px 1px 5px rgba(0,0,0,0.15);
+}
+
+.about-title span {
+    color: #c08a2e;
+}
+
+.about-text {
+    font-size: 1.15rem;
+    line-height: 1.9;
+    margin-bottom: 20px;
+    color: #3b2a1a;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+.about-highlight {
+    background: rgba(192,138,46,0.15);
+    border-left: 5px solid #c08a2e;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    animation: fadeInUp 1.5s ease forwards;
+    opacity: 0;
+    transform: translateY(30px);
+}
+
+.about-highlight h3 {
+    margin-bottom: 8px;
+    font-size: 1.3rem;
+    color: #4a2c0a;
+}
+
+.about-highlight p {
+    font-size: 1rem;
+    color: #3b2a1a;
+}
+
+.about-image-container {
+    flex: 1 1 500px;
+    position: relative;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    transform: scale(0.95);
+    opacity: 0;
+}
+
+.about-image {
+    width: 100%;
+    height: auto;
+    transition: transform 0.8s ease;
+}
+
+.about-image-container:hover .about-image {
+    transform: scale(1.05);
+}
+
+/* Animace */
+@keyframes fadeInLeft {
+    from { opacity: 0; transform: translateX(-50px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes fadeInUp {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Světelný overlay */
+.about-section::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 70%);
+    animation: floatingLight 12s infinite ease-in-out;
+    pointer-events: none;
+}
+
+@keyframes floatingLight {
+    0% { transform: translate(0,0); }
+    50% { transform: translate(40px, 40px); }
+    100% { transform: translate(0,0); }
+}

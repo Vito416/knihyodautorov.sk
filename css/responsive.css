@@ -1,0 +1,84 @@
+/* responsive.css */
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  .container.header-container {
+    padding: 1rem 1rem;
+  }
+
+  /* Hide desktop nav */
+  .main-nav {
+    position: fixed;
+    top: 0;
+    right: -100%;
+    width: 250px;
+    height: 100vh;
+    background-color: #fdfcf9;
+    box-shadow: -2px 0 10px rgba(166, 124, 82, 0.25);
+    display: flex;
+    flex-direction: column;
+    padding-top: 4rem;
+    transition: right 0.35s ease;
+    z-index: 10001;
+  }
+
+  /* Show mobile nav when active */
+  .main-nav.active {
+    right: 0;
+  }
+
+  .main-nav ul {
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .main-nav ul li {
+    width: 100%;
+  }
+
+  .main-nav ul li a {
+    display: block;
+    padding: 1rem 1.5rem;
+    font-size: 1.1rem;
+    border-bottom: 1px solid #e6dfd4;
+  }
+
+  /* Submenu toggle style on mobile */
+  .main-nav ul li ul.submenu {
+    position: static;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+    background-color: #f9f7f4;
+  }
+
+  .main-nav ul li.open > ul.submenu {
+    max-height: 500px; /* enough to show all */
+  }
+
+  .main-nav ul li ul.submenu li a {
+    padding-left: 2.5rem;
+    border-bottom: none;
+    font-weight: 400;
+    color: #4a3b28;
+  }
+
+  /* Hide caret on mobile or rotate */
+  .main-nav ul li > a > i.fas.fa-caret-down {
+    float: right;
+    margin-right: 1.5rem;
+    transition: transform 0.3s ease;
+  }
+
+  .main-nav ul li.open > a > i.fas.fa-caret-down {
+    transform: rotate(180deg);
+  }
+
+  /* Show mobile menu toggle */
+  .mobile-menu-toggle {
+    display: block;
+  }
+}

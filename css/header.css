@@ -1,0 +1,153 @@
+.site-header {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  background: linear-gradient(90deg, #3b2b1e 0%, #2a1d14 100%);
+  color: #fff;
+  z-index: 1000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+  animation: fadeInDown 0.8s ease-out forwards;
+  opacity: 0;
+}
+
+.site-header::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: url('../assets/asfalt-dark.png');
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.site-header.scrolled {
+  background: linear-gradient(90deg, #2a1d14 0%, #1a110b 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+}
+
+.container.header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 10;
+}
+
+.logo img {
+  max-height: 56px;
+  transition: transform 0.3s ease;
+  animation: floatLogo 6s ease-in-out infinite;
+}
+
+.logo img:hover {
+  transform: scale(1.05) rotate(-1deg);
+}
+
+.main-nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 2rem;
+}
+
+.main-nav a {
+  color: #f8e7d3;
+  text-decoration: none;
+  font-family: 'Playfair Display', serif;
+  font-size: 1.05rem;
+  position: relative;
+  transition: color 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.main-nav a i {
+  color: #ffd79b;
+}
+
+.main-nav a::after {
+  content: "";
+  position: absolute;
+  width: 0%;
+  height: 2px;
+  bottom: -3px;
+  left: 0;
+  background-color: #ffd79b;
+  transition: width 0.3s ease;
+}
+
+.main-nav a:hover::after {
+  width: 100%;
+}
+
+.main-nav a:hover {
+  color: #ffd79b;
+  text-shadow: 0 0 3px rgba(255, 215, 155, 0.6);
+}
+
+.hamburger {
+  background: none;
+  border: none;
+  color: #ffd79b;
+  font-size: 1.6rem;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+  display: none; /* Ukážeme len na mobile */
+}
+
+.hamburger:hover {
+  transform: scale(1.2);
+}
+
+/* Animácie */
+
+@keyframes fadeInDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatLogo {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+/* Responsive: mobilné menu */
+
+@media (max-width: 768px) {
+  .main-nav {
+    display: none;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    background: linear-gradient(90deg, #3b2b1e 0%, #2a1d14 100%);
+    flex-direction: column;
+    padding: 1rem 2rem;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.6);
+    z-index: 9999;
+  }
+  .main-nav.open {
+    display: flex;
+  }
+  .main-nav ul {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .hamburger {
+    display: block;
+  }
+}
