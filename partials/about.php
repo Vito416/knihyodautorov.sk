@@ -21,7 +21,7 @@
         </div>
 
         <div class="about-image-container">
-            <img src="assets/about-epic.jpg" alt="Epický pohled na knihy a autory" class="about-image">
+            <img src="assets/about-epic.png" alt="Epický pohled na knihy a autory" class="about-image">
         </div>
     </div>
 </section>
