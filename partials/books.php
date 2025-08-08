@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="/css/books.css" />
+
 <section id="books" class="books-section">
   <div class="container books-container">
 
@@ -125,3 +127,5 @@
     </div>
   </div>
 </section>
+
+<script src="js/books.js" defer></script>

@@ -19,6 +19,4 @@
   // Pätička
   include 'partials/footer.php';
 
-  // JS skripty
-  include 'partials/scripts.php';
 ?>

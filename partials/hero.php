@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="/css/hero.css" />
+
 <section class="hero-section">
       <!-- Video pozadí -->
   <div class="video-background">
@@ -13,3 +15,5 @@
     <a href="#books" class="cta-button">Prehliadať knihy <i class="fa-solid fa-arrow-right"></i></a>
   </div>
 </section>
+
+<script src="js/hero.js" defer></script>

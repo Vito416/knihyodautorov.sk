@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="/css/about.css" />
+
 <section id="about" class="about-section">
     <div class="about-container">
         <div class="about-content">
@@ -23,3 +25,5 @@
         </div>
     </div>
 </section>
+
+<script src="js/about.js" defer></script>

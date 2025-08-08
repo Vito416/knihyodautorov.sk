@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="/css/footer.css" />
+
 <footer class="site-footer">
     <div class="footer-overlay"></div>
     <div class="footer-content">
@@ -32,4 +34,7 @@
         <p>© <?php echo date("Y"); ?> Knihy od Autorov | Část výdělku věnujeme na podporu Babyboxů ❤️</p>
     </div>
 </footer>
+
+<script src="js/footer.js" defer></script>
+
 </html>

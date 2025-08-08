@@ -12,14 +12,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Playfair+Display&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-    <!-- CSS -->
-  <link rel="stylesheet" href="/css/styles.css" />
+  <!-- CSS -->
   <link rel="stylesheet" href="/css/header.css" />
-  <link rel="stylesheet" href="/css/hero.css" />
-  <link rel="stylesheet" href="/css/about.css" />
-  <link rel="stylesheet" href="/css/books.css" />
-  <link rel="stylesheet" href="/css/contact.css" />
-  <link rel="stylesheet" href="/css/footer.css" /></head>
+
+</head>
 
 <body>
 
@@ -46,5 +42,5 @@
   </div>
 </header>
 
-
+<script src="js/header.js" defer></script>
 

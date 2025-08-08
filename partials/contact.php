@@ -1,3 +1,5 @@
+<link rel="stylesheet" href="/css/contact.css" />
+
 <section id="contact" class="contact-section">
   <div class="container contact-container">
     <div class="contact-left">
@@ -44,3 +46,5 @@
     </div>
   </div>
 </section>
+
+<script src="js/contact.js" defer></script>
