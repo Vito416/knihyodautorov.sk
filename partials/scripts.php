@@ -1,8 +1,8 @@
 <!-- Globálne knižnice -->
 <script src="js/particles.min.js"></script>
 
-<!-- Inicializácia častíc (napr. v hero sekcii) -->
-<script src="js/particles-init.js" defer></script>
+<!-- Inicializácia častíc (napr. v hero sekcii) 
+<script src="js/particles-init.js" defer></script> -->
 
 <!-- Hlavný základný JS 
 <script src="js/scripts.js" defer></script> -->

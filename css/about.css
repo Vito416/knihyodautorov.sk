@@ -1,8 +1,8 @@
 .about-section {
     position: relative;
     padding: 100px 20px;
-    background: linear-gradient(rgba(255,255,255,0.96), rgba(250,240,225,0.96)),
-                url('../assets/paper-texture.jpg');
+    background: linear-gradient(rgba(255,255,255,0.06), rgba(250,240,225,0.06)),
+                url('../assets/paper-texture.png');
     background-size: cover;
     background-attachment: fixed;
     overflow: hidden;
