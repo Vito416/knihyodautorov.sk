@@ -8,13 +8,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const quoteElement = document.querySelector(".changing-quote");
   let current = 0;
+  let fadeDuration = 500; // ms
 
   setInterval(() => {
-    current = (current + 1) % quotes.length;
+    // Fade out
+    quoteElement.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
     quoteElement.style.opacity = 0;
+
     setTimeout(() => {
+      // Zmena textu
+      current = (current + 1) % quotes.length;
       quoteElement.textContent = quotes[current];
+
+      // Fade in
       quoteElement.style.opacity = 1;
-    }, 500);
+    }, fadeDuration);
   }, 6000);
 });

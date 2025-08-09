@@ -19,25 +19,26 @@
 
 <body>
 
-<header class="site-header" role="banner">
+<header class="site-header">
   <div class="container header-container">
     <div class="logo">
-      <a href="index.php" title="Domov">
-        <img src="assets/logoobdelnikbezpozadi.png" alt="knihyodautorov.sk Logo" onerror="this.onerror=null; this.src='assets/logoobdelnikbezpozadi.png'">
-       
+      <a href="index.php">
+        <img src="assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
       </a>
     </div>
-    <nav class="main-nav" role="navigation" aria-label="Hlavné menu">
+
+    <nav class="main-nav" aria-label="Hlavná navigácia">
       <ul>
-        <li><a href="index.php"><i class="fa-solid fa-house"></i> Domov</a></li>
-        <li><a href="books.php"><i class="fa-solid fa-book"></i> Knihy</a></li>
-        <li><a href="authors.php"><i class="fa-solid fa-pen-nib"></i> Autori</a></li>
-        <li><a href="about.php"><i class="fa-solid fa-info-circle"></i> O nás</a></li>
-        <li><a href="contact.php"><i class="fa-solid fa-envelope"></i> Kontakt</a></li>
+        <li><a href="index.php"><i class="fas fa-home"></i> Domov</a></li>
+        <li><a href="o-nas.php"><i class="fas fa-info-circle"></i> O nás</a></li>
+        <li><a href="vzorky.php"><i class="fas fa-book-open"></i> Vzorky kníh</a></li>
+        <li><a href="eshop.php"><i class="fas fa-shopping-bag"></i> E-shop</a></li>
+        <li><a href="kontakt.php"><i class="fas fa-envelope"></i> Kontakt</a></li>
       </ul>
     </nav>
-    <button class="hamburger" aria-label="Otvoriť menu" aria-expanded="false" aria-controls="mobile-menu">
-      <i class="fa-solid fa-bars"></i>
+
+    <button class="hamburger" aria-label="Menu" aria-expanded="false">
+      <i class="fas fa-bars"></i>
     </button>
   </div>
 </header>

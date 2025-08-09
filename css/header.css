@@ -6,12 +6,13 @@
   color: #fff;
   z-index: 1000;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  transition: all 0.3s ease;
+  transition: background 0.4s ease, box-shadow 0.4s ease;
   backdrop-filter: blur(4px);
   animation: fadeInDown 0.8s ease-out forwards;
   opacity: 0;
 }
 
+/* jemná textura */
 .site-header::before {
   content: "";
   position: absolute;
@@ -21,6 +22,17 @@
   opacity: 0.08;
   pointer-events: none;
   z-index: -1;
+}
+
+/* světelný pruh nahoře */
+.site-header::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 2px;
+  background: linear-gradient(90deg, rgba(255,215,155,0.4), rgba(255,215,155,0.05));
+  pointer-events: none;
+  z-index: 2;
 }
 
 .site-header.scrolled {
@@ -39,6 +51,7 @@
   z-index: 10;
 }
 
+/* Logo */
 .logo img {
   max-height: 56px;
   transition: transform 0.3s ease;
@@ -46,9 +59,10 @@
 }
 
 .logo img:hover {
-  transform: scale(1.05) rotate(-1deg);
+  transform: scale(1.10);
 }
 
+/* Navigace */
 .main-nav ul {
   list-style: none;
   margin: 0;
@@ -63,7 +77,7 @@
   font-family: 'Playfair Display', serif;
   font-size: 1.05rem;
   position: relative;
-  transition: color 0.3s ease;
+  transition: color 0.25s ease, transform 0.25s ease;
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -71,6 +85,7 @@
 
 .main-nav a i {
   color: #ffd79b;
+  transition: transform 0.25s ease;
 }
 
 .main-nav a::after {
@@ -81,7 +96,7 @@
   bottom: -3px;
   left: 0;
   background-color: #ffd79b;
-  transition: width 0.3s ease;
+  transition: width 0.25s ease;
 }
 
 .main-nav a:hover::after {
@@ -91,8 +106,14 @@
 .main-nav a:hover {
   color: #ffd79b;
   text-shadow: 0 0 3px rgba(255, 215, 155, 0.6);
+  transform: scale(1.06);
 }
 
+.main-nav a:hover i {
+  transform: scale(1.12);
+}
+
+/* Hamburger */
 .hamburger {
   background: none;
   border: none;
@@ -100,24 +121,17 @@
   font-size: 1.6rem;
   cursor: pointer;
   transition: transform 0.3s ease;
-  display: none; /* Ukážeme len na mobile */
+  display: none;
 }
 
 .hamburger:hover {
   transform: scale(1.2);
 }
 
-/* Animácie */
-
+/* Animace */
 @keyframes fadeInDown {
-  0% {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  0% { opacity: 0; transform: translateY(-20px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes floatLogo {
@@ -125,8 +139,7 @@
   50% { transform: translateY(-3px); }
 }
 
-/* Responsive: mobilné menu */
-
+/* Mobilní menu */
 @media (max-width: 768px) {
   .main-nav {
     display: none;
@@ -139,15 +152,29 @@
     padding: 1rem 2rem;
     box-shadow: 0 4px 8px rgba(0,0,0,0.6);
     z-index: 9999;
+    animation: fadeMenu 0.3s ease;
   }
+
   .main-nav.open {
     display: flex;
   }
+
   .main-nav ul {
     flex-direction: column;
     gap: 1rem;
   }
+
   .hamburger {
     display: block;
   }
+
+  /* touch-friendly odkazy */
+  .main-nav a {
+    padding: 0.6rem 0;
+  }
+}
+
+@keyframes fadeMenu {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
