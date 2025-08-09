@@ -25,3 +25,45 @@ document.addEventListener("DOMContentLoaded", () => {
     }, fadeDuration);
   }, 6000);
 });
+
+// --- fallback pro video: pokud autoplay selže nebo nastane error, přidáme .video-failed
+(function(){
+  const vb = document.querySelector('.video-background');
+  const v = document.querySelector('#video-background');
+  if(!vb || !v) return;
+
+  // helper pro aktivaci fallbacku
+  function enableVideoFallback(){
+    vb.classList.add('video-failed');
+  }
+
+  // pokud video vyhodí chybu
+  v.addEventListener('error', enableVideoFallback);
+  v.addEventListener('stalled', enableVideoFallback);
+  v.addEventListener('suspend', enableVideoFallback);
+
+  // pokud autoplay bloknut (play() vrátí rejected promise)
+  // zajistíme, že video je muted (autoplay často povolen pouze muted)
+  v.muted = true;
+  const p = v.play();
+  if (p !== undefined) {
+    p.then(() => {
+      // úspěšně hraje — nic dělat nemusíme
+      vb.classList.remove('video-failed');
+    }).catch(() => {
+      // autoplay zablokován -> aktivovat fallback
+      enableVideoFallback();
+    });
+  }
+
+  // navíc, pokud se později video zastaví (např. prohlížeč přerušil), zapnout fallback
+  v.addEventListener('pause', function(){
+    // pokud je pause a nejedná se o loop end, aktivujeme fallback jen když není záměrné pauznutí
+    if (v.currentTime > 0 && !v.ended) enableVideoFallback();
+  });
+
+  // pokud se uživatel rozhodne video ručně spustit, odstranit fallback
+  v.addEventListener('play', function(){
+    vb.classList.remove('video-failed');
+  });
+})();

@@ -135,6 +135,30 @@
   object-fit: cover;
 }
 
+/* static fallback: když video selže, použije se pozadí obrázek */
+.video-background.video-failed {
+  background-image: url('assets/hero-fallback.png'); /* optimalizovaný static fallback */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  visibility: visible;
+  opacity: 1;
+}
+
+/* skrýt samotné video pokud je aktivní fallback */
+.video-background.video-failed video {
+  display: none !important;
+}
+
+/* jemný overlay (pokud chceš zachovat čitelnost textu) */
+.video-background.video-failed::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.35));
+  pointer-events: none;
+}
+
 /* Mobilní responzivita */
 @media (max-width: 768px) {
   .hero-section {

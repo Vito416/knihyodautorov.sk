@@ -3,10 +3,10 @@
 <section class="hero-section">
   <!-- Video pozadie -->
   <div class="video-background">
-    <video id="video-background" autoplay muted loop playsinline>
-      <source src="assets/backgroundheroinfinity.mp4" type="video/mp4" />
-      Váš prehliadač nepodporuje prehrávanie videa na pozadí.
-    </video>
+  <video id="video-background" autoplay muted loop playsinline poster="assets/hero-fallback.png">
+    <source src="assets/backgroundheroinfinity.mp4" type="video/mp4" />
+    Váš prehliadač nepodporuje prehrávanie videa na pozadí.
+  </video>
   </div>
 
   <div class="hero-content">

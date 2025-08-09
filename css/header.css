@@ -1,180 +1,255 @@
-.site-header {
-  position: fixed;
-  top: 0;
-  width: 100%;
-  background: linear-gradient(90deg, #3b2b1e 0%, #2a1d14 100%);
-  color: #fff;
-  z-index: 1000;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
-  transition: background 0.4s ease, box-shadow 0.4s ease;
-  backdrop-filter: blur(4px);
-  animation: fadeInDown 0.8s ease-out forwards;
-  opacity: 0;
+/* header.css - final patch
+   - pravé zarovnání navigace (vpravo v rámci containeru)
+   - obnovené jemné animace (logo float, hovery)
+   - top progress bar
+   - mobilní menu: správné top, max-height, overflow-x hidden
+   - zamykání scrollu při otevřeném menu bez posunutí layoutu
+   - respekt k prefers-reduced-motion
+*/
+
+/* základ */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+/* zabránit nechtěnému horizontálnímu scrollu */
+html, body { width: 100%; overflow-x: hidden; }
+
+/* proměnné */
+:root{
+  --brand-dark-1: #3b2b1e;
+  --brand-dark-2: #2a1d14;
+  --accent: #d4af37;
+  --accent-2: #f9e076;
+  --text-light: #f2e9dc;
+  --container-max: 1200px;
 }
 
-/* jemná textura */
-.site-header::before {
+/* Header */
+.site-header{
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1200;
+  background: linear-gradient(90deg, var(--brand-dark-1) 0%, var(--brand-dark-2) 100%);
+  color: var(--text-light);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.48);
+  backdrop-filter: blur(4px);
+  transition: background 0.35s ease, box-shadow 0.35s ease;
+  padding: env(safe-area-inset-top) 0 0 0;
+  will-change: background, box-shadow;
+}
+
+/* progress bar (JS vytváří .top-progress) */
+.top-progress{
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 5px;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(212,175,55,0.95), rgba(249,224,118,0.9));
+  z-index: 1300;
+  pointer-events: none;
+  transition: width 120ms linear;
+}
+
+/* lehká textura + strip */
+.site-header::before{
   content: "";
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: url('../assets/asfalt-dark.png');
-  opacity: 0.08;
+  inset: 0;
+  background: url('../assets/asfalt-dark.png') center/cover no-repeat;
+  opacity: 0.05;
   pointer-events: none;
   z-index: -1;
 }
-
-/* světelný pruh nahoře */
-.site-header::after {
+.site-header::after{
   content: "";
   position: absolute;
-  top: 0; left: 0;
-  width: 100%; height: 2px;
-  background: linear-gradient(90deg, rgba(255,215,155,0.4), rgba(255,215,155,0.05));
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255,215,155,0.35), rgba(255,215,155,0.03));
+  z-index: 1299;
   pointer-events: none;
-  z-index: 2;
 }
 
-.site-header.scrolled {
-  background: linear-gradient(90deg, #2a1d14 0%, #1a110b 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+.site-header.scrolled{
+  background: linear-gradient(90deg, #23160f 0%, #120a06 100%);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.65);
 }
 
-.container.header-container {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.9rem 2rem;
-  max-width: 1200px;
+/* container - content alignment; navigace bude zarovnaná vpravo v rámci tohoto containeru */
+.container.header-container{
+  max-width: var(--container-max);
   margin: 0 auto;
-  position: relative;
-  z-index: 10;
+  padding-inline: clamp(0.8rem, 2vw, 2rem);
+  padding-block: 0.6rem;
+  width: 100%;
+  display:flex;
+  align-items:center;
+  gap: 1rem;
 }
 
-/* Logo */
-.logo img {
-  max-height: 56px;
-  transition: transform 0.3s ease;
-  animation: floatLogo 6s ease-in-out infinite;
+/* LOGO */
+.logo{ display:flex; align-items:center; gap:0.6rem; }
+.logo img{
+  display:block;
+  height:auto;
+  width:auto;
+  max-height:56px;
+  max-width:220px;
+  transition: transform 300ms ease, filter 300ms ease;
+  will-change: transform;
+  user-select: none;
 }
 
-.logo img:hover {
-  transform: scale(1.10);
+/* jemný float animace loga */
+@keyframes floatLogo {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.logo img { animation: floatLogo 6s ease-in-out infinite; transform-origin:center; }
+
+/* hover effect (jen na zařízeních s hover) */
+@media (hover: hover) and (pointer: fine){
+  .logo img:hover { transform: scale(1.06); }
 }
 
-/* Navigace */
-.main-nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  gap: 2rem;
+/* NAV - umístění vpravo */
+.main-nav{
+  margin-left: auto; /* důležité: posune nav doprava v rámci containeru */
+  display:flex;
+  align-items:center;
+  gap:1rem;
 }
 
-.main-nav a {
+/* UL */
+.main-nav ul{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:flex;
+  gap:1.6rem;
+  align-items:center;
+  justify-content:flex-end;
+}
+
+/* odkazy */
+.main-nav a{
   color: #f8e7d3;
-  text-decoration: none;
+  text-decoration:none;
   font-family: 'Playfair Display', serif;
   font-size: 1.05rem;
-  position: relative;
-  transition: color 0.25s ease, transform 0.25s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  display:inline-flex;
+  align-items:center;
+  gap:0.45rem;
+  position:relative;
+  transition: color 220ms ease, transform 220ms ease;
+  white-space: nowrap;
 }
 
-.main-nav a i {
-  color: #ffd79b;
-  transition: transform 0.25s ease;
-}
+/* ikona */
+.main-nav a i{ color:#ffd79b; transition: transform 220ms ease; }
 
+/* underline */
 .main-nav a::after {
   content: "";
   position: absolute;
   width: 0%;
   height: 2px;
-  bottom: -3px;
+  bottom: -4px;
   left: 0;
   background-color: #ffd79b;
-  transition: width 0.25s ease;
+  transition: width 220ms ease;
+}
+.main-nav a:hover { color: #ffd79b; transform: translateY(-1px); text-shadow: 0 0 4px rgba(255,215,155,0.45); }
+.main-nav a:hover::after { width: 100%; }
+.main-nav a:hover i { transform: scale(1.12); }
+
+/* HAMBURGER (vpravo) */
+.hamburger{
+  display:none;
+  background:none;
+  border:none;
+  color:#ffd79b;
+  font-size:1.6rem;
+  cursor:pointer;
+  z-index:1350;
+  padding:0.35rem;
 }
 
-.main-nav a:hover::after {
-  width: 100%;
-}
+/* mobile menu styles */
 
-.main-nav a:hover {
-  color: #ffd79b;
-  text-shadow: 0 0 3px rgba(255, 215, 155, 0.6);
-  transform: scale(1.06);
-}
+@media (max-width: 768px){
+  .hamburger {
+  display: block;
+  margin-left: auto !important;        /* drží ho vpravo v rámci containeru */
+  margin-right: clamp(10px, 4vw, 18px);/* adaptivní odsazení od pravého okraje */
+  padding: 0.35rem;
+  align-self: center;
+  z-index: 1350;
+  }
+  /* hlavní kontejnery - zmenšit logo, držet zarovnání */
+  .logo img { max-height:44px; max-width:160px; }
 
-.main-nav a:hover i {
-  transform: scale(1.12);
-}
-
-/* Hamburger */
-.hamburger {
-  background: none;
-  border: none;
-  color: #ffd79b;
-  font-size: 1.6rem;
-  cursor: pointer;
-  transition: transform 0.3s ease;
-  display: none;
-}
-
-.hamburger:hover {
-  transform: scale(1.2);
-}
-
-/* Animace */
-@keyframes fadeInDown {
-  0% { opacity: 0; transform: translateY(-20px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes floatLogo {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
-/* Mobilní menu */
-@media (max-width: 768px) {
-  .main-nav {
-    display: none;
+  /* main-nav bude fixed pod headerem; parametr top nastaví JS */
+  .main-nav{
+    margin-left: 0;
+    display: none; /* default skryté - otevře se třídou .open */
     position: fixed;
-    top: 64px;
     left: 0;
     right: 0;
-    background: linear-gradient(90deg, #3b2b1e 0%, #2a1d14 100%);
+    width: 100%;
+    box-sizing: border-box;
+    background: linear-gradient(180deg, rgba(42,29,20,0.98), rgba(35,25,18,0.98));
+    padding-inline: clamp(0.8rem, 4vw, 1.2rem); /* padding uvnitř */
+    padding-block: 0.8rem;
     flex-direction: column;
-    padding: 1rem 2rem;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.6);
-    z-index: 9999;
-    animation: fadeMenu 0.3s ease;
+    z-index: 1320;
+    overflow-y: auto;
+    overflow-x: hidden; /* velmi důležité */
+    -webkit-overflow-scrolling: touch;
+    transform-origin: top center;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 260ms ease, transform 260ms ease;
+    border-top: 1px solid rgba(255,255,255,0.03);
+    max-width: 100vw;
+    word-break: break-word;
   }
 
-  .main-nav.open {
-    display: flex;
-  }
+  .main-nav.open { display:flex; opacity:1; transform: translateY(0); }
 
-  .main-nav ul {
+  .main-nav ul{
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.9rem;
+    padding: 0.4rem 0;
   }
 
-  .hamburger {
-    display: block;
-  }
-
-  /* touch-friendly odkazy */
-  .main-nav a {
+  .main-nav a{
     padding: 0.6rem 0;
+    font-size: 1rem;
+    white-space: normal; /* povolit wrapping pro delší text */
   }
+
+  /* zajistit, že container padding nevede k horizontálnímu posunu */
+  .container.header-container { padding-inline: clamp(0.6rem, 2vw, 1rem); }
 }
 
-@keyframes fadeMenu {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
+/* zamezit přesun stránky po otevření menu: class .no-scroll se aplikuje JS */
+.no-scroll{
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  /* top bude nastaven JS na -scrollY pro zachování pozice */
+  overflow: hidden;
+}
+
+/* reduced motion fallback */
+@media (prefers-reduced-motion: reduce){
+  .logo img, .main-nav, .cta-button, .top-progress { transition: none !important; animation: none !important; }
 }

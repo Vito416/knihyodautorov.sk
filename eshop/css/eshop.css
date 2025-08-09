@@ -1,0 +1,43 @@
+/* eshop/css/eshop.css */
+.eshop-hero {
+  background: linear-gradient(180deg, rgba(26,18,10,0.85), rgba(8,6,4,0.9)), url('../assets/paper-texture.jpg') center/cover no-repeat;
+  color: #f7efe0;
+  padding: 56px 16px;
+  text-align: center;
+}
+.eshop-hero h1 { font-size: 2.2rem; margin: 0 0 8px; letter-spacing: 0.6px; }
+.eshop-hero p { margin: 0; opacity: 0.95; }
+
+.eshop-controls { max-width: 1200px; margin: 20px auto; padding: 12px; text-align: center; }
+#eshop-filter-form { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center; }
+.eshop-input { padding:10px 12px; border-radius:8px; border:1px solid #ddd; min-width:240px; }
+.eshop-select { padding:10px 12px; border-radius:8px; border:1px solid #ddd; }
+.eshop-btn { background: linear-gradient(90deg,#b57a2f,#e0b45c); color:#23140a; padding:10px 14px; border-radius:8px; border:0; font-weight:800; cursor:pointer; }
+
+.eshop-list { max-width:1200px; margin: 20px auto 80px; padding: 0 16px; }
+.eshop-empty { text-align:center; padding:60px 0; color:#666; font-size:1.05rem; }
+
+.eshop-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:22px; }
+.eshop-card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06)); border-radius:12px; overflow:hidden; box-shadow: 0 8px 30px rgba(0,0,0,0.12); display:flex; flex-direction:column; min-height:380px; }
+.eshop-card-image { height:200px; overflow:hidden; background:#222; display:flex; align-items:center; justify-content:center; }
+.eshop-card-image img { width:100%; height:100%; object-fit:cover; display:block; transform-origin:center; transition:transform .35s ease; }
+.eshop-card:hover img { transform:scale(1.06); }
+
+.eshop-card-body { padding:14px 16px; display:flex; flex-direction:column; gap:10px; flex:1; }
+.eshop-card-title { margin:0; font-size:1.05rem; color:#fff7ea; }
+.eshop-card-meta { font-size:0.86rem; color:#d9cdb1; }
+.eshop-card-desc { color:#e6dcbf; font-size:0.95rem; margin:0; flex:1; }
+
+.eshop-card-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px; }
+.eshop-price { font-weight:800; color:#f6e9d1; }
+.eshop-action { background:#c08a2e; color:#23140a; padding:8px 12px; border-radius:8px; text-decoration:none; font-weight:700; }
+
+.eshop-pagination { text-align:center; margin-top:18px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+.eshop-page { padding:8px 12px; border-radius:6px; background:#fff; color:#333; text-decoration:none; box-shadow:0 6px 14px rgba(0,0,0,0.06); }
+.eshop-page.active { background:linear-gradient(90deg,#b57a2f,#e0b45c); color:#23140a; font-weight:800; }
+
+/* responsive */
+@media (max-width:700px) {
+  .eshop-card { min-height: 340px; }
+  #eshop-filter-form { gap:8px; }
+}
