@@ -22,17 +22,17 @@
 <header class="site-header">
   <div class="container header-container">
     <div class="logo">
-      <a href="index.php">
+      <a href="/">
         <img src="/assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
       </a>
     </div>
 
     <nav class="main-nav" aria-label="Hlavná navigácia">
       <ul>
-        <li><a href="index.php"><i class="fas fa-home"></i> Domov</a></li>
+        <li><a href="https://knihyodautorov.sk/index.php"><i class="fas fa-home"></i> Domov</a></li>
         <li><a href="o-nas.php"><i class="fas fa-info-circle"></i> O nás</a></li>
         <li><a href="vzorky.php"><i class="fas fa-book-open"></i> Vzorky kníh</a></li>
-        <li><a href="eshop.php"><i class="fas fa-shopping-bag"></i> E-shop</a></li>
+        <li><a href="/eshop/eshop.php"><i class="fas fa-shopping-bag"></i> E-shop</a></li>
         <li><a href="kontakt.php"><i class="fas fa-envelope"></i> Kontakt</a></li>
       </ul>
     </nav>

@@ -1,6 +1,6 @@
 /* eshop/css/eshop.css */
 .eshop-hero {
-  background: linear-gradient(180deg, rgba(26,18,10,0.85), rgba(8,6,4,0.9)), url('../assets/paper-texture.jpg') center/cover no-repeat;
+  background: linear-gradient(180deg, rgba(26,18,10,0.85), rgba(8,6,4,0.9)), url('/assets/paper-texture.png') center/cover no-repeat;
   color: #f7efe0;
   padding: 56px 16px;
   text-align: center;
