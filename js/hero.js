@@ -67,3 +67,20 @@ document.addEventListener("DOMContentLoaded", () => {
     vb.classList.remove('video-failed');
   });
 })();
+
+// Pokus o opětovné spuštění videa po prvním kliknutí
+document.addEventListener('click', () => {
+  const vb = document.querySelector('.video-background');
+  const v = document.getElementById('video-background');
+  
+  if (vb && v && vb.classList.contains('video-failed')) {
+    vb.classList.remove('video-failed'); // zrušíme fallback
+    v.style.display = '';
+    v.currentTime = 0; // začít od začátku
+    v.load(); // načteme znovu zdroj
+    v.play().catch(() => {
+      // pokud se nepodaří, vrátíme fallback
+      vb.classList.add('video-failed');
+    });
+  }
+}, { once: true });

@@ -22,7 +22,7 @@
 <header class="site-header">
   <div class="container header-container">
     <div class="logo">
-      <a href="/">
+      <a href="https://knihyodautorov.sk/index.php">
         <img src="/assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
       </a>
     </div>

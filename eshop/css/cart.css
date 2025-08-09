@@ -1,0 +1,7 @@
+.cart-page { max-width:1100px; margin:40px auto; padding:0 16px; color:#222; }
+.cart-table { width:100%; border-collapse:collapse; }
+.cart-table th, .cart-table td { padding:10px; border-bottom:1px solid #eee; text-align:left; }
+.cart-actions { margin-top:12px; display:flex; gap:12px; align-items:center; }
+.cart-checkout { background:#0b6b3a;color:#fff;padding:10px 14px;border-radius:8px;text-decoration:none;font-weight:700 }
+.cart-update { padding:8px 12px;background:#ddd;border-radius:6px;border:0; }
+.cart-remove { background:#c0392b;color:#fff;padding:6px 8px;border-radius:6px;border:0 }

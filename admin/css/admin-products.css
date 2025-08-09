@@ -1,0 +1,4 @@
+.admin-inner { background:#fff;padding:20px;border-radius:10px;box-shadow:0 8px 30px rgba(0,0,0,.06) }
+.admin-form input, .admin-form textarea, .admin-form select { display:block;width:100%;padding:8px;margin:6px 0 12px;border-radius:6px;border:1px solid #ddd }
+.admin-table { width:100%; border-collapse:collapse; margin-top:12px }
+.admin-table th, .admin-table td { padding:8px;border-bottom:1px solid #eee; text-align:left }
