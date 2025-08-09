@@ -2,6 +2,9 @@
 
 <section class="about-section" aria-labelledby="about-title">
   <div class="paper-wrap">
+    <span class="grain-overlay" aria-hidden="true"></span>
+    <!-- volitelně pro subtilní vnitřní linku -->
+    <span class="paper-edge" aria-hidden="true"></span>
     <div class="about-container">
   <!-- LEVÁ ČÁST: text -->
   <div class="about-content">
