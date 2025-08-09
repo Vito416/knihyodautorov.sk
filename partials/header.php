@@ -23,7 +23,7 @@
   <div class="container header-container">
     <div class="logo">
       <a href="index.php">
-        <img src="assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
+        <img src="/assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
       </a>
     </div>
 
@@ -43,5 +43,5 @@
   </div>
 </header>
 
-<script src="js/header.js" defer></script>
+<script src="/js/header.js" defer></script>
 

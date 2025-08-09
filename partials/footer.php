@@ -4,7 +4,7 @@
     <div class="footer-overlay"></div>
     <div class="footer-content">
         <div class="footer-logo">
-            <img src="assets/logoobdelnikbezpozadi.png" alt="Knihy od Autorov" onerror="this.src='assets/logoobdelnikbezpozadi.png';">
+            <img src="/assets/logoobdelnikbezpozadi.png" alt="Knihy od Autorov" onerror="this.src='assets/logoobdelnikbezpozadi.png';">
             <h2>Knihy od Autorov</h2>
             <p>Propojujeme autory a čtenáře – podpora i pro české a slovenské autory.</p>
         </div>
@@ -35,6 +35,6 @@
     </div>
 </footer>
 
-<script src="js/footer.js" defer></script>
+<script src="/js/footer.js" defer></script>
 
 </html>
