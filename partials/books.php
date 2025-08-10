@@ -127,9 +127,9 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
 <script src="/js/books.js" defer></script>
 
 <section id="booksPromo" class="books-section">
-  <div class="paper-wrap">
-    <span class="grain-overlay" aria-hidden="true"></span>
-    <span class="paper-edge" aria-hidden="true"></span>
+  <div class="books-paper-wrap">
+    <span class="books-grain-overlay" aria-hidden="true"></span>
+    <span class="books-paper-edge" aria-hidden="true"></span>
   <div class="books-container">
     <div class="books-header">
       <div class="books-header-left">
