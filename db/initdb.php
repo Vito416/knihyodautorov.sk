@@ -229,23 +229,23 @@ try {
     $books = [
       [
         'nazov'=>'Cesta hrdinu','popis'=>'Epický príbeh o odvaze, priateľstve a putovaní cez staré kráľovstvá.',
-        'cena'=>'4.99','pdf'=>'cesta_hrdinu.pdf','img'=>'book1.jpg','author_idx'=>0,'cat'=>'historicky-roman'
+        'cena'=>'4.99','pdf'=>'cesta_hrdinu.pdf','img'=>'book1.png','author_idx'=>0,'cat'=>'historicky-roman'
       ],
       [
         'nazov'=>'Hviezdne more','popis'=>'Sci-fi dobrodružstvo medzi hviezdami a politické intriky galaktickej federácie.',
-        'cena'=>'5.49','pdf'=>'hviezdne_more.pdf','img'=>'book2.jpg','author_idx'=>2,'cat'=>'sci-fi'
+        'cena'=>'5.49','pdf'=>'hviezdne_more.pdf','img'=>'book2.png','author_idx'=>2,'cat'=>'sci-fi'
       ],
       [
         'nazov'=>'Kvapky dažďa','popis'=>'Zbierka básní o láske, strate a nádeji.',
-        'cena'=>'2.99','pdf'=>'kvapky_dazda.pdf','img'=>'book3.jpg','author_idx'=>1,'cat'=>'poezia'
+        'cena'=>'2.99','pdf'=>'kvapky_dazda.pdf','img'=>'book3.png','author_idx'=>1,'cat'=>'poezia'
       ],
       [
         'nazov'=>'Na krídlach vetra','popis'=>'Romantický príbeh odohrávajúci sa na pobreží.',
-        'cena'=>'3.49','pdf'=>'na_kridlach_vetra.pdf','img'=>'book4.jpg','author_idx'=>3,'cat'=>'romantika'
+        'cena'=>'3.49','pdf'=>'na_kridlach_vetra.pdf','img'=>'book4.png','author_idx'=>3,'cat'=>'romantika'
       ],
       [
         'nazov'=>'Zabudnuté mestá','popis'=>'Cestopis a historický výskum starovekých miest.',
-        'cena'=>'6.99','pdf'=>'zabudnute_mesta.pdf','img'=>'book5.jpg','author_idx'=>4,'cat'=>'cestopisy'
+        'cena'=>'6.99','pdf'=>'zabudnute_mesta.pdf','img'=>'book5.png','author_idx'=>4,'cat'=>'cestopisy'
       ]
     ];
 
