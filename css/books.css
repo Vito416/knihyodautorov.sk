@@ -215,16 +215,17 @@
   transition: transform var(--transition), box-shadow var(--transition);
 }
 
-/* tiny ornament (corner) — jemný, bez pozadia (transparent) */
-.books-section .ornament {
+/* tiny ornament (corner) — jemný, bez pozadia (transparent) 
+.ornament {
   position:absolute;
   width: 30px; height: 30px;
   background: url('../assets/ornament-small.png') no-repeat center/contain;
   opacity: 0.78; pointer-events:none;
   filter: drop-shadow(0 4px 6px rgba(0,0,0,0.35));
+  z-index: 30;
 }
-.books-section .ornament.top-right { top: -8px; right: -8px; transform: rotate(18deg) scale(.98); }
-.books-section .ornament.bottom-left { bottom: -8px; left: -8px; transform: rotate(-8deg) scale(.98); }
+.ornament.top-right { top: -8px; right: -8px; transform: rotate(18deg) scale(.98); }
+.ornament.bottom-left { bottom: -8px; left: -8px; transform: rotate(-8deg) scale(.98); } */
 
 /* ======================== BOOK INFO (text + depth) ======================== */
 .card-info {

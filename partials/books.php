@@ -156,10 +156,12 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
       ?>
       <article class="book-card" tabindex="0" data-category="<?= h($catSlug) ?>" data-author="<?= h($authorTag) ?>" data-title="<?= h(mb_strtolower($b['nazov'])) ?>">
         <div class="card-inner">
+
           <?php if (!empty($b['category_nazov'])): ?><div class="card-meta"><span class="badge"><?= h($b['category_nazov']) ?></span></div><?php endif; ?>
           <div class="cover-wrap" style="transform-style:preserve-3d;">
             <img class="book-cover" data-src="<?= h($cover) ?>" alt="<?= h($b['nazov']) ?>">
             <div class="book-frame"></div>
+
           </div>
           <div class="card-info">
             <h3 class="book-title"><?= h($b['nazov']) ?></h3>
