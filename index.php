@@ -6,6 +6,8 @@
 <?php
   // Úvodná sekcia s pozadím a časticami
   include 'partials/hero.php';
+  
+  include 'partials/how-it-works.php';
 
   // Sekcia o projekte
   include 'partials/about.php';
@@ -14,7 +16,10 @@
   include 'partials/books.php';
 
   // Kontaktná sekcia
-  include 'partials/contact.php';
+
+  include 'partials/top-books.php';
+  include 'partials/featured-authors.php';
+  include 'partials/support-impact.php';
 
   // Pätička
   include 'partials/footer.php';
