@@ -49,9 +49,9 @@ if ($pdo instanceof PDO) {
         $st->execute(['support_percent']);
         $sp = $st->fetchColumn();
         if ($sp !== false && is_numeric($sp)) $supportPercent = (int)$sp;
-    } catch (Throwable $e) {
-        error_log("support-impact.php SQL error: " + e.message);
-    }
+        } catch (Throwable $e) {
+          error_log("support-impact.php SQL error: " . $e->getMessage());
+        }
 }
 
 // estimate donated amount

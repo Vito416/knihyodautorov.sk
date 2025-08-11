@@ -1,157 +1,165 @@
 <?php
-// eshop/eshop.php
-// Výpis produktov (PDF knihy) s filtrovaním a stránkovaním
-// Uprav include cesty podľa tvojej štruktúry
+// /eshop/eshop.php
+// Hlavná eshop stránka — zoznam PDF kníh, rychlý nákup (bankový prevod) a modal detail
+// Predpoklad: db/config/config.php vracia PDO ako $pdo
 
-require_once __DIR__ . '/../db/config/config.php'; // musí vracať $pdo
+declare(strict_types=1);
+session_start();
 
-// voliteľne include header/footer (cesty môžu byť ../header.php)
-if (file_exists(__DIR__ . '/../partials/header.php')) {
-    include __DIR__ . '/../partials/header.php';
-} else {
-    // jednoduchý fallback header
-    echo '<!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
-    echo '<title>E-shop — Knihy od Autorov</title>';
-    echo '</head><body>';
+require_once __DIR__ . '/../db/config/config.php'; // vracia $pdo
+
+function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+
+// ---------- handle add-to-cart / create order (jednoduchý prevodný checkout) ----------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_order') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $user_email = trim((string)($_POST['email'] ?? ''));
+    $book_ids = $_POST['books'] ?? []; // pole id => quantity (ale my predáme 1)
+    if (!filter_var($user_email, FILTER_VALIDATE_EMAIL)) {
+        echo json_encode(['error'=>'Neplatný e-mail.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (!is_array($book_ids) || count($book_ids) === 0) {
+        echo json_encode(['error'=>'Musíte vybrať aspoň jednu knihu.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        // vytvor/našli užívateľa podľa emailu (ak neexistuje, vytvorí sa dočasný)
+        $stmt = $pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
+        $stmt->execute([$user_email]);
+        $uid = $stmt->fetchColumn();
+        if (!$uid) {
+            $stmt2 = $pdo->prepare("INSERT INTO users (meno,email,heslo) VALUES (?, ?, ?)");
+            $tempName = explode('@', $user_email)[0];
+            $stmt2->execute([$tempName, $user_email, password_hash(bin2hex(random_bytes(6)), PASSWORD_DEFAULT)]);
+            $uid = (int)$pdo->lastInsertId();
+        } else $uid = (int)$uid;
+
+        // spočítaj cenu a vlož objednávku
+        $placeholders = implode(',', array_fill(0, count($book_ids), '?'));
+        $stmt = $pdo->prepare("SELECT id, cena FROM books WHERE id IN ($placeholders) AND COALESCE(is_active,1)=1");
+        $stmt->execute(array_values($book_ids));
+        $books = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$books) throw new Exception('Vybrané knihy nenájdené.');
+
+        $total = 0.0;
+        foreach ($books as $b) $total += (float)$b['cena'];
+
+        $pdo->beginTransaction();
+        $stmtOrder = $pdo->prepare("INSERT INTO orders (user_id, total_price, currency, status, payment_method) VALUES (?, ?, ?, ?, ?)");
+        $stmtOrder->execute([$uid, number_format($total,2,'.',''), 'EUR', 'pending', 'bank_transfer']);
+        $orderId = (int)$pdo->lastInsertId();
+
+        $stmtItem = $pdo->prepare("INSERT INTO order_items (order_id, book_id, quantity, unit_price) VALUES (?, ?, ?, ?)");
+        foreach ($books as $b) {
+            $stmtItem->execute([$orderId, (int)$b['id'], 1, number_format((float)$b['cena'],2,'.','')]);
+        }
+
+        // vytvor invoice záznam (HTML sa vygeneruje pomocou generate_invoice.php)
+        $stmtInv = $pdo->prepare("INSERT INTO invoices (order_id, invoice_number, html_path, amount) VALUES (?, ?, ?, ?)");
+        $invNumber = 'INV-' . date('Ymd') . '-' . str_pad((string)$orderId,4,'0',STR_PAD_LEFT);
+        $invPath = '/eshop/invoices/' . $invNumber . '.html';
+        $stmtInv->execute([$orderId, $invNumber, $invPath, number_format($total,2,'.','')]);
+
+        $pdo->commit();
+
+        echo json_encode(['ok'=>true, 'order_id'=>$orderId, 'invoice_number'=>$invNumber, 'invoice_path'=>$invPath], JSON_UNESCAPED_UNICODE);
+        exit;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log("eshop create_order error: " . $e->getMessage());
+        echo json_encode(['error'=>'Chyba pri vytváraní objednávky. Skúste neskôr.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 }
 
-// Načítanie CSS/JS pre túto stránku
-echo '<link rel="stylesheet" href="css/eshop.css">';
-echo '<script src="js/eshop.js" defer></script>';
-
-// --- načítanie filtrov z GET ---
-$q = isset($_GET['q']) ? trim($_GET['q']) : '';
-$category = isset($_GET['category']) ? trim($_GET['category']) : 'all';
-$author = isset($_GET['author']) ? trim($_GET['author']) : 'all';
-$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$perPage = 9;
-$offset = ($page - 1) * $perPage;
-
-// --- získanie kategórií a autorov pre filter ---
-$cats = $pdo->query("SELECT id, nazov, slug FROM categories ORDER BY nazov")->fetchAll(PDO::FETCH_ASSOC);
-$authors = $pdo->query("SELECT id, meno, slug FROM authors ORDER BY meno")->fetchAll(PDO::FETCH_ASSOC);
-
-// --- zostavenie WHERE + parametrov ---
-$where = [];
-$params = [];
-
-if ($q !== '') {
-    $where[] = "(books.nazov LIKE :q OR books.popis LIKE :q)";
-    $params[':q'] = '%' . $q . '%';
-}
-if ($category !== 'all' && ctype_digit($category)) {
-    $where[] = "books.category_id = :cat";
-    $params[':cat'] = (int)$category;
-}
-if ($author !== 'all' && ctype_digit($author)) {
-    $where[] = "books.author_id = :author";
-    $params[':author'] = (int)$author;
+// ---------- AJAX endpoint: vráti náhodné promo knihy (limit param) ----------
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'promo') {
+    header('Content-Type: application/json; charset=utf-8');
+    $limit = isset($_GET['limit']) ? max(1, min(8, (int)$_GET['limit'])) : 4;
+    try {
+        $stmt = $pdo->prepare("SELECT b.id,b.nazov,b.popis,b.cena,b.obrazok,a.meno AS autor FROM books b LEFT JOIN authors a ON b.author_id=a.id WHERE COALESCE(b.is_active,1)=1 ORDER BY RAND() LIMIT :lim");
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $baseImg = '/books-img/';
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'id' => (int)$r['id'],
+                'nazov' => $r['nazov'],
+                'popis' => $r['popis'],
+                'cena' => $r['cena'],
+                'autor' => $r['autor'],
+                'obrazok' => (!empty($r['obrazok']) ? $baseImg . ltrim($r['obrazok'],'/') : '/assets/books-imgFB.png')
+            ];
+        }
+        echo json_encode(['items'=>$out], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        echo json_encode(['error'=>'DB error'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
-$whereSQL = '';
-if (!empty($where)) {
-    $whereSQL = 'WHERE ' . implode(' AND ', $where);
-}
+// ---------- PAGE RENDER (non-AJAX) ----------
+?><!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>E-shop — Knihy od autorov</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <link rel="stylesheet" href="/eshop/css/eshop.css">
+  <script src="/eshop/js/eshop.js" defer></script>
+</head>
+<body>
+<?php include_once __DIR__ . '/../partials/header.php'; ?>
 
-// --- spočítanie celkového počtu výsledkov ---
-$countSql = "SELECT COUNT(*) FROM books LEFT JOIN authors ON books.author_id = authors.id LEFT JOIN categories ON books.category_id = categories.id $whereSQL";
-$stmt = $pdo->prepare($countSql);
-$stmt->execute($params);
-$total = (int)$stmt->fetchColumn();
-$totalPages = (int)ceil($total / $perPage);
-
-// --- načítanie produktov ---
-$sql = "SELECT books.*, authors.meno AS author_name, categories.nazov AS category_name
-        FROM books
-        LEFT JOIN authors ON books.author_id = authors.id
-        LEFT JOIN categories ON books.category_id = categories.id
-        $whereSQL
-        ORDER BY books.created_at DESC
-        LIMIT :limit OFFSET :offset";
-$stmt = $pdo->prepare($sql);
-// bind params
-foreach ($params as $k => $v) $stmt->bindValue($k, $v);
-$stmt->bindValue(':limit', (int)$perPage, PDO::PARAM_INT);
-$stmt->bindValue(':offset', (int)$offset, PDO::PARAM_INT);
-$stmt->execute();
-$books = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// --- HTML výstup ---
-?>
-
-<section class="eshop-hero">
-  <div class="eshop-hero-inner">
-    <h1>Obchod — PDF knihy</h1>
-    <p>Vyber si knihu od slovenských a českých autorov. Podporujeme babyboxy — časť z výnosov putuje na pomoc.</p>
-  </div>
-</section>
-
-<section class="eshop-controls">
-  <form id="eshop-filter-form" method="get" action="eshop.php">
-    <input type="search" name="q" placeholder="Hľadať podľa názvu alebo popisu..." value="<?= htmlspecialchars($q) ?>" class="eshop-input">
-    <select name="category" class="eshop-select">
-      <option value="all">Všetky kategórie</option>
-      <?php foreach ($cats as $c): ?>
-        <option value="<?= $c['id'] ?>" <?= ($category !== 'all' && (int)$category === (int)$c['id']) ? 'selected' : '' ?>><?= htmlspecialchars($c['nazov']) ?></option>
-      <?php endforeach; ?>
-    </select>
-    <select name="author" class="eshop-select">
-      <option value="all">Všetci autori</option>
-      <?php foreach ($authors as $a): ?>
-        <option value="<?= $a['id'] ?>" <?= ($author !== 'all' && (int)$author === (int)$a['id']) ? 'selected' : '' ?>><?= htmlspecialchars($a['meno']) ?></option>
-      <?php endforeach; ?>
-    </select>
-    <button type="submit" class="eshop-btn">Filtrovať</button>
-  </form>
-</section>
-
-<section class="eshop-list">
-  <?php if (count($books) === 0): ?>
-    <div class="eshop-empty">Nenašli sa žiadne knihy pre zadané kritériá.</div>
-  <?php else: ?>
-    <div class="eshop-grid">
-      <?php foreach ($books as $b): ?>
-        <article class="eshop-card">
-          <div class="eshop-card-image">
-            <img data-src="../books-img/<?= htmlspecialchars($b['obrazok'] ?: 'placeholder.jpg') ?>" alt="<?= htmlspecialchars($b['nazov']) ?>" class="eshop-lazy">
-          </div>
-          <div class="eshop-card-body">
-            <h3 class="eshop-card-title"><?= htmlspecialchars($b['nazov']) ?></h3>
-            <div class="eshop-card-meta">
-              <span class="eshop-author"><?= htmlspecialchars($b['author_name'] ?: 'Neznámy autor') ?></span> •
-              <span class="eshop-category"><?= htmlspecialchars($b['category_name'] ?: 'Neurčené') ?></span>
-            </div>
-            <p class="eshop-card-desc"><?= nl2br(htmlspecialchars(mb_substr($b['popis'],0,180))) ?>…</p>
-            <div class="eshop-card-footer">
-              <span class="eshop-price"><?= htmlspecialchars(number_format($b['cena'],2,',','')) ?> €</span>
-              <a class="eshop-action" href="../book-detail.php?id=<?= (int)$b['id'] ?>">Detaily / kúpiť</a>
-            </div>
-          </div>
-        </article>
-      <?php endforeach; ?>
+<main class="eshop-main">
+  <section class="eshop-hero">
+    <div class="eshop-hero-inner">
+      <h1>Obchod — PDF knihy</h1>
+      <p>Vyber si epickú knihu. Po vykonaní platby (prevod) obdržíš faktúru a link na stiahnutie.</p>
     </div>
+  </section>
 
-    <!-- pagination -->
-    <?php if ($totalPages > 1): ?>
-      <nav class="eshop-pagination" aria-label="Stránkovanie">
-        <?php for ($p=1;$p<=$totalPages;$p++): ?>
-          <?php
-            $qs = $_GET;
-            $qs['page'] = $p;
-            $link = 'eshop.php?' . http_build_query($qs);
-          ?>
-          <a class="eshop-page <?= $p === $page ? 'active' : '' ?>" href="<?= $link ?>"><?= $p ?></a>
-        <?php endfor; ?>
-      </nav>
-    <?php endif; ?>
+  <section class="eshop-promo">
+    <div class="paper-wrap eshop-paper">
+      <div class="eshop-header">
+        <h2 class="section-title">Odporúčané knihy</h2>
+        <div class="search-row">
+          <input id="eshopSearch" placeholder="Hľadať názov, autora alebo žáner..." />
+          <button id="eshopSearchBtn" class="btn">Hľadaj</button>
+        </div>
+      </div>
 
-  <?php endif; ?>
-</section>
+      <div id="promoGrid" class="promo-grid" aria-live="polite">
+        <!-- naplní eshop/js/eshop.js cez AJAX -->
+      </div>
 
-<?php
-// include footer ak existuje
-if (file_exists(__DIR__ . '/../partials/footer.php')) {
-    include __DIR__ . '/../partials/footer.php';
-} else {
-    echo '</body></html>';
-}
+      <div class="eshop-note">
+        <p>Všetky PDF sú chránené. Po uhradení obdržíte faktúru (platby cez prevod). Časť výťažku je venovaná babyboxom.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="eshop-actions">
+    <div class="paper-wrap eshop-paper small">
+      <h3>Rýchly nákup</h3>
+      <form id="eshopCheckout" class="eshop-checkout">
+        <label for="checkoutEmail">E-mail (na faktúru a potvrdenie)</label>
+        <input id="checkoutEmail" name="email" type="email" required placeholder="tvoja@posta.sk">
+        <input type="hidden" name="action" value="create_order">
+        <div id="checkoutBooks" class="checkout-books" aria-hidden="true"></div>
+        <button type="submit" class="btn btn-primary">Vytvoriť objednávku (prevod)</button>
+      </form>
+      <div id="checkoutResult" class="checkout-result" role="status" aria-live="polite"></div>
+    </div>
+  </section>
+</main>
+
+<?php include_once __DIR__ . '/../partials/footer.php'; ?>
+</body>
+</html>

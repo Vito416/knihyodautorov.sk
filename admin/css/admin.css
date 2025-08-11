@@ -1,0 +1,26 @@
+/* /admin/css/admin.css - základ */
+:root {
+  --bg:#0f0b06;
+  --card:#fffaf0;
+  --accent:#cf9b3a;
+  --muted:#6b5a45;
+  --ink:#2b1b12;
+  --shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+body { margin:0; font-family: Inter, system-ui, Arial, sans-serif; background:linear-gradient(180deg,#0b0908,#111); color:var(--ink); }
+.admin-shell { max-width:1200px; margin:36px auto; padding:20px; background:var(--card); border-radius:10px; box-shadow:var(--shadow); }
+.admin-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; }
+.btn { background:var(--accent); color:#2b1608; padding:10px 14px; border-radius:8px; text-decoration:none; font-weight:700; border:none; cursor:pointer; }
+.btn.ghost { background:transparent; border:1px solid rgba(0,0,0,0.06); color:var(--ink); }
+.btn.small { padding:6px 10px; font-size:.9rem; }
+.btn.danger { background:#9b2b2b; color:#fff; }
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px;}
+.author-card{background:linear-gradient(180deg,#fff,#f6efe0); border-radius:8px; padding:12px; display:flex; gap:12px; align-items:center;}
+.author-photo img{width:72px;height:72px;object-fit:cover;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,0.12);}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:8px;border-bottom:1px solid #efe6d8;text-align:left}
+.notice{padding:24px;text-align:center;color:var(--muted)}
+.pager a{padding:6px 10px;margin-right:6px;text-decoration:none;border-radius:6px;background:#f3ead3;color:var(--ink)}
+.pager a.active{box-shadow:inset 0 -6px 12px rgba(0,0,0,0.06)}
+input,textarea,select{padding:10px;border-radius:8px;border:1px solid #e6dbc6;background:transparent}
+.form-actions{margin-top:14px;display:flex;gap:12px}

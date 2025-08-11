@@ -1,6 +1,0 @@
-.admin-main{max-width:1100px;margin:28px auto;padding:0 16px}
-.admin-filter select, .admin-filter input { padding:8px;border-radius:6px;border:1px solid #ddd }
-.adm-table{width:100%;border-collapse:collapse}
-.adm-table th,.adm-table td{padding:10px;border-bottom:1px solid #eee;text-align:left}
-.admin-pager .page{margin-right:6px;padding:6px 10px;border-radius:6px;background:#f1f1f1;text-decoration:none;color:#333}
-.admin-pager .active{background:#c08a2e;color:#fff;font-weight:800}
