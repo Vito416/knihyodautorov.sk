@@ -102,6 +102,13 @@ $require_first([
 
 ]);
 
+$require_first([
+    // nejdřív interfaces pro PSR Log
+    'psr-log/src/LoggerInterface.php',
+    'psr-log/src/LoggerAwareInterface.php',
+
+]);
+
 /* -------------------------
    PSR-4 prefix -> adresář mapy (přidej podle toho, co nahraješ do /libs)
    ------------------------- */

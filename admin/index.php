@@ -1,139 +1,146 @@
 <?php
 // /admin/index.php
-require_once __DIR__ . '/bootstrap.php';
+declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) session_start();
+require __DIR__ . '/bootstrap.php';
 require_admin();
-require_once __DIR__ . '/inc/helpers.php';
 
-// Základné štatistiky
-$counts = $pdo->query("
-  SELECT
-    (SELECT COUNT(*) FROM books) AS books,
-    (SELECT COUNT(*) FROM authors) AS authors,
-    (SELECT COUNT(*) FROM orders) AS orders,
-    (SELECT COUNT(*) FROM users) AS users,
-    (SELECT COUNT(*) FROM invoices) AS invoices
-")->fetch(PDO::FETCH_ASSOC);
-
-// posledné knihy (books.created_at existuje)
-$recentBooks = $pdo->query("SELECT id, nazov, obrazok, created_at FROM books ORDER BY created_at DESC LIMIT 6")->fetchAll(PDO::FETCH_ASSOC);
-
-// posledné objednávky
-$recentOrders = $pdo->query("SELECT o.id, o.total_price, o.status, o.created_at, u.meno AS user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 8")->fetchAll(PDO::FETCH_ASSOC);
-
-// orders per last 7 days
-$rows = $pdo->query("
-  SELECT DATE(created_at) AS day, COUNT(*) AS cnt, IFNULL(SUM(total_price),0) AS sum_total
-  FROM orders
-  WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-  GROUP BY DATE(created_at)
-  ORDER BY DATE(created_at)
-")->fetchAll(PDO::FETCH_ASSOC);
-
-$labels = []; $dataCnt = []; $dataSum = [];
-$map = [];
-foreach ($rows as $r) $map[$r['day']] = $r;
-for ($i = 6; $i >= 0; $i--) {
-    $d = date('Y-m-d', strtotime("-{$i} days"));
-    $labels[] = $d;
-    if (isset($map[$d])) {
-        $dataCnt[] = (int)$map[$d]['cnt'];
-        $dataSum[] = (float)$map[$d]['sum_total'];
-    } else {
-        $dataCnt[] = 0;
-        $dataSum[] = 0.0;
+// Helper escape
+if (!function_exists('admin_esc')) {
+    function admin_esc($s) {
+        if (function_exists('esc')) return esc($s);
+        return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     }
 }
 
-include __DIR__ . '/header.php';
+// Získame štatistiky
+$counts = [];
+$tables = ['books','authors','users','orders','invoices','reviews'];
+foreach ($tables as $t) {
+    try {
+        $counts[$t] = (int)$pdo->query("SELECT COUNT(*) FROM `{$t}`")->fetchColumn();
+    } catch (Throwable $e) {
+        $counts[$t] = 0;
+    }
+}
+
+// Najnovšie 5 objednávok
+$recentOrders = [];
+try {
+    $stmt = $pdo->query("SELECT o.id, o.total_price, o.status, o.created_at, u.meno AS user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 5");
+    $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e){ $recentOrders = []; }
+
+// Najnovších 5 užívateľov
+$recentUsers = [];
+try {
+    $stmt = $pdo->query("SELECT id, meno, email, datum_registracie FROM users ORDER BY datum_registracie DESC LIMIT 5");
+    $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e){ $recentUsers = []; }
+
+// Najnovšie knihy
+$recentBooks = [];
+try {
+    $stmt = $pdo->query("SELECT b.id, b.nazov, a.meno AS autor FROM books b LEFT JOIN authors a ON b.author_id = a.id ORDER BY b.created_at DESC LIMIT 5");
+    $recentBooks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e){ $recentBooks = []; }
+
+// Include header
+include __DIR__ . '/partials/header.php';
 ?>
 
-<section class="adm-dashboard">
-  <h1>Prehľad</h1>
+<main class="admin-main container">
+  <section class="dashboard-hero">
+    <h1>Prehľad</h1>
+    <p class="muted">Rýchly prehľad aktivity a rýchle odkazy na najpoužívanejšie akcie.</p>
+    <div class="dashboard-actions">
+      <a class="btn-primary" href="/admin/books.php">Spravovať knihy</a>
+      <a class="btn" href="/admin/orders.php">Spravovať objednávky</a>
+      <button id="smtp-test-btn" class="btn-ghost" data-url="/admin/actions/smtp-test.php">Otestovať SMTP</button>
+    </div>
+  </section>
 
-  <div class="adm-stats">
-    <div class="adm-stat">
-      <div class="adm-stat-num"><?= adm_esc($counts['books']) ?></div>
-      <div class="adm-stat-label">Knihy</div>
+  <section class="dashboard-stats">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Knihy</h3>
+        <span class="stat-num"><?php echo admin_esc($counts['books'] ?? 0); ?></span>
+      </div>
+      <div class="stat-card">
+        <h3>Autori</h3>
+        <span class="stat-num"><?php echo admin_esc($counts['authors'] ?? 0); ?></span>
+      </div>
+      <div class="stat-card">
+        <h3>Užívatelia</h3>
+        <span class="stat-num"><?php echo admin_esc($counts['users'] ?? 0); ?></span>
+      </div>
+      <div class="stat-card">
+        <h3>Objednávky</h3>
+        <span class="stat-num"><?php echo admin_esc($counts['orders'] ?? 0); ?></span>
+      </div>
     </div>
-    <div class="adm-stat">
-      <div class="adm-stat-num"><?= adm_esc($counts['authors']) ?></div>
-      <div class="adm-stat-label">Autori</div>
-    </div>
-    <div class="adm-stat">
-      <div class="adm-stat-num"><?= adm_esc($counts['orders']) ?></div>
-      <div class="adm-stat-label">Objednávky</div>
-    </div>
-    <div class="adm-stat">
-      <div class="adm-stat-num"><?= adm_esc($counts['users']) ?></div>
-      <div class="adm-stat-label">Užívatelia</div>
-    </div>
-    <div class="adm-stat">
-      <div class="adm-stat-num"><?= adm_esc($counts['invoices']) ?></div>
-      <div class="adm-stat-label">Faktúry</div>
-    </div>
-  </div>
+  </section>
 
-  <div class="adm-row">
-    <div class="adm-col">
-      <section class="card">
-        <h2>Objednávky (posledných 8)</h2>
-        <ul class="adm-list">
-          <?php foreach ($recentOrders as $o): ?>
-            <li>
-              <strong>#<?= adm_esc($o['id']) ?></strong>
-              <?= adm_esc($o['user_name'] ?? 'Neregistrovaný') ?> —
-              <?= adm_esc(adm_money($o['total_price'])) ?>
-              <span class="badge"><?= adm_esc($o['status']) ?></span>
-              <span class="muted"><?= adm_esc($o['created_at']) ?></span>
-            </li>
-          <?php endforeach; ?>
-        </ul>
-      </section>
+  <section class="dashboard-widgets">
+    <div class="widget">
+      <h4>Posledné objednávky</h4>
+      <table class="table">
+        <thead><tr><th>ID</th><th>Užívatelia</th><th>Cena</th><th>Stav</th><th>Dátum</th></tr></thead>
+        <tbody>
+        <?php if (empty($recentOrders)): ?>
+          <tr><td colspan="5">Žiadne objednávky</td></tr>
+        <?php else: foreach ($recentOrders as $o): ?>
+          <tr>
+            <td><?php echo (int)$o['id']; ?></td>
+            <td><?php echo admin_esc($o['user_name'] ?? '—'); ?></td>
+            <td><?php echo admin_esc(number_format((float)$o['total_price'],2,',','.')) ?> €</td>
+            <td><?php echo admin_esc($o['status']); ?></td>
+            <td><?php echo admin_esc($o['created_at']); ?></td>
+          </tr>
+        <?php endforeach; endif; ?>
+        </tbody>
+      </table>
+      <div class="widget-actions">
+        <a class="btn" href="/admin/orders.php">Zobraziť všetky objednávky</a>
+        <a class="btn" href="/admin/exports.php?type=orders">Export (CSV)</a>
+      </div>
     </div>
 
-    <div class="adm-col">
-      <section class="card">
-        <h2>Graf objednávok (7 dní)</h2>
-        <canvas id="chartOrders" height="160"></canvas>
-      </section>
-
-      <section class="card" style="margin-top:12px;">
-        <h2>Posledné knihy</h2>
-        <div class="mini-grid">
-          <?php foreach ($recentBooks as $b): ?>
-            <article class="mini">
-              <img src="<?= adm_esc($b['obrazok'] ? '/books-img/' . ltrim($b['obrazok'],'/') : '/assets/books-imgFB.png') ?>" alt="<?= adm_esc($b['nazov']) ?>">
-              <div class="mini-meta">
-                <strong><?= adm_esc($b['nazov']) ?></strong>
-                <small><?= adm_esc($b['created_at']) ?></small>
-              </div>
-            </article>
-          <?php endforeach; ?>
-        </div>
-      </section>
+    <div class="widget">
+      <h4>Poslední užívatelia</h4>
+      <ul class="list-compact">
+        <?php if (empty($recentUsers)): ?>
+          <li>Žiadni užívatelia</li>
+        <?php else: foreach ($recentUsers as $u): ?>
+          <li><?php echo admin_esc($u['meno']); ?> — <span class="muted"><?php echo admin_esc($u['email']); ?></span> <small class="muted">(<?php echo admin_esc($u['datum_registracie']); ?>)</small></li>
+        <?php endforeach; endif; ?>
+      </ul>
+      <div class="widget-actions">
+        <a class="btn" href="/admin/users.php">Spravovať užívateľov</a>
+        <a class="btn" href="/admin/exports.php?type=users">Export (CSV)</a>
+      </div>
     </div>
-  </div>
-</section>
 
-<?php include __DIR__ . '/footer.php'; ?>
+    <div class="widget">
+      <h4>Posledné knihy</h4>
+      <ul class="list-compact">
+        <?php if (empty($recentBooks)): ?>
+          <li>Žiadne knihy</li>
+        <?php else: foreach ($recentBooks as $b): ?>
+          <li><?php echo admin_esc($b['nazov']); ?> — <span class="muted"><?php echo admin_esc($b['autor']); ?></span></li>
+        <?php endforeach; endif; ?>
+      </ul>
+      <div class="widget-actions">
+        <a class="btn" href="/admin/books.php">Spravovať knihy</a>
+      </div>
+    </div>
+  </section>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-  const labels = <?= json_encode($labels, JSON_UNESCAPED_UNICODE) ?>;
-  const dataCnt = <?= json_encode($dataCnt, JSON_UNESCAPED_UNICODE) ?>;
-  const dataSum = <?= json_encode($dataSum, JSON_UNESCAPED_UNICODE) ?>;
-  const ctx = document.getElementById('chartOrders').getContext('2d');
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: 'Objednávky', data: dataCnt, backgroundColor: 'rgba(207,155,58,0.92)' },
-        { label: 'Suma (€)', data: dataSum, backgroundColor: 'rgba(139,90,32,0.78)' }
-      ]
-    },
-    options: { responsive: true, plugins: { legend: { position: 'top' } } }
-  });
-});
-</script>
+  <section class="dashboard-graph">
+    <h4>Rýchly graf (zobrazuje pomer)</h4>
+    <div id="dashboard-mini-chart" data-books="<?php echo (int)$counts['books']; ?>" data-authors="<?php echo (int)$counts['authors']; ?>" data-users="<?php echo (int)$counts['users']; ?>" data-orders="<?php echo (int)$counts['orders']; ?>"></div>
+  </section>
+
+</main>
+
+<?php include __DIR__ . '/partials/footer.php'; ?>
