@@ -1,36 +1,36 @@
 <?php
-// /admin/invoice-view.php (view used by order-action view)
-if (!$order) { echo 'Objednávka nenájdená'; exit; }
-?><!doctype html><html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Objednávka #<?=esc($order['id'])?></title>
-<link rel="stylesheet" href="/admin/css/admin.css"></head>
-<body><?php include __DIR__ . '/header.php'; ?>
-<main class="admin-main">
-  <h1>Objednávka #<?=esc($order['id'])?></h1>
-  <p>Užívateľ: <?=esc($order['meno'] ?? '-')?> (<?=esc($order['email'] ?? '-')?>)</p>
-  <p>Status: <strong><?=esc($order['status'])?></strong></p>
-  <h2>Položky</h2>
-  <table class="admin-table"><thead><tr><th>Produkt</th><th>Množstvo</th><th>Cena</th></tr></thead><tbody>
-    <?php foreach($items as $it): ?>
-      <tr>
-        <td><?=esc($it['nazov'])?></td>
-        <td><?=esc($it['quantity'])?></td>
-        <td><?=esc(number_format($it['unit_price'],2,'.',''))?> €</td>
-      </tr>
-    <?php endforeach; ?>
-  </tbody></table>
+// /admin/invoice-view.php
+declare(strict_types=1);
+require __DIR__ . '/bootstrap.php';
+if (!admin_is_logged()) { header('Location: login.php'); exit; }
 
-  <div style="margin-top:12px;">
-    <?php if($order['status'] !== 'paid'): ?>
-      <form method="post" action="/admin/order-action.php">
-        <input type="hidden" name="csrf" value="<?=esc(csrf_get_token())?>">
-        <input type="hidden" name="id" value="<?=esc($order['id'])?>">
-        <input type="hidden" name="act" value="mark_paid">
-        <button class="btn btn-primary" type="submit">Označiť zaplatené</button>
-      </form>
-    <?php else: ?>
-      <div class="alert alert-success">Objednávka je zaplatená.</div>
-    <?php endif; ?>
-  </div>
-</main>
-<?php include __DIR__ . '/footer.php'; ?></body></html>
+$id = (int)($_GET['id'] ?? 0);
+if ($id <= 0) { die('Neplatná faktúra'); }
+
+// fetch invoice
+$stmt = $pdo->prepare("SELECT * FROM invoices WHERE id = ? LIMIT 1");
+$stmt->execute([$id]);
+$inv = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$inv) { die('Faktúra neexistuje'); }
+
+// load order/items/user/settings
+$order_id = (int)$inv['order_id'];
+$s = $pdo->prepare("SELECT * FROM orders WHERE id = ? LIMIT 1");
+$s->execute([$order_id]);
+$order = $s->fetch(PDO::FETCH_ASSOC);
+$si = $pdo->prepare("SELECT oi.*, b.nazov, b.pdf_file FROM order_items oi JOIN books b ON b.id = oi.book_id WHERE oi.order_id = ?");
+$si->execute([$order_id]);
+$items = $si->fetchAll(PDO::FETCH_ASSOC);
+$su = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+$su->execute([$order['user_id']]);
+$user = $su->fetch(PDO::FETCH_ASSOC);
+$settings = [];
+$rs = $pdo->query("SELECT k,v FROM settings")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($rs as $_r) $settings[$_r['k']] = $_r['v'] ?? '';
+
+$total = (float)$inv['total_amount'];
+$currency = $inv['currency'] ?? ($settings['currency'] ?? 'EUR');
+$invoiceNumber = $inv['invoice_number'];
+$invoiceId = (int)$inv['id'];
+
+include __DIR__ . '/invoice-template-html.php';

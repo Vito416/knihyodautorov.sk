@@ -1,63 +1,90 @@
 <?php
 // /admin/book-edit.php
-require_once __DIR__ . '/bootstrap.php';
-require_admin();
-require_once __DIR__ . '/inc/helpers.php';
-require_once __DIR__ . '/inc/csrf.php';
-require_once __DIR__ . '/inc/upload.php';
+declare(strict_types=1);
+require __DIR__ . '/bootstrap.php';
+if (!admin_is_logged()) { header('Location: login.php'); exit; }
+if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
 
 $id = (int)($_GET['id'] ?? 0);
 $book = null;
 if ($id) {
-    $stmt = $pdo->prepare("SELECT * FROM books WHERE id = ? LIMIT 1");
-    $stmt->execute([$id]);
-    $book = $stmt->fetch(PDO::FETCH_ASSOC);
+  $stmt = $pdo->prepare("SELECT * FROM books WHERE id = ? LIMIT 1");
+  $stmt->execute([$id]);
+  $book = $stmt->fetch(PDO::FETCH_ASSOC);
 }
+
 $authors = $pdo->query("SELECT id, meno FROM authors ORDER BY meno")->fetchAll(PDO::FETCH_ASSOC);
-$categories = $pdo->query("SELECT id, nazov FROM categories ORDER BY nazov")->fetchAll(PDO::FETCH_ASSOC);
-
-include __DIR__ . '/header.php';
+$cats = $pdo->query("SELECT id, nazov FROM categories ORDER BY nazov")->fetchAll(PDO::FETCH_ASSOC);
 ?>
-<section class="adm-section">
-  <h1><?= $id ? 'Upraviť knihu' : 'Pridať knihu' ?></h1>
+<!doctype html>
+<html lang="sk">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin — Upraviť knihu</title>
+<link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+<main class="admin-shell">
+  <header class="admin-top"><h1><?php echo $book ? 'Upraviť knihu' : 'Pridať knihu'; ?></h1></header>
 
-  <form method="post" action="/admin/book-save.php" enctype="multipart/form-data" class="adm-form">
-    <input type="hidden" name="csrf" value="<?= adm_esc(csrf_get_token()) ?>">
-    <input type="hidden" name="id" value="<?= adm_esc($book['id'] ?? '') ?>">
-    <label>Názov</label>
-    <input name="nazov" type="text" value="<?= adm_esc($book['nazov'] ?? '') ?>" required>
-    <label>Autor</label>
-    <select name="author_id">
-      <option value="">—</option>
-      <?php foreach ($authors as $a): ?>
-        <option value="<?= adm_esc($a['id']) ?>" <?= (isset($book['author_id']) && $book['author_id']==$a['id']) ? 'selected' : '' ?>><?= adm_esc($a['meno']) ?></option>
-      <?php endforeach; ?>
-    </select>
-    <label>Kategória</label>
-    <select name="category_id">
-      <option value="">—</option>
-      <?php foreach ($categories as $c): ?>
-        <option value="<?= adm_esc($c['id']) ?>" <?= (isset($book['category_id']) && $book['category_id']==$c['id']) ? 'selected' : '' ?>><?= adm_esc($c['nazov']) ?></option>
-      <?php endforeach; ?>
-    </select>
-    <label>Cena</label>
-    <input name="cena" type="text" value="<?= adm_esc($book['cena'] ?? '0.00') ?>">
-    <label>PDF súbor (názov) — ak nahrávate, nahrajte do /books-pdf/</label>
-    <input name="pdf_file" type="text" value="<?= adm_esc($book['pdf_file'] ?? '') ?>">
-    <label>Obrázok (png/jpg/webp)</label>
-    <input name="cover" type="file" accept="image/*">
-    <?php if (!empty($book['obrazok'])): ?>
-      <div class="muted">Aktuálny: <?= adm_esc($book['obrazok']) ?></div>
-    <?php endif; ?>
+  <form method="post" action="book-action.php" class="panel" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="<?php echo $_SESSION['csrf_token']; ?>">
+    <input type="hidden" name="id" value="<?php echo (int)$id; ?>">
 
-    <label>Popis</label>
-    <textarea name="popis"><?= adm_esc($book['popis'] ?? '') ?></textarea>
+    <div class="form-row">
+      <div class="col"><label>Názov</label><input type="text" name="nazov" required value="<?php echo $book ? htmlspecialchars($book['nazov']):''; ?>"></div>
+    </div>
 
-    <div class="adm-form-actions">
-      <button class="adm-btn adm-btn-primary" type="submit">Uložiť</button>
-      <a href="/admin/books.php" class="adm-btn">Späť</a>
+    <div class="form-row" style="margin-top:12px;">
+      <div class="col">
+        <label>Autor</label>
+        <select name="author_id">
+          <option value="">— vybrať —</option>
+          <?php foreach($authors as $a): ?>
+            <option value="<?php echo (int)$a['id']; ?>" <?php if($book && $book['author_id']==$a['id']) echo 'selected'; ?>><?php echo htmlspecialchars($a['meno']); ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+
+      <div class="col">
+        <label>Kategória</label>
+        <select name="category_id">
+          <option value="">— vybrať —</option>
+          <?php foreach($cats as $c): ?>
+            <option value="<?php echo (int)$c['id']; ?>" <?php if($book && $book['category_id']==$c['id']) echo 'selected'; ?>><?php echo htmlspecialchars($c['nazov']); ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Krátky popis</label>
+      <textarea name="popis" rows="6"><?php echo $book ? htmlspecialchars($book['popis']):''; ?></textarea>
+    </div>
+
+    <div class="form-row" style="margin-top:12px;">
+      <div class="col"><label>Cena (bez meny)</label><input type="text" name="cena" value="<?php echo $book ? htmlspecialchars($book['cena']):'0.00'; ?>"></div>
+      <div class="col"><label>Mena</label><input type="text" name="mena" value="<?php echo $book ? htmlspecialchars($book['mena']):'EUR'; ?>"></div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Obrázok (názov súboru v /books-img)</label>
+      <input type="text" name="obrazok" value="<?php echo $book ? htmlspecialchars($book['obrazok']):''; ?>">
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>PDF (názov súboru v /books-pdf)</label>
+      <input type="text" name="pdf_file" value="<?php echo $book ? htmlspecialchars($book['pdf_file']):''; ?>">
+    </div>
+
+    <div style="margin-top:12px;">
+      <label><input type="checkbox" name="is_active" value="1" <?php if(!$book || $book['is_active']) echo 'checked'; ?>> Aktívna</label>
+    </div>
+
+    <div style="margin-top:14px;">
+      <button class="btn" type="submit">Uložiť zmeny</button>
+      <a class="btn ghost" href="books-admin.php">Zrušiť</a>
     </div>
   </form>
-</section>
-
-<?php include __DIR__ . '/footer.php'; ?>
+</main>
+</body>
+</html>
