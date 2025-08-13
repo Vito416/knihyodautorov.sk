@@ -47,6 +47,7 @@ $require_first([
     'mpdf/psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
     'psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
     'simple-cache/src/CacheInterface.php',
+    'PHPMailer/src/PHPMailer.php',
 ]);
 
 // 3) případný psr-http-message shim (může být potřeba)
@@ -148,6 +149,8 @@ $prefixes = [
     'Composer\\Pcre\\' => __DIR__ . '/pcre/src/',
 
     'ZipStream\\' => __DIR__ . '/ZipStream-PHP-main/src/',
+
+    'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
 
 ];
 

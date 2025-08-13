@@ -1,45 +1,36 @@
 <?php
-// /eshop/download.php?file=xxx.pdf&token=abcdef
-declare(strict_types=1);
-require_once __DIR__ . '/../db/config/config.php';
-session_start();
+// /eshop/download.php
+require __DIR__ . '/_init.php';
+$token = trim((string)($_GET['token'] ?? ''));
+if ($token === '') { http_response_code(400); echo "Token chýba"; exit; }
 
-function h($s){ return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+$stmt = $pdo->prepare("SELECT dt.id AS token_id, dt.book_id, dt.user_id, dt.expires_at, dt.used, b.pdf_file, b.pdf_file_path, b.obrazok FROM download_tokens dt LEFT JOIN books b ON b.id = dt.book_id WHERE dt.token = ? LIMIT 1");
+$stmt->execute([$token]);
+$row = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$row) { http_response_code(404); echo "Token not found"; exit; }
+if ($row['used']) { http_response_code(403); echo "Token already used"; exit; }
+if ($row['expires_at'] && (new DateTime($row['expires_at'])) < new DateTime()) { http_response_code(403); echo "Token expired"; exit; }
 
-$file = $_GET['file'] ?? '';
-$token = $_GET['token'] ?? '';
-
-if (!$file) { http_response_code(400); echo "Chybný požiadavok."; exit; }
-
-// normalize
-$basename = basename($file);
-$path = __DIR__ . '/../books-pdf/' . $basename;
-
-if ($token) {
-    // over token v users.download_token alebo v invoices (?) -> jednoduchá kontrola: nájdeme order ktorý má invoce a users.download_token = token
-    $stmt = $pdo->prepare("SELECT u.id FROM users u WHERE u.download_token = ? LIMIT 1");
-    $stmt->execute([$token]);
-    $uid = $stmt->fetchColumn();
-    if (!$uid) { http_response_code(403); echo "Neplatný token."; exit; }
-    // ďalšie overenie môže kontrolovať, či má user v orders položku s danou knihou — vynecháme pre jednoduchosť
-} else {
-    // skontroluj, či je user prihlásený a má v objednávkach danú knihu (zahŕňa implementáciu)
-    if (!isset($_SESSION['user_id'])) { http_response_code(403); echo "Nie ste prihlásený."; exit; }
-    $uid = (int)$_SESSION['user_id'];
-    // overíme že v order_items existuje book s pdf_file=$basename a order.user_id = $uid a order.status='paid'
-    $stmt = $pdo->prepare("SELECT oi.id FROM order_items oi JOIN orders o ON oi.order_id=o.id JOIN books b ON oi.book_id=b.id WHERE o.user_id = ? AND o.status='paid' AND b.pdf_file = ? LIMIT 1");
-    $stmt->execute([$uid, $basename]);
-    $ok = $stmt->fetchColumn();
-    if (!$ok) { http_response_code(403); echo "Nemáte právo sťahovať tento súbor."; exit; }
+$bookId = (int)$row['book_id'];
+// file path: prefer pdf_file_path or pdf_file or pdf_file in /books-pdf
+$possible = [];
+if (!empty($row['pdf_file_path'])) $possible[] = $row['pdf_file_path'];
+if (!empty($row['pdf_file'])) $possible[] = __DIR__ . '/../books-pdf/' . $row['pdf_file'];
+if (!empty($row['pdf_file_path']) && file_exists($row['pdf_file_path'])) $file = $row['pdf_file_path'];
+else {
+    $file = null;
+    foreach ($possible as $p) if (file_exists($p)) { $file = $p; break; }
 }
+if (!$file) { http_response_code(404); echo "Súbor nie je dostupný"; exit; }
 
-// finally serve file (deny directory traversal earlier)
-if (!file_exists($path)) { http_response_code(404); echo "Súbor nenájdený."; exit; }
+// mark used (one-time)
+$pdo->prepare("UPDATE download_tokens SET used = 1 WHERE id = ?")->execute([(int)$row['token_id']]);
 
-// set headers
-$mime = mime_content_type($path) ?: 'application/octet-stream';
+// serve file
+$basename = basename($file);
+$mime = mime_content_type($file) ?: 'application/octet-stream';
 header('Content-Type: ' . $mime);
-header('Content-Disposition: attachment; filename="' . h($basename) . '"');
-header('Content-Length: ' . filesize($path));
-readfile($path);
+header('Content-Disposition: attachment; filename="' . $basename . '"');
+header('Content-Length: ' . filesize($file));
+readfile($file);
 exit;

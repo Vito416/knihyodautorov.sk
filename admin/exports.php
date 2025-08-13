@@ -2,68 +2,92 @@
 // /admin/exports.php
 declare(strict_types=1);
 if (session_status() === PHP_SESSION_NONE) session_start();
-require __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/partials/notifications.php';
 require_admin();
 
-$type = $_GET['type'] ?? 'orders';
-$format = $_GET['format'] ?? 'csv';
+$type = $_GET['type'] ?? 'users';
+$format = strtolower((string)($_GET['format'] ?? 'csv'));
+$allowed = ['users','books','orders','reviews'];
+if (!in_array($type, $allowed, true)) {
+    header('Location: /admin/index.php'); exit;
+}
+$allowedFormats = ['csv','xlsx'];
+if (!in_array($format, $allowedFormats, true)) $format = 'csv';
 
-header('Content-Type: text/plain; charset=utf-8');
+// prepare data
+$filenameBase = 'export_'.$type.'_'.date('Ymd_His');
+$rows = [];
+$headers = [];
 
-if ($type === 'orders') {
-    $rows = $pdo->query("SELECT o.*, u.meno AS user, u.email FROM orders o LEFT JOIN users u ON o.user_id=u.id ORDER BY o.created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-    if ($format === 'csv') {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="orders_export_' . date('Ymd_His') . '.csv"');
-        $out = fopen('php://output','w');
-        fputcsv($out, ['id','user','email','total_price','currency','status','payment_method','created_at']);
-        foreach ($rows as $r) {
-            fputcsv($out, [$r['id'],$r['user'],$r['email'],$r['total_price'],$r['currency'],$r['status'],$r['payment_method'],$r['created_at']]);
-        }
-        fclose($out);
-        exit;
-    } else {
-        header('Content-Type: application/xml; charset=utf-8');
-        header('Content-Disposition: attachment; filename="orders_export_' . date('Ymd_His') . '.xml"');
-        $xml = new SimpleXMLElement('<orders/>');
-        foreach ($rows as $r) {
-            $o = $xml->addChild('order');
-            foreach (['id','user','email','total_price','currency','status','payment_method','created_at'] as $k) {
-                $o->addChild($k, htmlspecialchars((string)$r[$k], ENT_XML1 | ENT_COMPAT | ENT_SUBSTITUTE));
-            }
-        }
-        echo $xml->asXML();
-        exit;
+try {
+    if ($type === 'users') {
+        $headers = ['id','meno','email','telefon','datum_registracie','newsletter'];
+        $stmt = $pdo->query("SELECT id, meno, email, telefon, datum_registracie, newsletter FROM users ORDER BY id ASC");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($type === 'books') {
+        $headers = ['id','nazov','slug','cena','mena','author_id','category_id','is_active','created_at'];
+        $stmt = $pdo->query("SELECT id, nazov, slug, cena, mena, author_id, category_id, is_active, created_at FROM books ORDER BY id ASC");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($type === 'orders') {
+        $headers = ['id','user_id','total_price','currency','status','payment_method','created_at'];
+        $stmt = $pdo->query("SELECT id, user_id, total_price, currency, status, payment_method, created_at FROM orders ORDER BY id ASC");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } elseif ($type === 'reviews') {
+        $headers = ['id','book_id','user_id','rating','comment','created_at'];
+        $stmt = $pdo->query("SELECT id, book_id, user_id, rating, comment, created_at FROM reviews ORDER BY id ASC");
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+} catch (Throwable $e) {
+    admin_flash_set('error','Chyba pri získavaní dát pre export: '.$e->getMessage());
+    header('Location: /admin/index.php'); exit;
 }
 
-if ($type === 'invoices') {
-    $rows = $pdo->query("SELECT * FROM invoices ORDER BY created_at DESC")->fetchAll(PDO::FETCH_ASSOC);
-    if ($format === 'csv') {
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="invoices_export_' . date('Ymd_His') . '.csv"');
-        $out = fopen('php://output','w');
-        fputcsv($out, ['id','invoice_number','order_id','total','currency','tax_rate','variable_symbol','created_at']);
-        foreach ($rows as $r) {
-            fputcsv($out, [$r['id'],$r['invoice_number'],$r['order_id'],$r['total'],$r['currency'],$r['tax_rate'],$r['variable_symbol'],$r['created_at']]);
-        }
-        fclose($out);
-        exit;
-    } else {
-        header('Content-Type: application/xml; charset=utf-8');
-        header('Content-Disposition: attachment; filename="invoices_export_' . date('Ymd_His') . '.xml"');
-        $xml = new SimpleXMLElement('<invoices/>');
-        foreach ($rows as $r) {
-            $o = $xml->addChild('invoice');
-            foreach (['id','invoice_number','order_id','total','currency','tax_rate','variable_symbol','created_at'] as $k) {
-                $o->addChild($k, htmlspecialchars((string)$r[$k], ENT_XML1 | ENT_COMPAT | ENT_SUBSTITUTE));
-            }
-        }
-        echo $xml->asXML();
-        exit;
+// If XLSX requested and PhpSpreadsheet exists -> generate XLSX
+if ($format === 'xlsx' && class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+    $tmp = sys_get_temp_dir() . '/' . $filenameBase . '.xlsx';
+    $spread = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spread->getActiveSheet();
+    // headers
+    $col = 1;
+    foreach ($headers as $h) {
+        $sheet->setCellValueByColumnAndRow($col++, 1, $h);
     }
+    $r = 2;
+    foreach ($rows as $row) {
+        $col = 1;
+        foreach ($headers as $h) {
+            $sheet->setCellValueByColumnAndRow($col++, $r, $row[$h] ?? '');
+        }
+        $r++;
+    }
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spread);
+    $writer->save($tmp);
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="'.$filenameBase.'.xlsx"');
+    readfile($tmp);
+    @unlink($tmp);
+    exit;
 }
 
-http_response_code(400);
-echo "Unknown export type/format";
+// Otherwise CSV fallback
+$csvPath = sys_get_temp_dir() . '/' . $filenameBase . '.csv';
+$fh = fopen($csvPath, 'w');
+if ($fh === false) {
+    admin_flash_set('error','Nepodarilo sa vytvoriť dočasný súbor pre export.');
+    header('Location: /admin/index.php'); exit;
+}
+// UTF-8 BOM for Excel
+fwrite($fh, chr(0xEF).chr(0xBB).chr(0xBF));
+fputcsv($fh, $headers, ',', '"');
+foreach ($rows as $row) {
+    $line = [];
+    foreach ($headers as $h) $line[] = $row[$h] ?? '';
+    fputcsv($fh, $line, ',', '"');
+}
+fclose($fh);
+header('Content-Type: text/csv; charset=utf-8');
+header('Content-Disposition: attachment; filename="'.$filenameBase.'.csv"');
+readfile($csvPath);
+@unlink($csvPath);
 exit;

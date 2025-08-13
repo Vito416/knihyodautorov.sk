@@ -1,14 +1,14 @@
 <?php
 /**
- * initdb.php - rozšířená a bezpečnější inicializace DB + základné nastavenia pre e-shop
+ * initdb.php - rozšírená a bezpečnejšia inicializácia DB + nastavenia pre e-shop
  *
- * Uložiť do rootu vedľa index.php. Konfig: db/config/config.php (musí vracať PDO alebo nastaviť $pdo).
- * Po úspešnej inicializácii odporúčam súbor odstrániť alebo presunúť mimo webroot.
+ * Uložte do rootu vedľa index.php. Konfig: db/config/config.php (musí vracať PDO alebo nastaviť $pdo).
+ * Po úspešnej inicializácii súbor odstráňte alebo presuňte mimo webroot.
  *
- * Vytvára (ak neexistujú): nové stĺpce v users, tabuľku invoices, nastavenia v settings,
- * priečinky books-img, books-pdf, eshop/invoices a vzorový db/config/configsmtp.php.
+ * Tento skript je idempotentný (bezpečné opakované volanie) - vytvorí tabuľky/stĺpce len ak chýbajú.
  */
 
+declare(strict_types=1);
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
@@ -21,17 +21,17 @@ function slugify($text) {
         if ($trans !== false) $text = $trans;
     }
     $text = mb_strtolower($text, 'UTF-8');
-    $text = preg_replace('/[^a-z0-9\s-]/', '', $text);
-    $text = preg_replace('/[\s-]+/', ' ', $text);
+    $text = preg_replace('/[^a-z0-9\s-]/u', '', $text);
+    $text = preg_replace('/[\s-]+/u', ' ', $text);
     $text = trim($text);
     $text = str_replace(' ', '-', $text);
     return $text;
 }
 
-/* ---------- načtení PDO z db/config/config.php ---------- */
+/* ---------- načtenie PDO z db/config/config.php ---------- */
 $configPath = __DIR__ . '/db/config/config.php';
 if (!file_exists($configPath)) {
-    die("<h2>Chyba</h2><p>Konfigurační soubor <code>db/config/config.php</code> nebyl nalezen. Vytvořte ho a nechte ho vracet PDO.</p>");
+    die("<h2>Chyba</h2><p>Konfigurační soubor <code>db/config/config.php</code> nebol nájdený. Vytvorte ho a nechajte ho vracať PDO alebo nastavovať \$pdo.</p>");
 }
 
 $maybePdo = require $configPath;
@@ -40,16 +40,16 @@ if ($maybePdo instanceof PDO) {
 } elseif (isset($pdo) && $pdo instanceof PDO) {
     // ok
 } else {
-    die("<h2>Chyba</h2><p>Soubor <code>db/config/config.php</code> nevrátil PDO. Upravte ho tak, aby vracel PDO nebo nastavoval \$pdo.</p>");
+    die("<h2>Chyba</h2><p>Soubor <code>db/config/config.php</code> nevrátil PDO. Upravte ho tak, aby vracal PDO alebo nastavoval \$pdo.</p>");
 }
 
-/* ---------- UI před inicializací ---------- */
+/* ---------- UI pred inicializáciou ---------- */
 if (!isset($_GET['init'])) {
     echo "<!doctype html><html lang='sk'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
-    echo "<title>Inicializácia DB — e-shop</title>";
-    echo "<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7f6f4;color:#111;margin:30px} .card{max-width:980px;margin:0 auto;background:#fff;padding:22px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.06)} .btn{display:inline-block;background:#6a4518;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700}</style></head><body>";
+    echo "<title>Inicializácia DB — e-shop (Knihy od autorov)</title>";
+    echo "<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7f6f4;color:#111;margin:24px} .card{max-width:1100px;margin:0 auto;background:#fff;padding:22px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.06)} .btn{display:inline-block;background:#6a4518;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:700}</style></head><body>";
     echo "<div class='card'><h1>Inicializácia databázy — e-shop (PDF knihy)</h1>";
-    echo "<p>Pripojenie k databáze prebehlo <strong>úspešne</strong>. Skript vytvorí potrebné tabuľky/stĺpce a vloží základné nastavenia.</p>";
+    echo "<p>Pripojenie k databáze prebehlo <strong>úspešne</strong>. Skript vytvorí potrebné tabuľky/stĺpce a vloží základné nastavenia a vzorové dáta (ak tabuľky sú prázdne).</p>";
     echo "<p><strong>Bezpečnosť:</strong> po dokončení okamžite smažte alebo presuňte tento súbor mimo webroot.</p>";
     echo "<p>Konfig: <code>" . esc($configPath) . "</code></p>";
     echo "<p><a class='btn' href='?init=1'>Inicializovať databázu teraz</a></p></div></body></html>";
@@ -59,11 +59,11 @@ if (!isset($_GET['init'])) {
 /* ---------- vykonanie inicializácie (idempotentné) ---------- */
 $actions = [];
 try {
-    // 0) Základ: nastavíme správne charset a engine pro správy
-    $pdo->exec("SET NAMES utf8mb4");
+    $pdo->exec("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+    $pdo->exec("SET SESSION sql_mode = ''"); // zjednodušíme kompatibilitu (upraviť podľa potreby)
 
-    // 1) CREATE základné tabuľky (ak neexistujú) - použijeme IF NOT EXISTS pre idempotenciu
-    $pdo->exec("
+    // 1) VYTVORenie/tabulky (IF NOT EXISTS)
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS users (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       meno VARCHAR(150) NOT NULL,
@@ -72,17 +72,19 @@ try {
       telefon VARCHAR(50) DEFAULT NULL,
       adresa TEXT DEFAULT NULL,
       datum_registracie DATETIME DEFAULT CURRENT_TIMESTAMP,
-      -- nové stĺpce pre eshop / účty
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       newsletter TINYINT(1) DEFAULT 0,
       email_verified TINYINT(1) DEFAULT 0,
       verify_token VARCHAR(255) DEFAULT NULL,
       reset_token VARCHAR(255) DEFAULT NULL,
       download_token VARCHAR(255) DEFAULT NULL,
       last_login DATETIME DEFAULT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka users: OK (vytvorená / existuje)";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS authors (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       meno VARCHAR(255) NOT NULL,
@@ -91,20 +93,24 @@ try {
       foto VARCHAR(255) DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY (slug)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka authors: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS categories (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       nazov VARCHAR(150) NOT NULL,
       slug VARCHAR(150) NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY (slug)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka categories: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS books (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       nazov VARCHAR(255) NOT NULL,
@@ -123,10 +129,12 @@ try {
       UNIQUE KEY (slug),
       INDEX idx_author (author_id),
       INDEX idx_category (category_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka books: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS orders (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       user_id INT UNSIGNED NOT NULL,
@@ -137,10 +145,12 @@ try {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_user (user_id),
       INDEX idx_status (status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka orders: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS order_items (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       order_id INT UNSIGNED NOT NULL,
@@ -150,10 +160,12 @@ try {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_order (order_id),
       INDEX idx_book (book_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka order_items: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS reviews (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       book_id INT UNSIGNED NOT NULL,
@@ -163,10 +175,12 @@ try {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_book (book_id),
       INDEX idx_user (user_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka reviews: OK";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS admin_users (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
       username VARCHAR(100) NOT NULL UNIQUE,
@@ -174,53 +188,87 @@ try {
       password VARCHAR(255) NOT NULL,
       role VARCHAR(50) DEFAULT 'manager',
       is_active TINYINT(1) DEFAULT 1,
+      must_change_pw TINYINT(1) DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-    $actions[] = "Tabuľka admin_users: OK";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
+    $actions[] = "Tabuľka admin_users: OK (s must_change_pw)";
 
-    $pdo->exec("
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS settings (
       k VARCHAR(100) NOT NULL PRIMARY KEY,
       v TEXT DEFAULT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka settings: OK";
 
-    // invoices table
-    $pdo->exec("
+    // invoices + invoice_items (pre plne vybavené faktúry)
+    $pdo->exec(<<<'SQL'
     CREATE TABLE IF NOT EXISTS invoices (
       id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-      order_id INT UNSIGNED NOT NULL,
+      order_id INT UNSIGNED DEFAULT NULL,
       invoice_number VARCHAR(120) NOT NULL,
-      html_path VARCHAR(255) NOT NULL,
-      amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      variable_symbol VARCHAR(64) DEFAULT NULL,
+      pdf_path VARCHAR(255) DEFAULT NULL,
+      html_path VARCHAR(255) DEFAULT NULL,
+      net_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      vat_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      gross_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      vat_rate DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+      accounting_export JSON DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_order (order_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+      INDEX idx_order (order_id),
+      UNIQUE KEY (invoice_number)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
     $actions[] = "Tabuľka invoices: OK";
 
-    // 2) doplnkové stĺpce (idempotentne) - ak už existujú, ignorujeme
+    $pdo->exec(<<<'SQL'
+    CREATE TABLE IF NOT EXISTS invoice_items (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      invoice_id INT UNSIGNED NOT NULL,
+      description TEXT NOT NULL,
+      quantity DECIMAL(10,2) DEFAULT 1,
+      unit_price DECIMAL(10,2) DEFAULT 0.00,
+      vat_rate DECIMAL(5,2) DEFAULT 20.00,
+      line_net DECIMAL(10,2) DEFAULT 0.00,
+      line_vat DECIMAL(10,2) DEFAULT 0.00,
+      line_gross DECIMAL(10,2) DEFAULT 0.00,
+      INDEX idx_invoice (invoice_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    SQL
+    );
+    $actions[] = "Tabuľka invoice_items: OK";
+
+    // 2) doplnkové stĺpce (kontrola a pridanie ak chýbajú)
     $columnsToAdd = [
-      "users" => [
-        "newsletter TINYINT(1) DEFAULT 0",
-        "email_verified TINYINT(1) DEFAULT 0",
-        "verify_token VARCHAR(255) DEFAULT NULL",
-        "reset_token VARCHAR(255) DEFAULT NULL",
-        "download_token VARCHAR(255) DEFAULT NULL",
-        "last_login DATETIME DEFAULT NULL"
-      ]
+        "users" => [
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP",
+            "newsletter TINYINT(1) DEFAULT 0",
+            "email_verified TINYINT(1) DEFAULT 0",
+            "verify_token VARCHAR(255) DEFAULT NULL",
+            "reset_token VARCHAR(255) DEFAULT NULL",
+            "download_token VARCHAR(255) DEFAULT NULL",
+            "last_login DATETIME DEFAULT NULL"
+        ],
+        "admin_users" => [
+            "must_change_pw TINYINT(1) DEFAULT 0"
+        ]
     ];
     foreach ($columnsToAdd as $table => $cols) {
-        $existing = [];
         try {
             $res = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_ASSOC);
-            foreach ($res as $r) $existing[] = $r['Field'];
         } catch (Throwable $t) {
-            // tabulka chýba
-            continue;
+            $res = [];
         }
+        $existing = [];
+        foreach ($res as $r) $existing[] = $r['Field'] ?? null;
         foreach ($cols as $cdef) {
             $cname = preg_replace('/\s.*$/','',$cdef);
-            if (!in_array($cname, $existing)) {
+            if (!in_array($cname, $existing, true)) {
                 $pdo->exec("ALTER TABLE `{$table}` ADD {$cdef};");
                 $actions[] = "Pridaný stĺpec {$cname} do {$table}";
             } else {
@@ -229,26 +277,28 @@ try {
         }
     }
 
-    // 3) vloženie základných nastavení do settings (INSERT/UPDATE)
+    // 3) základné nastavenia (INSERT / UPDATE)
     $basicSettings = [
       'site_name' => 'Knihy od Autorov',
       'currency' => 'EUR',
       'support_babybox' => '1',
-      // company defaults (doplníš reálne údaje v admin alebo v config)
       'company_name' => 'Knihy od Autorov s.r.o.',
       'company_address' => "Ulica 1\n010 01 Mesto",
       'company_iban' => 'SK0000000000000000000000',
       'company_bic' => '',
       'company_email' => 'info@knihyodautorov.sk',
-      // smtp defaults (upraviť v db/config/configsmtp.php)
       'smtp_host' => '',
       'smtp_port' => '587',
       'smtp_user' => '',
       'smtp_pass' => '',
       'smtp_secure' => 'tls',
       'smtp_from' => 'info@knihyodautorov.sk',
-      // eshop rendering / options
-      'eshop_download_token_ttl' => '7' // days token valid
+      'eshop_download_token_ttl' => '7',
+      // invoice prefs
+      'invoice_prefix' => 'INV',
+      'invoice_next' => '1001',
+      'invoice_dir' => '/eshop/invoices',
+      'tax_rate_default' => '20.00'
     ];
     $upsert = $pdo->prepare("INSERT INTO settings (k,v) VALUES (?,?) ON DUPLICATE KEY UPDATE v = VALUES(v)");
     foreach ($basicSettings as $k => $v) {
@@ -256,7 +306,8 @@ try {
     }
     $actions[] = "Základné nastavenia vložené / aktualizované (settings)";
 
-    // 4) Vložiť ukážkové kategorie / autori / knihy / users / orders / reviews ak sú tabuľky prázdne
+    // 4) vloženie vzorových dát (len ak tabuľky prázdne)
+    // categories
     $cntCat = (int)$pdo->query("SELECT COUNT(*) FROM categories")->fetchColumn();
     if ($cntCat === 0) {
         $categories = [
@@ -269,6 +320,7 @@ try {
         $actions[] = "Vložené vzorové kategórie (" . count($categories) . ")";
     } else $actions[] = "Kategórie: existuje {$cntCat} záznamov";
 
+    // authors
     $cntAuth = (int)$pdo->query("SELECT COUNT(*) FROM authors")->fetchColumn();
     if ($cntAuth === 0) {
         $authors = [
@@ -283,9 +335,9 @@ try {
         $actions[] = "Vložení vzoroví autori (" . count($authors) . ")";
     } else $actions[] = "Autori: existuje {$cntAuth} záznamov";
 
+    // books
     $cntBooks = (int)$pdo->query("SELECT COUNT(*) FROM books")->fetchColumn();
     if ($cntBooks === 0) {
-        // získat slug->id map pre categories a autorov (ak boli práve vložené)
         $cats = $pdo->query("SELECT id, slug FROM categories")->fetchAll(PDO::FETCH_ASSOC);
         $slugToId = []; foreach ($cats as $r) $slugToId[$r['slug']] = (int)$r['id'];
         $authorsList = $pdo->query("SELECT id FROM authors ORDER BY id ASC LIMIT 5")->fetchAll(PDO::FETCH_COLUMN);
@@ -297,13 +349,11 @@ try {
           ['Zabudnuté mestá','Cestopis o starých mestách.','6.99','zabudnute_mesta.pdf','book5.png', $authorsList[4] ?? null, $slugToId['cestopisy'] ?? null],
         ];
         $stmtBook = $pdo->prepare("INSERT INTO books (nazov, slug, popis, cena, pdf_file, obrazok, author_id, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        foreach ($books as $b) {
-            $stmtBook->execute([$b[0], slugify($b[0]), $b[1], $b[2], $b[3], $b[4], $b[5], $b[6]]);
-        }
+        foreach ($books as $b) $stmtBook->execute([$b[0], slugify($b[0]), $b[1], $b[2], $b[3], $b[4], $b[5], $b[6]]);
         $actions[] = "Vložených vzorových kníh (" . count($books) . ")";
     } else $actions[] = "Knihy: existuje {$cntBooks} záznamov";
 
-    // users sample (ak prázdne)
+    // users
     $cntUsers = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
     if ($cntUsers === 0) {
         $users = [
@@ -318,10 +368,9 @@ try {
         $actions[] = "Vložení vzorových užívateľov (" . count($users) . ")";
     } else $actions[] = "Užívatelia: existuje {$cntUsers} záznamov";
 
-    // orders, order_items & reviews sample (keď prázdne)
+    // orders/items
     $cntOrders = (int)$pdo->query("SELECT COUNT(*) FROM orders")->fetchColumn();
     if ($cntOrders === 0) {
-        // rozumné sample objednávky (1-3 položky)
         $bookIds = $pdo->query("SELECT id, cena FROM books")->fetchAll(PDO::FETCH_ASSOC);
         $userIds = $pdo->query("SELECT id FROM users")->fetchAll(PDO::FETCH_COLUMN);
         if ($bookIds && $userIds) {
@@ -331,7 +380,6 @@ try {
                 $uid = $userIds[$i % count($userIds)];
                 $stmtOrder->execute([$uid, 0.00, 'EUR', ($i%2==0 ? 'paid' : 'pending'), ($i%2==0 ? 'card' : 'bank_transfer')]);
                 $orderId = (int)$pdo->lastInsertId();
-                // 1-2 náhodné knihy bez duplicit
                 $pick = array_rand($bookIds, min(1 + rand(0,1), count($bookIds)));
                 if (!is_array($pick)) $pick = [$pick];
                 $total = 0.0;
@@ -348,12 +396,12 @@ try {
         } else $actions[] = "Nenájdené knihy/užívatelia pre vytvorenie vzorových objednávok";
     } else $actions[] = "Objednávky: existuje {$cntOrders} záznamov";
 
-    // reviews sample
+    // reviews
     $cntRev = (int)$pdo->query("SELECT COUNT(*) FROM reviews")->fetchColumn();
     if ($cntRev === 0) {
         $bookIdsArr = $pdo->query("SELECT id FROM books LIMIT 5")->fetchAll(PDO::FETCH_COLUMN);
         $userIdsArr = $pdo->query("SELECT id FROM users LIMIT 5")->fetchAll(PDO::FETCH_COLUMN);
-        if (count($bookIdsArr) >= 1 && count($userIdsArr) >= 1) {
+        if ($bookIdsArr && $userIdsArr) {
             $stmtRev = $pdo->prepare("INSERT INTO reviews (book_id, user_id, rating, comment) VALUES (?, ?, ?, ?)");
             $sampleReviews = [
               [$bookIdsArr[0], $userIdsArr[0], 5, 'Výborná kniha, čítal som ju jedným dychom.'],
@@ -365,17 +413,18 @@ try {
         }
     } else $actions[] = "Recenzie: existuje {$cntRev} záznamov";
 
-    // 5) admin user (ak nie je, vytvoríme owner)
+    // 5) admin užívateľ (dočasné heslo) a MUST_CHANGE flag
     $cntAdmin = (int)$pdo->query("SELECT COUNT(*) FROM admin_users")->fetchColumn();
     if ($cntAdmin === 0) {
         $adminUser = 'admin';
         $adminEmail = 'admin@knihyodautorov.sk';
-        $adminPassPlain = bin2hex(random_bytes(5)) . 'A!'; // dočasné
-        $pdo->prepare("INSERT INTO admin_users (username, email, password, role) VALUES (?, ?, ?, ?)")->execute([$adminUser, $adminEmail, password_hash($adminPassPlain, PASSWORD_DEFAULT), 'owner']);
-        $actions[] = "Vytvorený admin účet: " . $adminUser . " (dočasné heslo: " . $adminPassPlain . ")";
+        $adminPassPlain = bin2hex(random_bytes(5)) . 'A!'; // dočasné, silné
+        $pdo->prepare("INSERT INTO admin_users (username, email, password, role, must_change_pw) VALUES (?, ?, ?, ?, 1)")
+            ->execute([$adminUser, $adminEmail, password_hash($adminPassPlain, PASSWORD_DEFAULT), 'owner']);
+        $actions[] = "Vytvorený admin účet: {$adminUser} (dočasné heslo: {$adminPassPlain}, must_change_pw = 1)";
     } else $actions[] = "Admin užívatelia: existuje {$cntAdmin} záznamov";
 
-    // 6) súbory / priečinky a .htaccess pre books-pdf
+    // 6) priečinky & .htaccess
     $root = __DIR__;
     $booksImg = $root . '/books-img';
     $booksPdf = $root . '/books-pdf';
@@ -384,7 +433,6 @@ try {
     if (!is_dir($booksPdf)) { @mkdir($booksPdf, 0755, true); $actions[] = "Vytvorený priečinok: /books-pdf"; } else $actions[] = "Priečinok existuje: /books-pdf";
     if (!is_dir($eshopInvoices)) { @mkdir($eshopInvoices, 0755, true); $actions[] = "Vytvorený priečinok: /eshop/invoices"; } else $actions[] = "Priečinok existuje: /eshop/invoices";
 
-    // .htaccess pre books-pdf (zabránit priamemu přístupu)
     $ht = $booksPdf . '/.htaccess';
     $htcontent = "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n  Deny from all\n</IfModule>\n";
     @file_put_contents($ht, $htcontent);
@@ -394,21 +442,20 @@ try {
     @file_put_contents($ht2, $htcontent);
     $actions[] = ".htaccess napísaný do /eshop/invoices/.htaccess";
 
-    // 7) vytvorenie vzorového configsmtp.php (len ak neexistuje) v /db/config/
+    // 7) configsmtp.php v /db/config (vzorkový)
     $smtpTemplatePath = __DIR__ . '/db/config/configsmtp.php';
     if (!file_exists($smtpTemplatePath)) {
         $sample = <<<'PHP'
 <?php
 // db/config/configsmtp.php
-// Vložte sem svoje SMTP údaje. Tento súbor by mal byť mimo VCS a prístupný len webserveru.
-// NEVKLADAJTE citlivé údaje do verejného repozitára.
+// Vložte sem svoje SMTP údaje. Tento súbor by mal byť mimo VCS.
 
 return [
   'host' => 'smtp.example.com',
   'port' => 587,
   'username' => 'user@example.com',
   'password' => 'your_smtp_password',
-  'secure' => 'tls', // 'ssl' alebo 'tls' alebo ''
+  'secure' => 'tls',
   'from_email' => 'info@knihyodautorov.sk',
   'from_name' => 'Knihy od Autorov'
 ];
@@ -419,10 +466,11 @@ PHP;
         $actions[] = "Súbor db/config/configsmtp.php už existuje (neupravujem)";
     }
 
-    // 8) (voliteľné) napísať poznámku pre qrcode.min.js - len info (skutočný súbor nechám stiahnuť)
-    $actions[] = "QR knihovna: odporúčam umiestniť /eshop/js/qrcode.min.js (môžem ju pridať pri ďalšom kroku)";
+    // 8) doporučenie pre QR / mPDF dependencies (len info)
+    $actions[] = "QR knižnica: odporúčam umiestniť /eshop/js/qrcode.min.js a server-side phpqrcode do /libs/phpqrcode (môžem dodať).";
+    $actions[] = "mPDF: odporúčam nainštalovať kompletný balík do /libs/mpdf vrátane závislostí alebo použiť composer locally a nahrať /libs/vendor.";
 
-    // 9) Shrnutie počtov
+    // 9) summary counts
     $cntCat = (int)$pdo->query("SELECT COUNT(*) FROM categories")->fetchColumn();
     $cntAuth = (int)$pdo->query("SELECT COUNT(*) FROM authors")->fetchColumn();
     $cntBooks = (int)$pdo->query("SELECT COUNT(*) FROM books")->fetchColumn();
@@ -431,9 +479,10 @@ PHP;
     $cntReviews = (int)$pdo->query("SELECT COUNT(*) FROM reviews")->fetchColumn();
     $cntInvoices = (int)$pdo->query("SELECT COUNT(*) FROM invoices")->fetchColumn();
 
-    // 10) final output HTML summary
-    echo "<!doctype html><html lang='sk'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Inicializácia dokončená</title>";
-    echo "<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7f6f5;margin:30px;color:#111} .card{max-width:980px;margin:0 auto;padding:20px;background:#fff;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.06)}code{background:#f2f0ed;padding:3px 6px;border-radius:4px}</style></head><body><div class='card'>";
+    // 10) final HTML output
+    echo "<!doctype html><html lang='sk'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+    echo "<title>Inicializácia dokončená — Knihy od Autorov</title>";
+    echo "<style>body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#f7f6f5;margin:24px;color:#111} .card{max-width:1100px;margin:0 auto;padding:20px;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.06)}code{background:#f2f0ed;padding:3px 6px;border-radius:4px}</style></head><body><div class='card'>";
     echo "<h1>✅ Inicializácia dokončená</h1>";
     echo "<h3>Akcie vykonané</h3><ul>";
     foreach ($actions as $a) echo "<li>" . esc($a) . "</li>";
@@ -447,9 +496,14 @@ PHP;
     echo "<li>reviews: <strong>" . esc($cntReviews) . "</strong></li>";
     echo "<li>invoices: <strong>" . esc($cntInvoices) . "</strong></li>";
     echo "</ul>";
-    echo "<p><strong>Dôležité:</strong> upravte <code>db/config/configsmtp.php</code> s platným SMTP a tiež skontrolujte <code>settings</code> (company_name, company_iban, atď.) v DB.</p>";
-    echo "<p>Odporúčania ďalších krokov: pridať lokálny <code>/eshop/js/qrcode.min.js</code> (alebo použiť externé API), pripraviť admin rozhranie, zabezpečiť priečinok <code>/books-pdf</code>.</p>";
-    echo "<p><strong>Bezpečnosť:</strong> súbor <code>initdb.php</code> ihneď odstráňte alebo presuňte mimo webroot.</p>";
+    echo "<p><strong>Dôležité:</strong> upravte <code>db/config/configsmtp.php</code> s platným SMTP a tiež skontrolujte <code>settings</code> (company_name, company_iban, invoice_prefix, invoice_next) v DB.</p>";
+    echo "<p>Odporúčania ďalších krokov:</p><ol>";
+    echo "<li>Nahrať závislosti mPDF + PSR shims do /libs alebo nainštalovať composer a prekopírovať vendor/ do /libs/vendor/.</li>";
+    echo "<li>Pridať server-side QR generator (phpqrcode) do /libs/phpqrcode a klientsky qrcode.min.js do /eshop/js/.</li>";
+    echo "<li>Nastaviť v admin rozhraní: SMTP test (odoslať testovací e-mail), nastavenie faktúr (prefix, DPH), exporty pre účtovníctvo (CSV/XLSX cez PhpSpreadsheet).</li>";
+    echo "<li>Po dokončení odstrániť tento súbor z webroot.</li>";
+    echo "</ol>";
+    echo "<p><strong>Bezpečnosť:</strong> odporúčam sprístupniť /libs len pre server (zablokovať priamy HTTP prístup cez .htaccess) a zabezpečiť priečinok /books-pdf</p>";
     echo "</div></body></html>";
     exit;
 

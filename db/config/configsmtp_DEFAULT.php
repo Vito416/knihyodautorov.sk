@@ -1,9 +1,8 @@
 <?php
-// /db/config/configsmtp.php
-// VZOR konfigurácie SMTP. NEPOKRAČUJTE DO PRODUCTION bez úprav.
-// Uložte tento súbor do /db/config/configsmtp.php a nastavte hodnoty.
+// db/config/configsmtp.php
+// Vložte sem svoje SMTP údaje. Tento súbor by mal byť mimo VCS.
 
-$smtp_config = [
+return [
     'use_smtp' => false,         // true = použiť priame SMTP (fsockopen AUTH LOGIN) - iba ak host podporuje
     'host' => 'smtp.example.com',
     'port' => 587,
