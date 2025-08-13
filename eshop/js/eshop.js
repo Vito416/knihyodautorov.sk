@@ -1,26 +1,50 @@
 // /eshop/js/eshop.js
-document.addEventListener('DOMContentLoaded', function(){
-  // AJAX add to cart
-  document.querySelectorAll('form[action="/eshop/actions/cart-add.php"]').forEach(function(f){
-    f.addEventListener('submit', function(e){
-      e.preventDefault();
-      var data = new FormData(f);
-      fetch(f.action, { method: 'POST', body: data, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-        .then(r=>r.json()).then(function(json){
-          if (json && json.ok) {
-            // small feedback
-            var btn = f.querySelector('button');
-            var old = btn.innerHTML;
-            btn.innerHTML = 'Pridané ✓';
-            setTimeout(()=> btn.innerHTML = old, 1200);
-            // optionally update cart counter
-            document.querySelectorAll('.cart-count').forEach(function(el){ el.textContent = json.count; });
-          } else {
-            window.location = '/eshop/cart.php';
-          }
-        }).catch(function(){
-          window.location = '/eshop/cart.php';
+// Malé utility pro eshop: AJAX helper + progressive enhancement.
+// Nepřepisuje inline script v cart.php - doplňkový soubor.
+
+(function(){
+  'use strict';
+
+  /**
+   * Jednoduchý POST pomocí fetch + fallback pro starší prohlížeče (form submit).
+   * @param {string} url
+   * @param {Object} data
+   * @returns {Promise<Response>}
+   */
+  function post(url, data) {
+    if (window.fetch) {
+      return fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams(data).toString()
+      });
+    } else {
+      // fallback: vytvoříme a odešleme form
+      return new Promise(function(resolve, reject){
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = url;
+        form.style.display = 'none';
+        Object.keys(data).forEach(function(k){
+          var i = document.createElement('input');
+          i.type = 'hidden';
+          i.name = k;
+          i.value = data[k];
+          form.appendChild(i);
         });
-    });
-  });
-});
+        document.body.appendChild(form);
+        form.submit();
+        // nelze detekovat výsledek - resolve hned
+        resolve(new Response(null, {status: 200}));
+      });
+    }
+  }
+
+  // expose do global prostoru (pokud potřebuješ)
+  window.Eshop = window.Eshop || {};
+  window.Eshop.api = {
+    post: post
+  };
+
+})();

@@ -1,4 +1,4 @@
-# Blokovat přímý přístup - umožnit pouze interní přesměrování pokud potřebné
+# Zamezit přímému přístupu k souborům v /libs
 Order allow,deny
 Deny from all
 <IfModule mod_authz_core.c>

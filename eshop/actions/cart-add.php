@@ -1,31 +1,68 @@
 <?php
-// /eshop/actions/cart-add.php
-require __DIR__ . '/../_init.php';
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
+declare(strict_types=1);
+/**
+ * /eshop/actions/cart-add.php
+ * Pridanie položky do košíka.
+ * POST: _csrf (kľúč 'cart'), book_id, qty (voliteľné)
+ */
 
-$csrf = $_POST['csrf'] ?? '';
-if (!eshop_verify_csrf($csrf)) { http_response_code(403); echo "CSRF"; exit; }
+require_once __DIR__ . '/../_init.php';
 
-$book_id = (int)($_POST['book_id'] ?? 0);
-$qty = max(1, (int)($_POST['qty'] ?? 1));
-
-if ($book_id <= 0) { header('Location: /eshop/index.php'); exit; }
-
-// verify book exists
-$stmt = $pdo->prepare("SELECT id FROM books WHERE id = ? AND is_active = 1 LIMIT 1");
-$stmt->execute([$book_id]);
-if (!$stmt->fetchColumn()) {
-    header('Location: /eshop/index.php'); exit;
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    flash_set('error', 'Neplatný request (vyžaduje sa POST).');
+    redirect('../catalog.php');
 }
 
-$cart = eshop_get_cart();
-$cart[$book_id] = ($cart[$book_id] ?? 0) + $qty;
-eshop_set_cart($cart);
-
-if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
-    header('Content-Type: application/json');
-    echo json_encode(['ok'=>true,'count'=>eshop_cart_count()]);
-    exit;
+if (!csrf_verify_token($_POST['_csrf'] ?? null, 'cart')) {
+    eshop_log('WARN', 'CSRF chybný pri cart-add');
+    flash_set('error', 'Neplatný CSRF token.');
+    redirect('../catalog.php');
 }
-header('Location: /eshop/cart.php');
-exit;
+
+$bookId = isset($_POST['book_id']) ? (int)$_POST['book_id'] : 0;
+if ($bookId <= 0) {
+    flash_set('error', 'Neplatné ID knihy.');
+    redirect('../catalog.php');
+}
+
+$qty = isset($_POST['qty']) ? max(1, (int)$_POST['qty']) : 1;
+
+$pdoLocal = $GLOBALS['pdo'] ?? null;
+if (!($pdoLocal instanceof PDO)) {
+    eshop_log('ERROR', 'PDO nie je dostupné v cart-add');
+    flash_set('error', 'Interná chyba (DB).');
+    redirect('../catalog.php');
+}
+
+try {
+    $stmt = $pdoLocal->prepare("SELECT id, nazov, pdf_file, is_active FROM books WHERE id = ? LIMIT 1");
+    $stmt->execute([$bookId]);
+    $b = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$b || (int)$b['is_active'] !== 1) {
+        flash_set('error', 'Kniha neexistuje alebo nie je aktívna.');
+        redirect('../catalog.php');
+    }
+
+    // Ak ide o digitálny produkt (pdf_file nie je prázdne), vynútime qty = 1
+    if (!empty($b['pdf_file'])) {
+        $qty = 1;
+    }
+
+    if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) {
+        $_SESSION['cart'] = [];
+    }
+
+    // Pridáme novú položku — necháme možnosť duplicitných riadkov, checkout-create ich znormalizuje
+    $_SESSION['cart'][] = ['book_id' => $bookId, 'qty' => $qty];
+
+    eshop_log('INFO', "Položka pridaná do košíka: book_id={$bookId}, qty={$qty}");
+    flash_set('success', 'Kniha bola pridaná do košíka.');
+    // redirect späť na detail knihy ak bol referer, inak do košíka
+    $back = $_SERVER['HTTP_REFERER'] ?? '../cart.php';
+    redirect($back);
+
+} catch (Throwable $e) {
+    eshop_log('ERROR', 'Chyba v cart-add: ' . $e->getMessage());
+    flash_set('error', 'Chyba pri pridávaní do košíka.');
+    redirect('../catalog.php');
+}

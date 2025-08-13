@@ -1,55 +1,60 @@
 <?php
-// /eshop/book.php
-require __DIR__ . '/_init.php';
+declare(strict_types=1);
+require_once __DIR__ . '/_init.php';
+include __DIR__ . '/templates/header.php';
 
-$slug = trim((string)($_GET['slug'] ?? ''));
-if ($slug === '') {
-    header('Location: /eshop/index.php'); exit;
+// Načteme ID knihy z URL
+$bookId = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+if ($bookId <= 0) {
+    echo "<p class='error'>Neplatný odkaz na knihu.</p>";
+    include __DIR__ . '/templates/footer.php';
+    exit;
 }
-$stmt = $pdo->prepare("SELECT b.*, a.meno AS autor, c.nazov AS category, c.slug AS category_slug FROM books b LEFT JOIN authors a ON b.author_id = a.id LEFT JOIN categories c ON b.category_id = c.id WHERE b.slug = ? LIMIT 1");
-$stmt->execute([$slug]);
-$book = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Načteme detail knihy z DB
+try {
+    $stmt = $pdo->prepare("SELECT id, title, author, price, description, cover_image, file_size FROM books WHERE id = ?");
+    $stmt->execute([$bookId]);
+    $book = $stmt->fetch(PDO::FETCH_ASSOC);
+} catch (Exception $e) {
+    echo "<p class='error'>Chyba načítání detailu knihy. Kontaktujte podporu.</p>";
+    include __DIR__ . '/templates/footer.php';
+    exit;
+}
+
 if (!$book) {
-    http_response_code(404);
-    echo "Kniha nenájdená"; exit;
+    echo "<p class='error'>Kniha nebyla nalezena.</p>";
+    include __DIR__ . '/templates/footer.php';
+    exit;
 }
 ?>
-<!doctype html>
-<html lang="sk">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title><?php echo eshop_esc($book['nazov']); ?> — Knihy od autorov</title>
-  <link rel="stylesheet" href="<?php echo eshop_asset('eshop/css/eshop.css'); ?>">
-</head>
-<body>
-  <?php // header minimal ?>
-  <header class="eshop-header"><div class="wrap"><a href="/"><img src="<?php echo eshop_asset('assets/logoobdelnikbezpozadi.png');?>" alt=""></a><a href="/eshop/cart.php">Košík (<?php echo eshop_cart_count(); ?>)</a></div></header>
 
-  <main class="eshop-wrap">
-    <div class="container book-detail">
-      <div class="left">
-        <img class="book-cover" src="<?php echo eshop_asset('books-img/'.($book['obrazok']?:'placeholder.png')); ?>" alt="<?php echo eshop_esc($book['nazov']); ?>">
-      </div>
-      <div class="right">
-        <h1><?php echo eshop_esc($book['nazov']); ?></h1>
-        <p class="author"><?php echo eshop_esc($book['autor'] ?? ''); ?></p>
-        <div class="price big"><?php echo number_format((float)$book['cena'],2,',','.'); ?> €</div>
-        <p class="desc"><?php echo nl2br(eshop_esc($book['popis'])); ?></p>
+<div class="book-detail">
+    <div class="book-detail-image">
+        <?php if (!empty($book['cover_image']) && file_exists(__DIR__ . '/uploads/' . $book['cover_image'])): ?>
+            <img src="/eshop/uploads/<?php echo htmlspecialchars($book['cover_image']); ?>" alt="<?php echo htmlspecialchars($book['title']); ?>">
+        <?php else: ?>
+            <img src="/eshop/assets/img/no-cover.png" alt="Bez obalu">
+        <?php endif; ?>
+    </div>
 
-        <form action="/eshop/actions/cart-add.php" method="post" class="buy-form">
-          <input type="hidden" name="book_id" value="<?php echo (int)$book['id']; ?>">
-          <input type="hidden" name="csrf" value="<?php echo eshop_csrf_token(); ?>">
-          <label>Množstvo <input type="number" name="qty" value="1" min="1" max="99"></label>
-          <button class="btn-primary">Kúpiť</button>
+    <div class="book-detail-info">
+        <h1><?php echo htmlspecialchars($book['title']); ?></h1>
+        <p class="author">Autor: <?php echo htmlspecialchars($book['author']); ?></p>
+        <p class="price"><?php echo number_format((float)$book['price'], 2, ',', ' '); ?> €</p>
+        <?php if (!empty($book['file_size'])): ?>
+            <p class="filesize">Velikost PDF: <?php echo round($book['file_size'] / 1024 / 1024, 2); ?> MB</p>
+        <?php endif; ?>
+        <p class="description"><?php echo nl2br(htmlspecialchars($book['description'])); ?></p>
+
+        <form method="post" action="/eshop/cart-add.php">
+            <input type="hidden" name="id" value="<?php echo (int)$book['id']; ?>">
+            <button type="submit">Přidat do košíku</button>
         </form>
 
-        <?php if (!empty($book['pdf_file'])): ?>
-          <p class="muted">PDF súbor dostupný po zakúpení.</p>
-        <?php endif; ?>
-      </div>
+        <p><a href="/eshop/index.php" class="back-link">← Zpět na katalog</a></p>
     </div>
-  </main>
+</div>
 
-  <script src="<?php echo eshop_asset('eshop/js/eshop.js'); ?>"></script>
-</body>
-</html>
+<?php
+include __DIR__ . '/templates/footer.php';

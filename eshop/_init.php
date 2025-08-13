@@ -29,13 +29,75 @@ if (
 }
 defined('APP_DEBUG') || define('APP_DEBUG', $__APP_DEBUG);
 
-// ROOT a cesty
-defined('ESHOP_ROOT') || define('ESHOP_ROOT', realpath(__DIR__ . '/..'));
-defined('LIBS_DIR')   || define('LIBS_DIR', realpath(ESHOP_ROOT . '/../libs') ?: ESHOP_ROOT . '/../libs');
-defined('DB_CONFIG')  || define('DB_CONFIG', ESHOP_ROOT . '/../db/config/config.php');
-defined('SMTP_CONFIG')|| define('SMTP_CONFIG', ESHOP_ROOT . '/../db/config/configsmtp.php');
+// ---------- ROOT a cesty (robustní řešení) ----------
+defined('ESHOP_ROOT') || define('ESHOP_ROOT', realpath(__DIR__ . '/..') ?: (__DIR__ . '/..'));
+
+// Kandidáti pro /libs — zkusíme několik relativních umístění (první existující vybereme)
+$libsCandidates = [
+    ESHOP_ROOT . '/../libs',      // nad úrovní webrootu
+    ESHOP_ROOT . '/libs',        // přímo uvnitř projektu (public/libs nebo projekt_root/libs)
+    __DIR__ . '/../libs',        // relativně k eshop dir
+    __DIR__ . '/../../libs',     // další možnost při nestandardním layoutu
+    dirname(ESHOP_ROOT) . '/libs'
+];
+
+$foundLibs = null;
+foreach ($libsCandidates as $c) {
+    $r = realpath($c);
+    if ($r && is_dir($r)) { $foundLibs = $r; break; }
+    // fallback: pokud realpath vrátí false, zkusíme i ne-resolved, jestli adresář fyzicky existuje
+    if (is_dir($c)) { $foundLibs = $c; break; }
+}
+if ($foundLibs === null) {
+    // pokud nic nenalezeno, nastavíme default (ten byl původně) a logneme
+    $foundLibs = ESHOP_ROOT . '/../libs';
+}
+defined('LIBS_DIR') || define('LIBS_DIR', $foundLibs);
+
+// DB config kandidáti (pokud máš db mimo public, může být ../db/config nebo ./db/config)
+$dbCandidates = [
+    ESHOP_ROOT . '/db/config/config.php',
+    ESHOP_ROOT . '/../db/config/config.php',
+    __DIR__ . '/../db/config/config.php',
+    __DIR__ . '/../../db/config/config.php'
+];
+$foundDbConfig = null;
+foreach ($dbCandidates as $c) {
+    if (is_file($c) && is_readable($c)) { $foundDbConfig = $c; break; }
+}
+if ($foundDbConfig === null) {
+    // fallback na původní
+    $foundDbConfig = ESHOP_ROOT . '/../db/config/config.php';
+}
+defined('DB_CONFIG') || define('DB_CONFIG', $foundDbConfig);
+
+// SMTP config kandidáti
+$smtpCandidates = [
+    ESHOP_ROOT . '/db/config/configsmtp.php',
+    ESHOP_ROOT . '/../db/config/configsmtp.php',
+    __DIR__ . '/../db/config/configsmtp.php',
+];
+$foundSmtp = null;
+foreach ($smtpCandidates as $c) {
+    if (is_file($c) && is_readable($c)) { $foundSmtp = $c; break; }
+}
+if ($foundSmtp === null) {
+    $foundSmtp = ESHOP_ROOT . '/../db/config/configsmtp.php';
+}
+defined('SMTP_CONFIG') || define('SMTP_CONFIG', $foundSmtp);
+
+// TMP a log cesty
 defined('TMP_DIR')    || define('TMP_DIR', ESHOP_ROOT . '/tmp');
 defined('LOG_FILE')   || define('LOG_FILE', TMP_DIR . '/eshop.log');
+
+// Logneme nalezené cesty (pomůže debugovat)
+if (function_exists('eshop_log')) {
+    eshop_log('INFO', "PATHS: ESHOP_ROOT=" . ESHOP_ROOT . " LIBS_DIR=" . LIBS_DIR . " DB_CONFIG=" . DB_CONFIG . " SMTP_CONFIG=" . SMTP_CONFIG . " TMP_DIR=" . TMP_DIR);
+} else {
+    // eshop_log není ještě definován v tomto místě v některých verzích - fallback do error_log
+    @error_log("PATHS: ESHOP_ROOT=" . ESHOP_ROOT . " LIBS_DIR=" . LIBS_DIR . " DB_CONFIG=" . DB_CONFIG . " SMTP_CONFIG=" . SMTP_CONFIG . " TMP_DIR=" . TMP_DIR);
+}
+
 
 // Vytvorím tmp adresár, ak neexistuje (správne práva)
 if (!is_dir(TMP_DIR)) {
@@ -133,7 +195,7 @@ if (is_file($autoloadPath) && is_readable($autoloadPath)) {
 }
 
 // ---------- načítanie PDO ($pdo) ----------
-$pdo = null;
+
 try {
     // podpora oboch variantov: súbor vráti PDO alebo nastaví $pdo v rámci súboru
     $maybe = require DB_CONFIG;
@@ -336,6 +398,21 @@ function auth_user(PDO $pdoOpt = null): ?array {
 function redirect(string $url): void {
     header("Location: $url");
     exit;
+}
+
+/**
+ * Vrátí absolutní base URL (např. https://example.com) - konsolidované místo pro tvorbu absolute odkazů.
+ * Používat místo manuálního skládání protokolu/hostu.
+ * @return string
+ */
+function site_base_url(): string {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    // Pokud server má předávání protokolu přes X-Forwarded-Proto, zvaž použití tohoto headeru.
+    $scheme = 'http';
+    if ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')) {
+        $scheme = 'https';
+    }
+    return $scheme . '://' . rtrim($host, '/');
 }
 
 // ---------- exportovanie globálnych premenných (pre include súbory) ----------
