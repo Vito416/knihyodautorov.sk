@@ -38,18 +38,15 @@ $require_first = function(array $candidates) {
 
 // 1) FPDI trait (setasign/fpdi)
 $require_first([
-    'fpdi/src/FpdiTrait.php',
-    'setasign/fpdi/src/FpdiTrait.php',
-    'setasign-fpdi/src/FpdiTrait.php',
-    'fpdi/src/trait/FpdiTrait.php',
-    'setasign/fpdi/src/Setasign/Fpdi/FpdiTrait.php'
+    'setasign/fpdi/src/autoloader.php',
 ]);
 
 // 2) mpdf - psr-log-aware trait (mPDF očekává tento trait jménem MpdfPsrLogAwareTrait)
 $require_first([
     'mpdf-psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
     'mpdf/psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
-    'psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php'
+    'psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
+    'simple-cache/src/CacheInterface.php',
 ]);
 
 // 3) případný psr-http-message shim (může být potřeba)
@@ -109,6 +106,11 @@ $require_first([
 
 ]);
 
+$path = realpath(__DIR__ . '/htmlpurifier/library/HTMLPurifier.auto.php');
+if ($path !== false) {
+    require_once $path;
+}
+
 /* -------------------------
    PSR-4 prefix -> adresář mapy (přidej podle toho, co nahraješ do /libs)
    ------------------------- */
@@ -121,8 +123,8 @@ $prefixes = [
     'Mpdf\\PsrLogAwareTrait\\' => __DIR__ . '/mpdf-psr-log-aware-trait/src/',
 
     // FPDI (setasign)
-    'setasign\\Fpdi\\' => __DIR__ . '/fpdi/src/',
-    'SetaSign\\Fpdi\\' => __DIR__ . '/fpdi/src/',
+    'setasign\\Fpdi\\' => __DIR__ . '/setasign/fpdi/src/',
+    'SetaSign\\Fpdi\\' => __DIR__ . '/setasign/fpdi/src/',
 
     // PSR interfaces
     'Psr\\Http\\Message\\' => __DIR__ . '/psr-http-message/src/',
@@ -140,6 +142,13 @@ $prefixes = [
     // ParagonIE / random compat namespaces (pokud jsou)
     'ParagonIE\\ConstantTime\\' => __DIR__ . '/random_compat/lib/ParagonIE/ConstantTime/',
     'RandomCompat\\' => __DIR__ . '/random_compat/lib/',
+
+    'Psr\\SimpleCache\\' => __DIR__ . '/simple-cache/src/',
+
+    'Composer\\Pcre\\' => __DIR__ . '/pcre/src/',
+
+    'ZipStream\\' => __DIR__ . '/ZipStream-PHP-main/src/',
+
 ];
 
 /* SPL autoloader */

@@ -161,16 +161,27 @@ $psrLogMiss = checkInterfaces($psrLog);
 <?php
 // ------------------ FPDI (setasign) ------------------
 try {
-    $fpdi_ok = false;
-    if (class_exists('setasign\Fpdi\Fpdi') || class_exists('\setasign\Fpdi\Fpdi')) $fpdi_ok = true;
-    if (trait_exists('setasign\Fpdi\FpdiTrait')) $fpdi_ok = true;
-    if ($fpdi_ok) {
-        echo '<div class="card"><h2>4) FPDI</h2><p class="ok">✅ setasign FPDI: prítomné.</p></div>';
+    $errors = [];
+
+    // Ověříme existenci hlavní FPDI třídy
+    if (!class_exists('setasign\Fpdi\Fpdi')) {
+        $errors[] = 'Třída setasign\Fpdi\Fpdi nenalezena.';
+    }
+
+    // Ověříme existenci FPDI traitu
+    if (!trait_exists('setasign\Fpdi\FpdiTrait')) {
+        $errors[] = 'Trait setasign\Fpdi\FpdiTrait nenalezen.';
+    }
+
+    if (empty($errors)) {
+        echo '<div class="card"><h2>4) FPDI</h2><p class="ok">✅ FPDI je načteno a připraveno k použití (bez FPDF).</p></div>';
     } else {
-        echo '<div class="card"><h2>4) FPDI</h2><p class="bad">❌ setasign FPDI sa nenašiel. Skontroluj /libs/setasign/fpdi alebo kompletnú distribúciu FPDI.</p></div>';
+        echo '<div class="card"><h2>4) FPDI</h2><p class="bad">❌ Problém s FPDI:</p><ul><li>'
+            . implode('</li><li>', array_map('htmlspecialchars', $errors))
+            . '</li></ul></div>';
     }
 } catch (Throwable $e) {
-    echo '<div class="card"><h2>4) FPDI</h2><pre>'.esc($e->getMessage()).'</pre></div>';
+    echo '<div class="card"><h2>4) FPDI</h2><pre>' . htmlspecialchars($e->getMessage()) . '</pre></div>';
 }
 
 // ------------------ PHP QR Code ------------------
@@ -276,7 +287,7 @@ try {
 }
 
 // ------------------ PHPMailer + SMTP test (ak config existuje) ------------------
-$smtpCfgPath = __DIR__ . '/../../db/config/configsmtp.php';
+$smtpCfgPath = realpath(__DIR__ . '/../../db/config/configsmtp.php');
 try {
     if (file_exists($smtpCfgPath)) {
         $smtpCfg = require $smtpCfgPath; // očakáva pole ['host'=>..., 'port'=>..., 'user'=>..., 'pass'=>..., 'secure'=>...]

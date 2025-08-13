@@ -1,118 +1,84 @@
 <?php
 // /admin/invoices.php
 declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) session_start();
 require __DIR__ . '/bootstrap.php';
-if (!admin_is_logged()) { header('Location: login.php'); exit; }
+require_admin();
 
+function admin_esc($s){ if (function_exists('esc')) return esc($s); return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
+
+// ensure invoices table exists (idempotent)
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS invoices (
+      id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      order_id INT UNSIGNED NOT NULL,
+      invoice_number VARCHAR(100) NOT NULL,
+      pdf_file VARCHAR(255) DEFAULT NULL,
+      total DECIMAL(10,2) DEFAULT 0.00,
+      currency CHAR(3) DEFAULT 'EUR',
+      tax_rate DECIMAL(5,2) DEFAULT 0.00,
+      variable_symbol VARCHAR(50) DEFAULT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+} catch (Throwable $e) {
+    // ignore creation errors but show below if necessary
+}
+
+$page = max(1, (int)($_GET['p'] ?? 1));
 $perPage = 20;
-$page = max(1, (int)($_GET['page'] ?? 1));
 $offset = ($page - 1) * $perPage;
 
-$filterOrder = trim((string)($_GET['order_id'] ?? ''));
-$filterDateFrom = trim((string)($_GET['from'] ?? ''));
-$filterDateTo = trim((string)($_GET['to'] ?? ''));
-
-// build where
-$where = [];
-$params = [];
-if ($filterOrder !== '') { $where[] = "order_id = :order_id"; $params[':order_id'] = (int)$filterOrder; }
-if ($filterDateFrom !== '') { $where[] = "created_at >= :from"; $params[':from'] = $filterDateFrom . ' 00:00:00'; }
-if ($filterDateTo !== '') { $where[] = "created_at <= :to"; $params[':to'] = $filterDateTo . ' 23:59:59'; }
-$whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
-
-// count
-$total = (int)$pdo->query("SELECT COUNT(*) FROM invoices $whereSql", $params)->fetchColumn(); // PDO->query doesn't accept params; we prepare
-$stmtCount = $pdo->prepare("SELECT COUNT(*) FROM invoices $whereSql");
-$stmtCount->execute($params);
-$total = (int)$stmtCount->fetchColumn();
-
-// fetch page
-$stmt = $pdo->prepare("SELECT id, invoice_number, order_id, total_amount, currency, created_at, pdf_file FROM invoices $whereSql ORDER BY created_at DESC LIMIT :lim OFFSET :off");
-foreach ($params as $k=>$v) { /* leave to execute bind */ }
-$stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
-$stmt->bindValue(':off', $offset, PDO::PARAM_INT);
-foreach ($params as $k=>$v) {
-    // bind other params (string or int)
-    $stmt->bindValue($k, $v);
-}
+// fetch invoices with order info
+$stmt = $pdo->prepare("SELECT inv.*, o.user_id, u.meno AS user_name, u.email AS user_email FROM invoices inv LEFT JOIN orders o ON inv.order_id=o.id LEFT JOIN users u ON o.user_id=u.id ORDER BY inv.created_at DESC LIMIT ? OFFSET ?");
+$stmt->bindValue(1, $perPage, PDO::PARAM_INT);
+$stmt->bindValue(2, $offset, PDO::PARAM_INT);
 $stmt->execute();
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// pagination helper
-$totalPages = (int)max(1, ceil($total / $perPage));
+$total = (int)$pdo->query("SELECT COUNT(*) FROM invoices")->fetchColumn();
 
+include __DIR__ . '/partials/header.php';
 ?>
-<!doctype html>
-<html lang="sk">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Admin — Faktúry</title>
-  <link rel="stylesheet" href="/admin/css/admin.css">
-  <link rel="stylesheet" href="/admin/css/invoices.css">
-  <script src="/admin/js/admin.js" defer></script>
-  <script src="/admin/js/invoices.js" defer></script>
-</head>
-<body>
-  <main class="admin-shell">
-    <header class="admin-top">
-      <h1>Faktúry</h1>
-      <div class="actions">
-        <a class="btn" href="/admin/invoice-generate.php">Vygenerovať faktúru (ručné)</a>
-        <a class="btn ghost" href="/admin/invoices.php">Obnoviť</a>
-      </div>
-    </header>
+<main class="admin-main container">
+  <h1>Faktúry</h1>
+  <div style="margin-bottom:12px;">
+    <a class="btn" href="/admin/exports.php?type=invoices&format=csv">Export CSV</a>
+  </div>
 
-    <section class="panel">
-      <form method="get" class="form-inline">
-        <label>Order ID <input type="text" name="order_id" value="<?php echo htmlspecialchars($filterOrder); ?>"></label>
-        <label>Od <input type="date" name="from" value="<?php echo htmlspecialchars($filterDateFrom); ?>"></label>
-        <label>Do <input type="date" name="to" value="<?php echo htmlspecialchars($filterDateTo); ?>"></label>
-        <button class="btn" type="submit">Filtrovať</button>
-        <a class="btn ghost" href="/admin/invoices.php">Vymazať filtre</a>
-      </form>
-    </section>
+  <table class="table">
+    <thead><tr><th>#</th><th>Faktúra</th><th>Objednávka</th><th>Klient</th><th>Čiastka</th><th>Vytvorená</th><th>Akcie</th></tr></thead>
+    <tbody>
+      <?php foreach ($invoices as $inv): ?>
+        <tr>
+          <td><?php echo admin_esc($inv['id']); ?></td>
+          <td><?php echo admin_esc($inv['invoice_number']); ?></td>
+          <td>#<?php echo admin_esc($inv['order_id']); ?></td>
+          <td><?php echo admin_esc($inv['user_name'] ?? ''); ?> <?php if (!empty($inv['user_email'])) echo '<br><small class="muted">'.admin_esc($inv['user_email']).'</small>'; ?></td>
+          <td><?php echo admin_esc(number_format((float)$inv['total'],2,'.','')) . ' ' . admin_esc($inv['currency']); ?></td>
+          <td><?php echo admin_esc($inv['created_at']); ?></td>
+          <td>
+            <?php if (!empty($inv['pdf_file']) && file_exists(__DIR__ . '/../eshop/invoices/' . $inv['pdf_file'])): ?>
+              <a class="btn" href="/admin/actions/download-invoice.php?id=<?php echo (int)$inv['id']; ?>">Stiahnuť</a>
+              <a class="btn-ghost" href="/eshop/invoices/<?php echo admin_esc($inv['pdf_file']); ?>" target="_blank">Otvoriť</a>
+            <?php else: ?>
+              <em>PDF chýba</em>
+            <?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
 
-    <section class="panel">
-      <?php if (empty($rows)): ?>
-        <p class="muted">Žiadne faktúry.</p>
-      <?php else: ?>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>#</th><th>Číslo faktúry</th><th>Objednávka</th><th>Suma</th><th>Dátum</th><th>PDF</th><th>Akcie</th>
-            </tr>
-          </thead>
-          <tbody>
-            <?php foreach($rows as $r): ?>
-              <tr>
-                <td><?php echo (int)$r['id']; ?></td>
-                <td><?php echo htmlspecialchars($r['invoice_number']); ?></td>
-                <td><?php echo (int)$r['order_id']; ?></td>
-                <td><?php echo number_format((float)$r['total_amount'],2,',','.').' '.htmlspecialchars($r['currency']); ?></td>
-                <td><?php echo htmlspecialchars($r['created_at']); ?></td>
-                <td>
-                  <?php if (!empty($r['pdf_file'])): ?>
-                    <a class="btn small" href="/admin/invoice-download.php?id=<?php echo (int)$r['id']; ?>">Stiahnuť</a>
-                  <?php else: ?>
-                    <span class="muted">PDF chýba</span>
-                  <?php endif; ?>
-                </td>
-                <td>
-                  <a class="btn small ghost" href="/admin/invoice-view.php?id=<?php echo (int)$r['id']; ?>" target="_blank">Zobraziť</a>
-                  <a class="btn small" href="/admin/invoice-generate.php?order_id=<?php echo (int)$r['order_id']; ?>&regen=1">Obnoviť PDF</a>
-                </td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
+  <?php
+    $pages = (int)ceil($total / $perPage);
+    if ($pages > 1):
+  ?>
+    <div class="pagination">
+      <?php for ($i=1;$i<=$pages;$i++): ?>
+        <a class="page <?php echo $i===$page ? 'active' : ''; ?>" href="/admin/invoices.php?p=<?php echo $i; ?>"><?php echo $i; ?></a>
+      <?php endfor; ?>
+    </div>
+  <?php endif; ?>
 
-        <div class="pagination">
-          <?php for ($p=1;$p<=$totalPages;$p++): ?>
-            <a class="pager <?php if ($p===$page) echo 'active'; ?>" href="?page=<?php echo $p; ?><?php echo $filterOrder?('&order_id=' . urlencode($filterOrder)) : ''; ?>">&nbsp;<?php echo $p; ?>&nbsp;</a>
-          <?php endfor; ?>
-        </div>
-      <?php endif; ?>
-    </section>
-  </main>
-</body>
-</html>
+</main>
+<?php include __DIR__ . '/partials/footer.php'; ?>

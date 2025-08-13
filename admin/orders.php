@@ -1,154 +1,91 @@
 <?php
 // /admin/orders.php
 declare(strict_types=1);
+if (session_status() === PHP_SESSION_NONE) session_start();
 require __DIR__ . '/bootstrap.php';
-if (!admin_is_logged()) { header('Location: login.php'); exit; }
+require_admin();
 
-if (empty($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+function admin_esc($s){ if (function_exists('esc')) return esc($s); return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 
-// pagination + filter
-$perPage = 30;
+if (!isset($_SESSION['csrf_token'])) $_SESSION['csrf_token'] = bin2hex(random_bytes(16));
+$csrf = $_SESSION['csrf_token'];
+
 $page = max(1, (int)($_GET['p'] ?? 1));
-$offset = ($page-1)*$perPage;
-$statusFilter = trim((string)($_GET['status'] ?? ''));
+$perPage = 20;
+$offset = ($page - 1) * $perPage;
 
-// counting
-$where = "1=1";
-$params = [];
-if ($statusFilter !== '') { $where = "o.status = :status"; $params[':status']=$statusFilter; }
+// total
+$total = (int)$pdo->query("SELECT COUNT(*) FROM orders")->fetchColumn();
 
-$total = (int)$pdo->prepare("SELECT COUNT(*) FROM orders o WHERE $where")->execute($params) ? 0 : 0;
-// we need to compute total correctly with prepared
-$totalStmt = $pdo->prepare("SELECT COUNT(*) FROM orders o WHERE $where");
-$totalStmt->execute($params);
-$total = (int)$totalStmt->fetchColumn();
-
-$stmt = $pdo->prepare("SELECT o.*, u.meno as user_name, u.email as user_email FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE $where ORDER BY o.created_at DESC LIMIT :lim OFFSET :off");
-foreach ($params as $k=>$v) $stmt->bindValue($k,$v);
-$stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
-$stmt->bindValue(':off', $offset, PDO::PARAM_INT);
+// orders list with user
+$stmt = $pdo->prepare("SELECT o.*, u.meno AS user_name, u.email AS user_email FROM orders o LEFT JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT ? OFFSET ?");
+$stmt->bindValue(1, $perPage, PDO::PARAM_INT);
+$stmt->bindValue(2, $offset, PDO::PARAM_INT);
 $stmt->execute();
 $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$totalPages = (int)ceil($total / $perPage);
+include __DIR__ . '/partials/header.php';
+?>
+<main class="admin-main container">
+  <h1>Objednávky</h1>
+  <div style="margin-bottom:12px;">
+    <a class="btn" href="/admin/exports.php?type=orders&format=csv">Export CSV</a>
+    <a class="btn" href="/admin/exports.php?type=orders&format=xlsx">Export XLSX</a>
+  </div>
 
-// view single order?
-$viewOrder = null;
-if (!empty($_GET['view'])) {
-    $oid = (int)$_GET['view'];
-    $oStmt = $pdo->prepare("SELECT o.*, u.meno as user_name, u.email as user_email FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = ? LIMIT 1");
-    $oStmt->execute([$oid]);
-    $viewOrder = $oStmt->fetch(PDO::FETCH_ASSOC);
-    if ($viewOrder) {
-        $itemsStmt = $pdo->prepare("SELECT oi.*, b.nazov, b.obrazok FROM order_items oi LEFT JOIN books b ON oi.book_id = b.id WHERE oi.order_id = ?");
-        $itemsStmt->execute([$oid]);
-        $viewOrder['items'] = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-}
-
-?><!doctype html>
-<html lang="sk">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Admin — Objednávky</title>
-  <link rel="stylesheet" href="/admin/css/admin.css">
-  <script src="/admin/js/admin.js" defer></script>
-</head>
-<body class="admin-orders">
-  <main class="admin-shell">
-    <header class="admin-top">
-      <h1>Objednávky</h1>
-      <div class="actions">
-        <a class="btn ghost" href="orders-export.php">Export CSV</a>
+  <?php foreach ($orders as $o): ?>
+    <article class="card order-row" style="margin-bottom:14px;padding:12px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;">
+        <div>
+          <strong>#<?php echo admin_esc($o['id']); ?></strong>
+          &nbsp;|&nbsp;<span class="muted"><?php echo admin_esc($o['created_at'] ?? ''); ?></span>
+          <div><strong><?php echo admin_esc($o['user_name'] ?? ''); ?></strong> — <?php echo admin_esc($o['user_email'] ?? ''); ?></div>
+          <div class="muted">Stav: <?php echo admin_esc($o['status']); ?> / Platba: <?php echo admin_esc($o['payment_method'] ?? '-'); ?></div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-weight:800"><?php echo admin_esc(number_format((float)$o['total_price'],2,'.','')) . ' ' . admin_esc($o['currency']); ?></div>
+          <div style="margin-top:8px;">
+            <form method="post" action="/admin/actions/mark-order-paid.php" style="display:inline-block">
+              <input type="hidden" name="csrf" value="<?php echo admin_esc($csrf); ?>">
+              <input type="hidden" name="order_id" value="<?php echo (int)$o['id']; ?>">
+              <button class="btn" type="submit">Označiť ako zaplatené</button>
+            </form>
+            <form method="post" action="/admin/actions/generate-invoice.php" style="display:inline-block">
+              <input type="hidden" name="csrf" value="<?php echo admin_esc($csrf); ?>">
+              <input type="hidden" name="order_id" value="<?php echo (int)$o['id']; ?>">
+              <button class="btn-primary" type="submit">Vytvoriť faktúru</button>
+            </form>
+          </div>
+        </div>
       </div>
-    </header>
 
-    <section class="filters">
-      <form method="get" action="orders.php" class="search-row">
-        <select name="status">
-          <option value="">Všetky statusy</option>
-          <option value="pending" <?php if($statusFilter==='pending') echo 'selected'; ?>>pending</option>
-          <option value="paid" <?php if($statusFilter==='paid') echo 'selected'; ?>>paid</option>
-          <option value="fulfilled" <?php if($statusFilter==='fulfilled') echo 'selected'; ?>>fulfilled</option>
-          <option value="cancelled" <?php if($statusFilter==='cancelled') echo 'selected'; ?>>cancelled</option>
-          <option value="refunded" <?php if($statusFilter==='refunded') echo 'selected'; ?>>refunded</option>
-        </select>
-        <button class="btn" type="submit">Filtrovať</button>
-      </form>
-    </section>
-
-    <section class="list">
-      <table class="table">
-        <thead><tr><th>#</th><th>Užívateľ</th><th>Celkom</th><th>Status</th><th>Dátum</th><th>Akcie</th></tr></thead>
-        <tbody>
-          <?php foreach($orders as $o): ?>
-            <tr>
-              <td><a href="?view=<?php echo (int)$o['id']; ?>">#<?php echo (int)$o['id']; ?></a></td>
-              <td><?php echo htmlspecialchars($o['user_name'] ?? $o['user_email']); ?></td>
-              <td><?php echo number_format((float)$o['total_price'],2,',','.').' '.htmlspecialchars($o['currency']); ?></td>
-              <td><?php echo htmlspecialchars($o['status']); ?></td>
-              <td><?php echo htmlspecialchars($o['created_at']); ?></td>
-              <td>
-                <form method="post" action="order-action.php" style="display:inline">
-                  <input type="hidden" name="csrf" value="<?php echo $_SESSION['csrf_token']; ?>">
-                  <input type="hidden" name="id" value="<?php echo (int)$o['id']; ?>">
-                  <select name="status" aria-label="Zmeniť status">
-                    <option value="pending" <?php if($o['status']==='pending') echo 'selected'; ?>>pending</option>
-                    <option value="paid" <?php if($o['status']==='paid') echo 'selected'; ?>>paid</option>
-                    <option value="fulfilled" <?php if($o['status']==='fulfilled') echo 'selected'; ?>>fulfilled</option>
-                    <option value="cancelled" <?php if($o['status']==='cancelled') echo 'selected'; ?>>cancelled</option>
-                    <option value="refunded" <?php if($o['status']==='refunded') echo 'selected'; ?>>refunded</option>
-                  </select>
-                  <button class="btn small" type="submit">Uložiť</button>
-                </form>
-                <form method="post" action="order-action.php" style="display:inline" onsubmit="return confirm('Naozaj vymazať objednávku?');">
-                  <input type="hidden" name="csrf" value="<?php echo $_SESSION['csrf_token']; ?>">
-                  <input type="hidden" name="id" value="<?php echo (int)$o['id']; ?>">
-                  <input type="hidden" name="action" value="delete">
-                  <button class="btn small danger" type="submit">Vymazať</button>
-                </form>
-              </td>
-            </tr>
+      <?php
+        // fetch items for this order
+        $items = $pdo->prepare("SELECT oi.*, b.nazov AS book_name FROM order_items oi LEFT JOIN books b ON oi.book_id=b.id WHERE oi.order_id = ?");
+        $items->execute([(int)$o['id']]);
+        $it = $items->fetchAll(PDO::FETCH_ASSOC);
+      ?>
+      <div style="margin-top:10px;">
+        <strong>Položky:</strong>
+        <ul>
+          <?php foreach ($it as $row): ?>
+            <li><?php echo admin_esc($row['book_name'] ?? ('ID:' . (int)$row['book_id'])) . ' × ' . (int)$row['quantity'] . ' — ' . admin_esc(number_format((float)$row['unit_price'],2,'.','')) . ' ' . admin_esc($o['currency']); ?></li>
           <?php endforeach; ?>
-        </tbody>
-      </table>
+        </ul>
+      </div>
+    </article>
+  <?php endforeach; ?>
 
-      <?php if ($totalPages>1): ?>
-        <nav class="pager">
-          <?php for($i=1;$i<=$totalPages;$i++): ?>
-            <a class="<?php echo $i===$page ? 'active' : ''; ?>" href="?p=<?php echo $i; ?><?php if($statusFilter) echo '&status='.urlencode($statusFilter); ?>"><?php echo $i; ?></a>
-          <?php endfor; ?>
-        </nav>
-      <?php endif; ?>
+  <?php
+    $pages = (int)ceil($total / $perPage);
+    if ($pages > 1):
+  ?>
+    <div class="pagination">
+      <?php for ($i=1;$i<=$pages;$i++): ?>
+        <a class="page <?php echo $i===$page ? 'active' : ''; ?>" href="/admin/orders.php?p=<?php echo $i; ?>"><?php echo $i; ?></a>
+      <?php endfor; ?>
+    </div>
+  <?php endif; ?>
 
-    </section>
-
-    <?php if ($viewOrder): ?>
-      <section class="panel">
-        <h2>Objednávka #<?php echo (int)$viewOrder['id']; ?></h2>
-        <div>Užívateľ: <?php echo htmlspecialchars($viewOrder['user_name'] ?? $viewOrder['user_email']); ?></div>
-        <div>Status: <?php echo htmlspecialchars($viewOrder['status']); ?></div>
-        <div>Dátum: <?php echo htmlspecialchars($viewOrder['created_at']); ?></div>
-
-        <h3>Položky</h3>
-        <table class="table">
-          <thead><tr><th>#</th><th>Názov</th><th>Množ.</th><th>Jedn. cena</th><th>Spolu</th></tr></thead>
-          <tbody>
-            <?php $i=1; $sum=0; foreach($viewOrder['items'] as $it): $line = $it['quantity']*$it['unit_price']; $sum += $line; ?>
-              <tr>
-                <td><?php echo $i++; ?></td>
-                <td><?php echo htmlspecialchars($it['nazov']); ?></td>
-                <td><?php echo (int)$it['quantity']; ?></td>
-                <td><?php echo number_format((float)$it['unit_price'],2,',','.'); ?></td>
-                <td><?php echo number_format($line,2,',','.'); ?></td>
-              </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-        <div class="total">Celkom: <?php echo number_format($sum,2,',','.').' '.htmlspecialchars($viewOrder['currency']); ?></div>
-      </section>
-    <?php endif; ?>
-
-  </main>
-</body>
-</html>
+</main>
+<?php include __DIR__ . '/partials/footer.php'; ?>
