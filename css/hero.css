@@ -9,61 +9,191 @@
   padding: 2rem;
 }
 
-/* Obsah hero sekce */
 .hero-content {
   z-index: 1;
   color: #f2e9dc;
   position: relative;
   max-width: 800px;
   margin: 0 auto;
-  padding: 3rem;
-  background: rgba(59, 43, 30, 0.28);
-  backdrop-filter: blur(6px);
-  border-radius: 16px;
-  box-shadow: 0 0 40px rgba(255, 215, 0, 0.45); /* silnější zlatá záře */
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 2.5rem;
+  background: rgba(0,0,0,0.3);
+  border-radius: 20px;
+  border: 2px solid rgba(212,175,55,0.4);
+  box-shadow: 0 0 25px rgba(212,175,55,0.35);
 }
 
-/* Titulek */
+.hero-content::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(212, 175, 55, 0.6),
+    rgba(255,255,255,0.15),
+    rgba(212, 175, 55, 0.4)
+  );
+  filter: blur(18px);
+  z-index: -1;
+  opacity: 0.7;
+}
+
+/* Titulek – epická verze */
 .epic-title {
-  font-size: 3rem;
+  font-size: 3.5rem;
   font-family: 'Playfair Display', serif;
-  margin-bottom: 1rem;
-  animation: fadeInDown 2s ease-out;
+  margin-bottom: 1.2rem;
+  line-height: 1.2;
+  color: #fefefe; /* základní text bílý */
+  position: relative;
+  animation: fadeInDown 1.8s ease-out, glowPulse 6s infinite ease-in-out;
+  
+  /* vystouplý efekt */
+  text-shadow: 
+    0 2px 4px rgba(0,0,0,0.6),
+    0 4px 8px rgba(0,0,0,0.5),
+    0 8px 20px rgba(0,0,0,0.4);
+  transform: translateZ(0);
+}
+
+/* Zvýrazněná část (span) */
+.epic-title span {
+  background: linear-gradient(135deg, #ffd700, #fff6c5, #d4af37);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  position: relative;
+  display: inline-block;
+  animation: shimmer 4s infinite;
+  text-shadow: 
+    0 0 10px rgba(255,215,0,0.6),
+    0 0 20px rgba(255,215,0,0.4);
+}
+
+/* Pulzující jemná aura */
+@keyframes glowPulse {
+  0%, 100% {
+    text-shadow: 
+      0 2px 4px rgba(0,0,0,0.6),
+      0 4px 8px rgba(0,0,0,0.5),
+      0 0 15px rgba(255,255,255,0.3);
+  }
+  50% {
+    text-shadow: 
+      0 3px 6px rgba(0,0,0,0.6),
+      0 6px 14px rgba(0,0,0,0.4),
+      0 0 30px rgba(255,255,255,0.55);
+  }
+}
+
+/* Shimmer animace jen pro span */
+@keyframes shimmer {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 250% 0;
+  }
 }
 
 .epic-title span {
-  color: #d4af37;
+  background-size: 200% auto;
 }
 
-/* Citát */
+/* Citát – zvýrazněná epická verze */
 .changing-quote {
-  font-size: 1.2rem;
+  font-size: 1.3rem;
   font-style: italic;
-  opacity: 0.9;
-  animation: fadeIn 3s ease-in;
+  font-family: 'Georgia', serif;
+  color: #f9f6f1; /* jemně teplejší bílá */
+  opacity: 0.95;
+  position: relative;
+  animation: fadeIn 3s ease-in, floatQuote 6s infinite ease-in-out;
   min-height: 1.5em;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.25);
+  margin-top: 1rem;
 }
 
-/* CTA tlačítko */
+/* Dekorativní úvozovky */
+.changing-quote::before,
+.changing-quote::after {
+  position: absolute;
+  font-size: 2rem;
+  color: rgba(255, 215, 0, 0.55);
+  font-family: 'Playfair Display', serif;
+}
+
+.changing-quote::before {
+  content: "“";
+  left: -1.2rem;
+  top: -0.4rem;
+}
+
+.changing-quote::after {
+  content: "”";
+  right: -1.2rem;
+  bottom: -0.4rem;
+}
+
+/* Lehký vznášivý pohyb */
+@keyframes floatQuote {
+  0%, 100% {
+    transform: translateY(0);
+    opacity: 0.95;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+/* Společný styl tlačítek */
 .cta-button {
-  margin-top: 2rem;
-  padding: 0.9rem 1.8rem;
-  font-size: 1.05rem;
-  font-weight: bold;
-  background: linear-gradient(135deg, #d4af37, #f9e076);
-  color: #1e1a17;
+  padding: 1rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 700;
   text-decoration: none;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
-  transition: all 0.3s ease;
+  border-radius: 12px;
+  transition: all 0.35s ease;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  letter-spacing: 0.5px;
+  gap: 0.6rem;
+  letter-spacing: 0.7px;
   position: relative;
   overflow: hidden;
-  animation: pulseButton 3s ease-in-out infinite;
+  animation: pulseButton 5s ease-in-out infinite;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 0 6px rgba(255,255,255,0.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.25);
+}
+
+/* Ikona v tlačítku */
+.cta-button i {
+  font-size: 1.2em;
+  color: inherit;
+}
+
+/* Varianta 1 – ukázka zdarma (královská zlatá) */
+.cta-button.sample {
+  background: linear-gradient(135deg, #c9a636, #f5e08e);
+  color: #1e1a17;
+  box-shadow: 0 4px 18px rgba(212, 175, 55, 0.45), inset 0 2px 4px rgba(255,255,255,0.4);
+}
+
+.cta-button.sample:hover {
+  transform: translateY(-4px) scale(1.08);
+  box-shadow: 0 8px 22px rgba(212, 175, 55, 0.7), 0 0 20px rgba(255, 229, 150, 0.6);
+}
+
+/* Varianta 2 – e-shop (temná s aurou) */
+.cta-button.shop {
+  background: linear-gradient(135deg, #0d0d0d, #1f1f3a);
+  color: #e5e5ff;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6), 0 0 12px rgba(100, 140, 255, 0.35);
+}
+
+.cta-button.shop:hover {
+  transform: translateY(-4px) scale(1.08);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.75), 0 0 25px rgba(120,160,255,0.65);
 }
 
 /* Světelný průlet při hoveru */
@@ -74,48 +204,23 @@
   left: -75%;
   width: 50%;
   height: 100%;
-  background: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.35);
   transform: skewX(-25deg);
-  transition: 0.5s;
+  transition: 0.6s;
 }
 
 .cta-button:hover::before {
   left: 130%;
 }
 
-/* Efekt při hoveru */
-.cta-button:hover {
-  transform: scale(1.07);
-  box-shadow: 0 6px 20px rgba(212, 175, 55, 0.6);
-}
-
-/* Ikona v tlačítku */
-.cta-button i {
-  font-size: 1.2em;
-  color: inherit;
-}
-
-/* Mikro pulzování */
+/* Mikro pulzování (majestátní pomalé) */
 @keyframes pulseButton {
   0%, 100% {
     transform: scale(1);
-    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.4);
   }
   50% {
-    transform: scale(1.03);
-    box-shadow: 0 4px 18px rgba(212, 175, 55, 0.55);
+    transform: scale(1.04);
   }
-}
-
-/* Animace textu */
-@keyframes fadeInDown {
-  from { opacity: 0; transform: translateY(-30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
 }
 
 /* Video pozadí */
@@ -135,9 +240,8 @@
   object-fit: cover;
 }
 
-/* static fallback: když video selže, použije se pozadí obrázek */
 .video-background.video-failed {
-  background-image: url('/assets/hero-fallback.png'); /* optimalizovaný static fallback */
+  background-image: url('/assets/hero-fallback.png');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -145,12 +249,10 @@
   opacity: 1;
 }
 
-/* skrýt samotné video pokud je aktivní fallback */
 .video-background.video-failed video {
   display: none !important;
 }
 
-/* jemný overlay (pokud chceš zachovat čitelnost textu) */
 .video-background.video-failed::after {
   content: "";
   position: absolute;
@@ -181,7 +283,12 @@
 
   .cta-button {
     font-size: 0.95rem;
-    padding: 0.6rem 1.2rem;
+    padding: 0.7rem 1.4rem;
+  }
+
+  .cta-wrapper {
+    flex-direction: column;
+    gap: 0.8rem;
   }
 }
 
@@ -196,6 +303,6 @@
 
   .cta-button {
     font-size: 0.9rem;
-    padding: 0.5rem 1rem;
+    padding: 0.6rem 1.1rem;
   }
 }

@@ -1,25 +1,330 @@
-/* support-impact.css - epický štýl pre sekciu Podpora & Dopad */
+/* support-impact.css — pozadí a okraje stejné jako about; vylepšené vnitřní styly */
 :root{
   --si-paper: url('/assets/paper-texture.png');
   --si-gold: #cf9b3a;
+  --si-gold-soft: #f8e7b0;
   --si-ink: #3b2a1a;
+  --si-grain: 0.06;
+  --si-radius: 12px;
 }
 
-.supportimpact-section{ display:flex; justify-content:center; padding:56px 16px; }
-.supportimpact-paper-wrap{ width:min(1200px,96%); position:relative; background-image:var(--si-paper); background-size:cover; border-radius:10px; padding:48px; box-shadow:0 30px 70px rgba(0,0,0,0.14); }
-.supportimpact-grain-overlay{ position:absolute; inset:0; z-index:3; pointer-events:none; background-image: radial-gradient(circle at 20% 10%, rgba(0,0,0,0.02) 0 1px, transparent 1px); opacity:0.06; }
+/* KONTEJNER */
+.supportimpact-section{
+  display:flex;
+  justify-content:center;
+  padding:60px 16px;
+}
 
-.supportimpact-container{ position:relative; z-index:6; text-align:center; }
-.supportimpact-title{ font-family:"Playfair Display", serif; font-size:2.2rem; color:var(--si-ink); font-weight:900; }
-.supportimpact-text{ color: rgba(59,42,26,0.86); font-weight:700; margin:8px 0 20px; }
+/* PAPER WRAP — background exactly like about-section */
+.supportimpact-paper-wrap{
+  width: min(1200px, 96%);
+  position: relative;
+  background-image: var(--si-paper);
+  background-position: center;
+  background-size: 100% 100%; 
+  background-repeat: no-repeat;
+  border-radius: 10px;
+  padding: 56px; /* same as about */
+  box-shadow:
+    0 30px 70px rgba(0,0,0,0.14),
+    inset 0 18px 40px rgba(0,0,0,0.13),
+    inset 0 0 120px rgba(0,0,0,0.06);
+  overflow: visible;
+  -webkit-font-smoothing:antialiased;
+  z-index:1;
+}
 
-.supportimpact-stats{ display:flex; gap:18px; justify-content:center; flex-wrap:wrap; margin-bottom:18px; }
-.supportimpact-item{ min-width:160px; background: rgba(255,255,255,0.03); padding:16px; border-radius:10px; box-shadow: inset 0 4px 12px rgba(0,0,0,0.06); }
-.si-number{ display:block; font-size:1.5rem; font-weight:900; color:var(--si-ink); }
-.si-label{ display:block; color: rgba(59,42,26,0.86); font-weight:800; margin-top:6px; }
+/* burnt edges overlay — MATCHING about */
+.supportimpact-paper-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 10px;
+  pointer-events: none;
+  background:
+    radial-gradient(120px 80px at 6% 6%, rgba(0,0,0,0.22), rgba(0,0,0,0) 40%),
+    radial-gradient(120px 80px at 94% 94%, rgba(0,0,0,0.20), rgba(0,0,0,0) 40%),
+    linear-gradient(to top, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) top/100% 26px no-repeat,
+    linear-gradient(to bottom, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) bottom/100% 26px no-repeat,
+    linear-gradient(to left, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) left/26px 100% no-repeat,
+    linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) right/26px 100% no-repeat;
+  mix-blend-mode: multiply;
+}
 
-.supportimpact-highlight{ margin-top:12px; background: rgba(207,152,58,0.09); border-left:6px solid var(--si-gold); padding:16px; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.08); font-weight:800; color:var(--si-ink); }
+/* rim-light / highlight overlay — MATCHING about (slightly tuned for contrast) */
+.supportimpact-paper-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 300px at 85% 10%, rgba(255,230,170,0.16), transparent 16%),
+    linear-gradient(180deg, rgba(255,255,255,0.015), transparent 10%),
+    radial-gradient(40px 26px at 96% 96%, rgba(0,0,0,0.16), rgba(0,0,0,0) 60%),
+    radial-gradient(30px 18px at 5% 5%, rgba(0,0,0,0.12), rgba(0,0,0,0) 60%);
+  background-repeat: no-repeat;
+  background-position: center, top, right bottom, left top;
+  background-size: 100% 60%, 100% 15%, 110px 80px, 90px 60px;
+  mix-blend-mode: screen;
+  filter: blur(4px) contrast(1.02);
+}
 
-/* responsive */
-@media (max-width:900px){ .supportimpact-stats{ gap:10px; } .supportimpact-item{ min-width:120px; } }
-@media (prefers-reduced-motion:reduce){ *{ transition:none !important; animation:none !important; } }
+/* GRAIN — keep span.supportimpact-grain-overlay in HTML (you have it) */
+.supportimpact-grain-overlay{
+  position:absolute; inset:0; z-index:4; pointer-events:none;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(0,0,0,0.02) 0 1px, transparent 1px),
+    radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0 1px, transparent 1px);
+  background-size:3px 3px,4px 4px;
+  opacity: var(--si-grain);
+  mix-blend-mode:multiply;
+  transform:translateZ(0);
+}
+
+/* optional inner edge if you want to inject span.supportimpact-paper-edge */
+.supportimpact-paper-wrap .supportimpact-paper-edge{
+  position:absolute; inset:10px; border-radius:8px; z-index:5; pointer-events:none;
+  box-shadow: inset 0 6px 0 rgba(255,245,230,0.06), inset 0 -8px 18px rgba(0,0,0,0.08);
+}
+
+/* ======================== CONTENT (upravené) ======================== */
+/* use this block to replace existing rules from .supportimpact-container onward */
+
+/* container + header */
+.supportimpact-container{
+  position: relative;
+  z-index: 6;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 6px;
+}
+
+.supportimpact-head{
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+/* title with subtle ornamental underline */
+.supportimpact-title{
+  font-family: "Playfair Display", serif;
+  font-size: 2.6rem;
+  margin: 0 0 8px;
+  color: var(--si-ink);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+.supportimpact-title + .supportimpact-text{
+  display:block;
+  margin: 0 auto;
+  max-width: 820px;
+  color: rgba(59,42,26,0.86);
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.42;
+  padding: 0 6px;
+}
+
+/* small decorative accent under title */
+.supportimpact-head::after{
+  content: "";
+  display: block;
+  width: 72px;
+  height: 6px;
+  margin: 12px auto 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--si-gold-soft), var(--si-gold));
+  box-shadow: 0 8px 20px rgba(207,155,60,0.08);
+  opacity: 0.95;
+}
+
+/* STATS GRID — adaptive grid: 4 / 3 / 2 / 1 */
+.supportimpact-stats{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  gap: 18px;
+  align-items: stretch;
+  margin: 28px 0;
+}
+
+/* Card base */
+.supportimpact-item{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
+  border-radius: 14px;
+  padding: 22px 16px;
+  text-align: center;
+  box-shadow: 0 22px 50px rgba(0,0,0,0.09);
+  border: 1px solid rgba(0,0,0,0.06);
+  position: relative;
+  overflow: visible;
+  transition: transform .22s cubic-bezier(.2,.9,.3,1), box-shadow .22s ease, background .22s ease;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:8px;
+}
+
+/* Alternating subtle tint for depth */
+.supportimpact-item:nth-child(odd){
+  background-image:
+    linear-gradient(180deg, rgba(255,247,230,0.01), rgba(0,0,0,0.03));
+}
+.supportimpact-item:nth-child(even){
+  background-image:
+    linear-gradient(180deg, rgba(255,250,240,0.00), rgba(0,0,0,0.035));
+}
+
+/* small gold ribbon accent (top-right) */
+.supportimpact-item::after{
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 48px;
+  height: 8px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255,250,230,0.95), rgba(207,155,60,0.98));
+  box-shadow: 0 6px 14px rgba(207,155,60,0.06);
+  transform: rotate(10deg);
+  pointer-events:none;
+  opacity:0.95;
+}
+
+/* hover / focus (keyboard) */
+.supportimpact-item:hover{
+  transform: translateY(-8px);
+  box-shadow: 0 44px 110px rgba(0,0,0,0.12);
+}
+.supportimpact-item:focus-within{
+  outline: none;
+  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.08);
+}
+
+/* number: big, shiny, clearly readable */
+.si-number{
+  display:inline-block;
+  font-size:2.4rem;
+  font-weight:900;
+  line-height:1;
+  margin: 2px 0 6px;
+  color: transparent;
+  background: linear-gradient(90deg, var(--si-gold-soft), var(--si-gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 10px 30px rgba(255,235,180,0.10);
+  letter-spacing: -0.01em;
+}
+
+/* optional smaller currency or unit line (if present in markup) */
+.si-number + .si-currency{
+  display:block;
+  font-size:0.88rem;
+  color: rgba(59,42,26,0.72);
+  font-weight:800;
+  margin-top:6px;
+}
+
+/* label: compact, uppercase feeling */
+.si-label{
+  display:block;
+  font-size:0.92rem;
+  color: rgba(59,42,26,0.84);
+  font-weight:800;
+  margin-top:8px;
+  letter-spacing:0.02em;
+}
+
+/* subtle divider between value and label on narrow cards */
+@media (max-width:480px){
+  .supportimpact-item{ padding:16px; }
+  .si-number{ font-size:2rem; }
+}
+
+/* HIGHLIGHT: emphasis area with optional progress */
+.supportimpact-highlight{
+  margin-top:20px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  align-items:stretch;
+  background: linear-gradient(90deg, rgba(255,250,230,0.02), rgba(207,155,60,0.03));
+  border-left: 6px solid var(--si-gold);
+  padding:16px 18px;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0,0,0,0.08);
+  color: var(--si-ink);
+  font-weight:800;
+  line-height:1.35;
+}
+
+/* small decorative bar above highlight */
+.supportimpact-highlight::before{
+  content:"";
+  display:block;
+  width:64px;
+  height:8px;
+  margin-bottom:6px;
+  border-radius:6px;
+  background: linear-gradient(90deg, var(--si-gold-soft), var(--si-gold));
+  opacity:0.95;
+}
+
+/* optional progress bar inside highlight (HTML snippet optional) */
+.si-progress{
+  height:14px;
+  background: rgba(0,0,0,0.06);
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+  width:100%;
+}
+.si-progress-bar{
+  height:100%;
+  width:0%;
+  background: linear-gradient(90deg, rgba(248,231,176,0.95), rgba(207,155,60,0.95));
+  box-shadow: 0 8px 20px rgba(207,155,60,0.12);
+  transition: width 900ms cubic-bezier(.2,.9,.3,1);
+  border-radius:10px;
+  position:relative;
+}
+/* optional percent label inside bar */
+.si-progress-value{
+  position:absolute;
+  right:8px;
+  top:50%;
+  transform:translateY(-50%);
+  color: rgba(43,31,15,0.95);
+  font-weight:900;
+  font-size:0.79rem;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.12);
+}
+
+/* small helper: muted explanatory text inside highlight */
+.supportimpact-highlight .muted{
+  color: rgba(59,42,26,0.75);
+  font-weight:700;
+  font-size:0.95rem;
+}
+
+/* RESPONSIVITY: graceful stacking */
+@media (max-width:1100px){
+  .supportimpact-stats{ grid-template-columns: repeat(3, minmax(160px, 1fr)); }
+}
+@media (max-width:800px){
+  .supportimpact-stats{ grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+}
+@media (max-width:480px){
+  .supportimpact-stats{ grid-template-columns: 1fr; gap:14px; }
+  .supportimpact-title{ font-size:1.9rem; }
+  .supportimpact-text{ font-size:0.98rem; }
+}
+
+/* ACCESSIBILITY */
+@media (prefers-reduced-motion:reduce){
+  .supportimpact-item, .supportimpact-item:hover, .si-progress-bar { transition:none !important; animation:none !important; }
+  .supportimpact-item:hover{ transform:none !important; box-shadow: 0 12px 30px rgba(0,0,0,0.08) !important; }
+}
+

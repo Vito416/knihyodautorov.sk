@@ -10,17 +10,22 @@
   </div>
 
   <div class="hero-content">
-    <h1 class="epic-title">
-      Objav <span>svet príbehov</span> v digitálnej podobe
-    </h1>
-    <p class="changing-quote">
-      "Kniha je sen, ktorý držíš v ruke."
-    </p>
-  <a href="index.php" class="cta-button">
-    <i class="fas fa-book-open"></i> Stiahnuť ukážku zdarma
-  </a>
+  <h1 class="epic-title">
+    Objav <span>svet príbehov</span> v digitálnej podobe
+  </h1>
+  <p class="changing-quote">
+    "Kniha je sen, ktorý držíš v ruke."
+  </p>
 
+  <div class="cta-wrapper">
+    <a href="index.php" class="cta-button sample">
+      <i class="fas fa-book-open"></i> Stiahnuť ukážku zdarma
+    </a>
+    <a href="eshop.php" class="cta-button shop">
+      <i class="fas fa-shopping-cart"></i> Navštíviť e-shop
+    </a>
   </div>
+</div>
 </section>
 
 <script src="/js/hero.js" defer></script>

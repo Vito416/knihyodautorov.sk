@@ -63,11 +63,16 @@ if ($pdo instanceof PDO) {
 <section class="topbooks-section" aria-label="Top knihy">
   <div class="topbooks-paper-wrap">
     <span class="topbooks-grain-overlay" aria-hidden="true"></span>
-    <div class="topbooks-header">
-      <h2 class="topbooks-title">Top knihy</h2>
-      <p class="topbooks-sub">Najpredávanejšie a najobľúbenejšie tituly — vybrané pre teba.</p>
+    <div class="topbooks-header topbooks-epic-header">
+      <h2 class="topbooks-title topbooks-epic-title">
+        Top knihy
+      </h2>
+      <p class="topbooks-sub topbooks-epic-sub">
+        <span class="topbooks-highlight">Starostlivo</span> vybrané príbehy, ktoré si získali srdcia čitateľov.<br>
+        Objav dobrodružstvá, legendy a tajomstvá, ktoré pretrvajú veky.
+      </p>
     </div>
-
+    
     <div class="topbooks-grid" role="list">
       <?php if (empty($topBooks)): ?>
         <div class="topbooks-empty">Zatiaľ nie sú dostupné žiadne top knihy.</div>
