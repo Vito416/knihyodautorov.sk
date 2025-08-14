@@ -103,12 +103,11 @@
   padding: 22px clamp(18px, 2.5vw, 32px);
   text-align: center;
 
-  /* pergamen + zlaté světlo, bez animací */
-  background:
-    linear-gradient(180deg, rgba(255,248,230,0.92) 0%, rgba(250,238,210,0.65) 100%) padding-box,
-    radial-gradient(70% 120% at 50% 0%, rgba(212,175,55,0.18) 0%, rgba(92,65,42,0.08) 60%, transparent 100%) border-box;
-  border: 1px solid rgba(107,78,50,0.40);
-  border-radius: 16px;
+  background: linear-gradient(180deg, #c08a2e, rgba(0,0,0,0.02) 60%);
+  border-left: 6px solid #c08a2e;
+  padding: 18px;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
 
   /* hloubka: vnitřní highlight + jemná viněta + vnější stín */
   box-shadow:
