@@ -138,7 +138,7 @@
 
   /* layered: directional gold wash (top) + warm parchment base (bottom) */
   background: linear-gradient(90deg, rgba(192, 138, 46, 0.25), rgba(192, 138, 46, 0.25));
-  border-left: 6px solid #c08a2e;
+  border-top: 6px solid #c08a2e;
   padding: 18px;
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.08);
