@@ -2,23 +2,6 @@
    Poznámka: papierová textúra sa zámerne roztiahne (background-size: 100% 100%)
 */
 
-/* ========== Root premenné (easy tune) ========== */
-:root{
-  --paper-bg-tint: rgba(255,240,210,0.035);
-  --gold-1: #f8e7b0;
-  --gold-2: #cf9b3a;
-  --gold-3: #8b5a20;
-  --ink: #3b2a1a;
-  --deep-shadow: rgba(0,0,0,0.52);
-  --warm-light: rgba(255,230,170,0.14);
-  --grain-opacity: 0.06;
-  --card-radius: 12px;
-  --accent-dark: #2b1608;
-  --muted: #d9cdb1;
-  --transition: 320ms cubic-bezier(.2,.9,.2,1);
-  --texture: url('/assets/paper-texture.png');
-}
-
 /* ======================== KONTEJNER ======================== */
 .books-section {
   display: flex;
@@ -30,7 +13,7 @@
 .books-paper-wrap {
   width: min(1200px, 96%);
   position: relative;
-  background-image: var(--texture);
+  background-image: url('/assets/paper-texture.png');
   background-position: center;
   background-size: 100% 100%; /* deformuje pozadí přesně na box */
   background-repeat: no-repeat;
@@ -90,7 +73,7 @@
     radial-gradient(circle at 20% 10%, rgba(0,0,0,0.02) 0 1px, transparent 1px),
     radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0 1px, transparent 1px);
   background-size: 3px 3px, 4px 4px;
-  opacity: var(--grain-opacity);
+  opacity: 0.06;
   mix-blend-mode: multiply;
   transform: translateZ(0);
 }
@@ -107,58 +90,107 @@
 
 /* ======================== HEADER + SEARCH ======================== */
 .books-header {
-  display:flex; justify-content:space-between; gap:18px; align-items:flex-start;
-  margin-bottom:18px; flex-wrap:wrap; position:relative; z-index:6;
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  align-items:flex-start;
+  margin-bottom:18px;
+  flex-wrap:wrap;
+  position:relative;
+  z-index:6;
   background: rgba(207,152,58,0.09);
-  border-left: 6px solid #c08a2e; padding: 18px; border-radius: 8px;
+  border-left: 6px solid #c08a2e;
+  padding: 18px;
+  border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.08);
 }
 
+/* hlavní nadpis */
 .section-title {
-  font-size: 2.6rem; margin: 0 0 12px 0; font-weight: 800; color: #3e2a12;
+  font-size: 2.6rem;
+  margin: 0 0 12px 0;
+  font-weight: 800;
+  color: #3e2a12;
   text-shadow: 0 2px 0 rgba(255,255,255,0.12), 0 -2px 8px rgba(0,0,0,0.28);
   -webkit-font-smoothing:antialiased;
 }
 .section-title span {
   color: transparent;
   background: linear-gradient(180deg,#fff4b0 0%,#ffe066 50%,#ffb84d 100%);
-  -webkit-background-clip:text; background-clip:text; font-weight:700;
+  -webkit-background-clip:text;
+  background-clip:text;
+  font-weight:700;
   filter: drop-shadow(0 1px 1px rgba(0,0,0,0.85));
 }
 
-/* search row (centrovane) */
-.search-row { display:flex; gap:10px; align-items:center; margin-top:8px; z-index:6; justify-content:center; }
+/* nový podnadpis — viac „zaujímavý“ text ako si žiadal */
+.section-subtitle {
+  margin: 0 0 10px 0;
+  color: #8b5a20;
+  font-size: 1.06rem;
+  font-weight: 600;
+  line-height: 1.35;
+  opacity: 0.95;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.06);
+  max-width: 68ch;
+}
 
-/* unified search — upravene, ladiace s pergamenom */
+/* search row — zarovnáno vlevo aby vyhledávání mohlo expandovat */
+.search-row {
+  display:flex;
+  gap:10px;
+  align-items:center;
+  margin-top:8px;
+  z-index:6;
+  justify-content:flex-start;
+  width:100%;
+}
+
+/* unified search — upravené, ladí s pergamenom; rozťahuje sa podľa textu (približne v znakoch) */
 #unifiedSearch {
   padding: 12px 14px 12px 42px;
-  min-width: 260px;
+  width: min(60ch, 100%);
+  min-width: 18ch; /* zaručí, že nie je úplne skrčené */
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(255,245,220,0.12), rgba(255,245,220,0.08));
   border: 2px solid rgba(207,152,58,0.65);
-  color: var(--ink);
+  color: #3b2a1a;
   font-size: 1rem;
   box-shadow: inset 0 2px 6px rgba(0,0,0,0.22);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23cf9b3a' d='M10 2a8 8 0 015.29 13.71l4.15 4.15-1.42 1.42-4.15-4.15A8 8 0 1110 2zm0 2a6 6 0 100 12 6 6 0 000-12z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: 12px center; background-size: 18px 18px;
-  transition: box-shadow var(--transition), transform 120ms, border-color 0.25s ease;
+  background-repeat: no-repeat;
+  background-position: 12px center;
+  background-size: 18px 18px;
+  transition: box-shadow 320ms cubic-bezier(.2,.9,.2,1), transform 120ms, border-color 0.25s ease;
+  display: inline-block;
+  box-sizing: border-box;
 }
 
-#unifiedSearch::placeholder { color: rgba(60,40,20,0.55); }
+/* Placeholder styling */
+#unifiedSearch::placeholder {
+  color: rgba(60,40,20,0.55);
+}
 
+/* focus styling */
 #unifiedSearch:focus {
-  outline:none; border-color: var(--gold-1);
+  outline:none;
+  border-color: #f8e7b0;
   box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 0 12px rgba(255,215,100,0.45);
   transform: translateY(-2px);
 }
 
 /* promo note small */
-.promo-note { color:var(--ink); opacity:0.9; font-weight:600; }
+.promo-note { color:#3b2a1a; opacity:0.9; font-weight:600; }
 
 /* ======================== GRID (4/3/2/1) ======================== */
 .books-grid {
-  display:grid; gap:22px; grid-template-columns: repeat(1,1fr);
-  align-items:start; position:relative; z-index:6; transition: all var(--transition);
+  display:grid;
+  gap:22px;
+  grid-template-columns: repeat(1,1fr);
+  align-items:start;
+  position:relative;
+  z-index:6;
+  transition: all 320ms cubic-bezier(.2,.9,.2,1);
 }
 @media (min-width:1200px){ .books-grid{ grid-template-columns: repeat(4,1fr); } }
 @media (min-width:900px) and (max-width:1199px){ .books-grid{ grid-template-columns: repeat(3,1fr); } }
@@ -169,15 +201,17 @@
 /* základ karty */
 .book-card { perspective:1200px; transition: transform 420ms ease, opacity 420ms ease; }
 .card-inner {
-  position:relative; z-index:10;
+  position:relative;
+  z-index:10;
   background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01));
-  border-radius: var(--card-radius);
+  border-radius: 12px;
   overflow: visible;
   box-shadow:
     0 22px 70px rgba(0,0,0,0.52),
     inset 0 6px 16px rgba(255,255,255,0.02);
-  transition: transform var(--transition), box-shadow var(--transition), filter var(--transition);
-  display:flex; flex-direction:column;
+  transition: transform 320ms cubic-bezier(.2,.9,.2,1), box-shadow 320ms cubic-bezier(.2,.9,.2,1), filter 320ms cubic-bezier(.2,.9,.2,1);
+  display:flex;
+  flex-direction:column;
   min-height:420px;
 }
 
@@ -188,10 +222,15 @@
 }
 .card-inner::after{
   /* subtle light sweep on hover via transition of opacity - requires JS toggle or hover */
-  content:""; position:absolute; inset:0; pointer-events:none;
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
   background: linear-gradient(120deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.0) 70%);
-  opacity:0; transition: opacity 420ms ease;
-  border-radius:inherit; z-index:11;
+  opacity:0;
+  transition: opacity 420ms ease;
+  border-radius:inherit;
+  z-index:11;
 }
 .card-inner:hover::after{ opacity:1; }
 
@@ -288,7 +327,7 @@
   padding: 14px 18px;
   border-radius: 6px 6px 0 0; /* horní hrany zaoblené, spodní rovné */
   box-shadow: 0 12px 36px rgba(0,0,0,0.45), inset 0 6px 14px rgba(255,255,255,0.05);
-  color: var(--muted);
+  color: #d9cdb1;
   backdrop-filter: blur(4px);
   position: relative;
   overflow: hidden;
@@ -314,7 +353,7 @@
 .book-title {
   margin: 0;
   font-size: 1.5rem;
-  color: var(--ink);
+  color: #3b2a1a;
   font-weight: 900;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -327,7 +366,7 @@
 }
 .book-author {
   margin: 0;
-  color: var(--gold-3);
+  color: #8b5a20;
   font-weight: 800;
   opacity: 0.97;
   font-size: 1.05rem;
@@ -336,7 +375,7 @@
 }
 .book-desc {
   margin: 0;
-  color: var(--ink);
+  color: #3b2a1a;
   opacity: 0.94;
   line-height: 1.6;
   font-size: 1.05rem;
@@ -344,7 +383,7 @@
   transition: color 0.3s ease;
 }
 .book-desc:hover {
-  color: var(--gold-1);
+  color: #f8e7b0;
 }
 
 /* subtle divider */
@@ -398,8 +437,8 @@
   text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 .btn-download {
-  background: linear-gradient(180deg, var(--gold-1), var(--gold-2));
-  color: var(--accent-dark);
+  background: linear-gradient(180deg, #f8e7b0, #cf9b3a);
+  color: #2b1608;
   font-weight: 900;
   box-shadow: 0 12px 36px rgba(255,215,120,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
   text-shadow: 0 1px 2px rgba(255,255,255,0.5);
@@ -415,27 +454,31 @@
 .btn-outline {
   background: transparent;
   border: 1px solid rgba(255,215,120,0.25);
-  color: var(--ink);
+  color: #3b2a1a;
   padding: 8px 12px;
   border-radius: 8px;
   transition: all 0.25s ease;
 }
 .btn-outline:hover {
   background: rgba(255,255,255,0.05);
-  border-color: var(--gold-2);
+  border-color: #cf9b3a;
 }
-
-
 
 /* ======================== MODAL ======================== */
 .book-modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(6,4,3,0.6); z-index:99999; padding:20px; }
 .book-modal[aria-hidden="false"]{ display:flex; }
 .modal-inner {
-  width:min(980px,96%); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.02));
-  border-radius:12px; padding:18px; box-shadow: 0 30px 120px rgba(0,0,0,0.75); display:flex; gap:18px; align-items:flex-start;
+  width:min(980px,96%);
+  background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.02));
+  border-radius:12px;
+  padding:18px;
+  box-shadow: 0 30px 120px rgba(0,0,0,0.75);
+  display:flex;
+  gap:18px;
+  align-items:flex-start;
 }
 .modal-inner img { width:320px; height:420px; object-fit:cover; border-radius:8px; box-shadow: 0 18px 60px rgba(0,0,0,0.6); }
-.modal-inner .modal-info { color:var(--ink); }
+.modal-inner .modal-info { color:#3b2a1a; }
 
 /* ======================== RESPONSIVE TWEAKS ======================== */
 @media (max-width:1100px){
@@ -457,7 +500,7 @@
 }
 
 /* ======================== MISC / ACCESSIBILITY ======================== */
-.no-books { padding:26px; color:var(--ink); background: rgba(255,255,255,0.02); border-radius:8px; text-align:center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
+.no-books { padding:26px; color:#3b2a1a; background: rgba(255,255,255,0.02); border-radius:8px; text-align:center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
 
 /* reduced motion */
 @media (prefers-reduced-motion: reduce){

@@ -1,224 +1,755 @@
-/* footer.css - moderní responsivní footer rozdělený na 4 sekce */
+/* =========================================================
+   footer.css — text tones refined: remove very-white shades,
+   warm cream tones and subtle heading accents
+   ========================================================= */
 
-/* Variábly pro rychlou úpravu */
-:root{
-  --footer-bg: #0f0c08;               /* tmavé pozadí */
-  --footer-panel: rgba(255,255,255,0.02);
-  --footer-text: #efe8db;
-  --footer-muted: rgba(239,232,219,0.72);
-  --footer-accent: #cf9b3a;           /* zlatý akcent */
-  --footer-accent-soft: #f8e7b0;
-  --footer-radius: 12px;
-  --footer-max-width: 1200px;
-}
-
-/* základ */
-.site-footer{
+/* ---------- Base / container (pozadí ponecháno) ---------- */
+.site-footer {
   position: relative;
-  background: var(--footer-bg);
-  color: var(--footer-text);
-  padding-top: 34px;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-  -webkit-font-smoothing:antialiased;
+  box-sizing: border-box;
+  background-image: url('/assets/paper-texture.png');
+  background-position: center;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  border-radius: 10px;
+  padding: 56px;
+  box-shadow:
+    0 30px 70px rgba(0,0,0,0.14),
+    inset 0 18px 40px rgba(0,0,0,0.13),
+    inset 0 0 120px rgba(0,0,0,0.06);
+  overflow: visible;
+  -webkit-font-smoothing: antialiased;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: #efe6cf; /* warm cream (replaces very-white) */
 }
 
-/* ten decorative overlay (pokud chceš jemný vignette nad background-em) */
-.footer-overlay{
-  position:absolute; inset:0; pointer-events:none;
-  background: radial-gradient(800px 220px at 10% 10%, rgba(255,244,230,0.02), transparent 15%),
-              radial-gradient(600px 180px at 88% 12%, rgba(207,155,60,0.01), transparent 16%);
-  z-index:0;
+/* jemný top/bottom vignette pro hlasitost (nezasahuje texturu) */
+.site-footer::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 10px;
+  pointer-events: none;
+  background:
+    radial-gradient(120px 80px at 6% 6%, rgba(0,0,0,0.22), rgba(0,0,0,0) 40%),
+    radial-gradient(120px 80px at 94% 94%, rgba(0,0,0,0.20), rgba(0,0,0,0) 40%),
+    linear-gradient(to top, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) top/100% 26px no-repeat,
+    linear-gradient(to bottom, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) bottom/100% 26px no-repeat,
+    linear-gradient(to left, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) left/26px 100% no-repeat,
+    linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) right/26px 100% no-repeat;
+  mix-blend-mode: multiply;
+}
+.site-footer::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 300px at 85% 10%, rgba(255,230,170,0.16), transparent 16%),
+    linear-gradient(180deg, rgba(255,255,255,0.015), transparent 10%),
+    radial-gradient(40px 26px at 96% 96%, rgba(0,0,0,0.16), rgba(0,0,0,0) 60%),
+    radial-gradient(30px 18px at 5% 5%, rgba(0,0,0,0.12), rgba(0,0,0,0) 60%);
+  background-repeat: no-repeat;
+  background-position: center, top, right bottom, left top;
+  background-size: 100% 60%, 100% 15%, 110px 80px, 90px 60px;
+  mix-blend-mode: screen;
+  filter: blur(4px) contrast(1.02);
 }
 
-/* hlavní obsah - center a grid 4 sloupců */
+/* ---------- Footer grid / dekorace pod panely ---------- */
 .footer-content{
   position:relative;
+  z-index:5;
+  max-width:1200px;
+  margin:0 auto;
+  padding:18px;
+  display:grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap:28px;
+  grid-auto-rows: 1fr;
+}
+
+/* drobné částice a teplé světlo - pod panely */
+.footer-content::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
   z-index:2;
-  max-width: var(--footer-max-width);
-  margin: 0 auto;
-  padding: 28px 18px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr; /* 4 columns */
-  gap: 22px;
-  align-items: start;
+  background:
+    radial-gradient(600px 240px at 12% 8%, rgba(248,230,176,0.012), transparent 28%),
+    radial-gradient(520px 200px at 88% 12%, rgba(207,155,60,0.008), transparent 30%);
+  mix-blend-mode: overlay;
+  opacity:0.66;
+}
+.footer-content::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:2;
+  background-image:
+    radial-gradient(circle at 6% 12%, rgba(255,255,255,0.03) 0 1px, transparent 2px),
+    radial-gradient(circle at 72% 24%, rgba(255,255,255,0.02) 0 1px, transparent 2px);
+  mix-blend-mode: screen;
+  opacity:0.45;
+  filter: blur(0.5px);
 }
 
-/* každá columna */
-.footer-col{
-  min-width: 0;
+/* ---------- Panels (karty) ---------- */
+.footer-col { min-width:0; }
+.footer-panel {
+  position:relative;
+  z-index:6;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  justify-content:flex-start;
+  padding:22px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 12px 26px rgba(0,0,0,0.18), inset 0 2px 0 rgba(255,245,230,0.02);
+  transition: transform .26s ease, box-shadow .26s ease;
+  background: linear-gradient(90deg, rgba(192, 138, 46, 0.25), rgba(192, 138, 46, 0.25));
+  border-top: 8px #c08a2e solid;
+  color: #efe6cf; /* warm cream for panel text */
 }
 
-/* logo blok */
-.footer-logo img{
+/* zdvih při hoveru (jen desktop) */
+.footer-panel:hover{
+  transform: translateY(-6px);
+  box-shadow: 0 28px 46px rgba(0,0,0,0.28), inset 0 3px 0 rgba(255,245,230,0.028);
+}
+
+/* Logo/brand */
+/* ---------- Logo + Title emphasis for footer ---------- */
+.footer-logo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* nebo center pokud chceš centrovat */
+  gap: 10px;
+  padding-top: 6px;
+  z-index: 8;
+}
+
+/* badge / plate behind the logo to separate it from paper */
+.footer-logo .logo-badge {
+  position: absolute;
+  left: 18px;             /* uprav podle layoutu */
+  top: -12px;
+  width: 86px;
+  height: 86px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255,250,234,0.98), rgba(245,220,140,0.06));
+  box-shadow: 0 18px 40px rgba(0,0,0,0.22), 0 6px 18px rgba(207,155,60,0.06) inset;
+  border: 1px solid rgba(212,175,55,0.18);
+  pointer-events: none;
+  transform: translateY(-6px);
+  z-index: -1;
+  filter: saturate(105%);
+}
+
+/* logo image — větší, ostřejší, s drop-shadow */
+.footer-logo img {
   display:block;
-  max-width: 220px;
-  height:auto;
-  margin-bottom:8px;
-  filter: drop-shadow(0 8px 20px rgba(0,0,0,0.6));
-}
-.footer-logo h2{
-  margin:6px 0 6px;
-  font-family: "Playfair Display", serif;
-  font-size:1.15rem;
-  color: var(--footer-text);
-}
-.footer-tagline{
-  margin:0;
-  color:var(--footer-muted);
-  font-weight:600;
-  line-height:1.4;
-}
-
-/* links */
-.footer-links h3,
-.footer-social h3,
-.footer-contact h3{
-  margin:0 0 10px 0;
-  color:var(--footer-text);
-  font-size:1rem;
-  font-weight:800;
-  letter-spacing: -0.01em;
-}
-.footer-links ul{
-  list-style:none;
-  padding:0;
-  margin:0;
-}
-.footer-links li{
-  margin:8px 0;
-}
-.footer-links a{
-  color: var(--footer-muted);
-  text-decoration:none;
-  transition: color .18s ease;
-}
-.footer-links a:hover,
-.footer-links a:focus{
-  color: var(--footer-accent-soft);
-  text-decoration: underline;
-}
-
-/* social icons */
-.social-icons{
-  display:flex;
-  gap:10px;
-  margin-bottom:12px;
-}
-.social-link{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:40px; height:40px;
-  border-radius:10px;
-  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
-  color: var(--footer-text);
-  text-decoration:none;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
-}
-.social-link i{ font-size:14px; } /* if FA used */
-
-/* hover */
-.social-link:hover, .social-link:focus{
+  max-width: 220px; /* zvětši pokud se to hodí */
+  height: auto;
+  margin: 0;
   transform: translateY(-4px);
-  box-shadow: 0 18px 46px rgba(0,0,0,0.55), 0 0 0 4px rgba(207,155,60,0.06);
-  background: linear-gradient(90deg, rgba(255,250,230,0.02), rgba(207,155,60,0.06));
-  color: #20160b;
+  filter: drop-shadow(0 10px 24px rgba(0,0,0,0.38));
+  z-index: 9;
 }
 
-/* subscribe form */
-.subscribe-form{ margin-top:4px; }
-.subscribe-row{
-  display:flex;
-  gap:8px;
-  align-items:center;
+/* Titulek — bohatý zlatý text s mírným obrysem a glow */
+.footer-logo h2 {
+  margin: 6px 0 0 0;
+  font-family: "Playfair Display", serif;
+  font-size: 1.6rem;                /* větší, můžeš dát 1.8rem pro desktop */
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.6px;
+  display: inline-block;
+  position: relative;
+  z-index: 9;
+
+  /* gradient fill */
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 45%, #ffdfa6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* jemný tmavý obrys pro čitelnost na textuře */
+  -webkit-text-stroke: 0.6px rgba(34,22,11,0.76);
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.03),  /* highlight */
+    0 6px 18px rgba(199,140,52,0.08), /* warm glow */
+    0 2px 6px rgba(0,0,0,0.35);       /* depth */
 }
-.subscribe-row input[type="email"]{
+
+/* drobný zlatý underline / accent (pseudo-element) */
+.footer-logo h2::after {
+  content: "";
+  display: block;
+  height: 6px;
+  width: 56px;
+  margin-top: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg,#cf9b3a 0%, #ffd699 100%);
+  box-shadow: 0 6px 18px rgba(207,155,60,0.12);
+  opacity: 0.95;
+}
+
+/* alternativně: pokud chceš více "emboss" efektu, přidej tento outline (není nutné) */
+.footer-logo h2.emboss {
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.05),  /* top highlight */
+    0 -1px 0 rgba(0,0,0,0.06),       /* inner dark */
+    0 6px 18px rgba(199,140,52,0.06);
+}
+
+/* responsive tweaks */
+@media (max-width: 780px) {
+  .footer-logo .logo-badge { left: 12px; top: -10px; width: 72px; height: 72px; border-radius: 12px; }
+  .footer-logo img { max-width: 180px; transform: translateY(-2px); }
+  .footer-logo h2 { font-size: 1.25rem; letter-spacing: 0.3px; }
+}
+
+/* zvýrazněná footer tagline — vylepšená varianta 3 */
+.footer-tagline {
+  display: inline-block;
+  max-width: 100%;
+  position: relative;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255,245,226,0.14), rgba(255,245,226,0.06));
+  backdrop-filter: blur(6px) saturate(120%);
+  border: 1px solid rgba(255,245,230,0.08);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.14), inset 0 1px 0 rgba(255,255,255,0.02);
+  color: rgba(34,22,11,0.96);           /* tmavá teplá hnědá pro dobrý kontrast */
+  font-weight: 700;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.03); /* jemné zvýraznění hran */
+  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
+  z-index: 7;
+}
+.footer-tagline span {
+  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
+  white-space: nowrap;
+}
+
+.footer-tagline a {
+  color: #a87921;
+  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
+  white-space: nowrap;
+}
+
+.footer-tagline a:hover {
+  color:#8f4e03;
+  text-decoration:underline;
+}
+
+/* zlatý akcent vlevo (dekorativní pásek) */
+.footer-tagline::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 64%;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #d9b069 0%, #cf9b3a 100%);
+  box-shadow: 0 6px 18px rgba(207,155,60,0.18);
+}
+
+/* drobná hvězdička vpravo jako detail (volitelné) */
+.footer-tagline::after {
+  content: "✦";
+  position: absolute;
+  right: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.78rem;
+  color: rgba(207,155,60,0.95);
+  opacity: 0.95;
+  text-shadow: 0 1px 6px rgba(207,155,60,0.12);
+}
+
+/* hover / focus efekt — jemné "vystoupení" a glow */
+.footer-tagline:hover,
+.footer-tagline:focus {
+  transform: translateY(-3px);
+  box-shadow: 0 14px 42px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.03);
+  filter: saturate(118%);
+}
+
+/* lehká pulzující animace (není nutná, vypni při reduced-motion) */
+@keyframes taglinePulse {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+  100% { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .footer-tagline[data-anim="soft"] { animation: taglinePulse 6s ease-in-out infinite; }
+}
+
+/* responzivní škálování */
+@media (max-width: 520px) {
+  .footer-tagline { font-size: 0.96rem; padding: 6px 10px; }
+  .footer-tagline::before { left: -10px; width:5px; }
+  .footer-tagline::after { right: -14px; font-size:0.7rem; }
+}
+
+/* Links */
+.footer-col.footer-links .footer-link {
+    color: rgba(34, 22, 11, 0.96);
+    font-weight: 700;
+    font-size: 1.02rem;
+    line-height: 1.45;
+    letter-spacing: 0.2px;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+    padding: 5% 10%;
+    text-align: left center;
+}
+.footer-col.footer-links .footer-link:hover {
+  color: #cf9b3a;
+  transform: translateX(8px);
+}
+
+/* ---------- Headings unified (ozvláštnění: jemný zlatý gradient) ---------- */
+.footer-section-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+/* --- Footer section headings — stejný styl jako hlavní H2 "Knihy od Autorov" --- */
+
+/* Nadpis sekce — bohatý zlatý gradient + jemný tmavý obrys (fallback) */
+/* Titulek — bohatý zlatý text s mírným obrysem a glow */
+.footer-section-title {
+  margin: 6px 0 0 0;
+  font-family: "Playfair Display", serif;
+  font-size: 1.6rem;                /* větší, můžeš dát 1.8rem pro desktop */
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: 0.6px;
+  display: inline-block;
+  position: relative;
+  z-index: 9;
+
+  /* gradient fill */
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 45%, #ffdfa6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* jemný tmavý obrys pro čitelnost na textuře */
+  -webkit-text-stroke: 0.6px rgba(34,22,11,0.76);
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.03),  /* highlight */
+    0 6px 18px rgba(199,140,52,0.08), /* warm glow */
+    0 2px 6px rgba(0,0,0,0.35);       /* depth */
+}
+
+/* drobný zlatý underline / accent (pseudo-element) */
+.footer-section-title::after {
+  content: "";
+  display: block;
+  height: 6px;
+  width: 56px;
+  margin-top: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg,#cf9b3a 0%, #ffd699 100%);
+  box-shadow: 0 6px 18px rgba(207,155,60,0.12);
+  opacity: 0.95;
+}
+
+/* alternativně: pokud chceš více "emboss" efektu, přidej tento outline (není nutné) */
+.footer-section-title.emboss {
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.05),  /* top highlight */
+    0 -1px 0 rgba(0,0,0,0.06),       /* inner dark */
+    0 6px 18px rgba(199,140,52,0.06);
+}
+
+/* responzivní úprava */
+@media (max-width: 520px) {
+  .footer-section-title { font-size: 1.0rem; letter-spacing: 0.2px; }
+  .footer-section-title::after { width: 40px; height: 3px; margin-top: 6px; }
+}
+
+/* ---------- Links / list ---------- */
+.footer-links-list { 
+  list-style: none; 
+  margin: 0; 
+  padding: 0; 
+  display: flex; 
+  flex-direction: column; 
+  gap: 4px; /* menší mezera, kompaktnější vzhled */
+}
+
+.footer-link-item { 
+  margin: 0; 
+}
+
+.footer-link {
+  display: flex; 
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: inherit; 
+  text-decoration: none;
+
+  /* jemný pergamenový gradient */
+  background: linear-gradient(to bottom, rgba(255,245,230,0.35), rgba(230,210,180,0.3));
+  
+  /* decentní embosovaný efekt */
+  box-shadow: 
+    inset 0 1px 1px rgba(255,255,255,0.4),   /* lehké světlo nahoře */
+    inset 0 -1px 1px rgba(0,0,0,0.12);       /* jemný stín dole */
+
+  transition: 
+    color .2s ease, 
+    background .25s ease,
+    transform .18s ease;
+    margin: 2% 2% 2% 2%;
+}
+
+.footer-link:hover {
+  color: #b88c2a; /* decentní zlatý tón */
+  background: linear-gradient(to bottom, rgba(255,250,235,0.6), rgba(240,220,190,0.5));
+  transform: translateY(-1px);
+}
+
+.footer-link .link-icon { 
+  width: 20px; 
+  height: 20px; 
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center; 
+  color: inherit; 
+}
+
+.footer-link .link-icon svg, 
+.footer-section-icon svg, 
+.company-header svg, 
+.social-icons svg {
+  margin: 10%; 
+  width: 100%; 
+  height: 100%; 
+  display: block; 
+  stroke: currentColor; 
+  fill: none; 
+  color: black; 
+}
+
+
+/* ---------- Contact form & inputs ---------- */
+.contact-form { display:flex; flex-direction:column; gap:10px; }
+.input-row { display:flex; gap:8px; align-items:center; }
+.input-icon { display:inline-flex; align-items:center; justify-content:center;}
+.input-field {
   flex:1;
   min-width:0;
-  padding:10px 12px;
-  border-radius:10px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.04);
-  color:var(--footer-text);
+  background: rgba(0,0,0,0.44);
+  border: 1px solid rgba(255,255,255,0.03);
+  color: #efe6cf; /* warm input text */
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight:700;
   outline:none;
-  font-weight:700;
+  transition: box-shadow .14s ease, transform .14s ease;
 }
-.subscribe-row input::placeholder{
-  color: var(--footer-muted);
-  opacity:0.9;
+.input-field::placeholder { color: #e6d9be; }
+.input-field:focus{
+  box-shadow: 0 6px 20px rgba(207,155,60,0.10);
+  transform: translateY(-2px);
 }
-.btn-subscribe{
-  padding:10px 14px;
-  border-radius:10px;
-  background: linear-gradient(90deg,var(--footer-accent-soft),var(--footer-accent));
-  color:#2b1f0f;
-  font-weight:900;
-  border: none;
+.textarea-field { min-height:94px; resize:vertical; padding-top:10px; }
+
+/* ---------- Buttons ---------- */
+.btn-send {
+  float: right;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 18px;
+  border-radius:12px;
+  border:none;
   cursor:pointer;
-  box-shadow: 0 10px 30px rgba(207,155,60,0.14);
-  transition: transform .14s ease, box-shadow .14s ease;
+  font-weight:900;
+  color:#22160b;
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 100%);
+  box-shadow: 0 12px 36px rgba(207,155,60,0.20);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
 }
-.btn-subscribe:hover, .btn-subscribe:focus{
+.btn-send:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 34px 70px rgba(207,155,60,0.28);
+}
+.btn-send:active { transform: translateY(-1px) scale(.995); }
+
+/* ---------- Subscribe form ---------- */
+.subscribe-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-top: 6px;
+}
+
+.subscribe-row .input-field {
+  flex: 1;
+  border-radius: 12px 0 0 12px; /* zaoblení vlevo */
+  border-right: none; /* spojení s tlačítkem */
+}
+
+.btn-subscribe {
+  border-radius: 0 12px 12px 0; /* zaoblení vpravo */
+  padding: 0 20px; /* výška = input */
+  font-weight: 900;
+  border: none;
+  cursor: pointer;
+  color: #22160b;
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 100%);
+  box-shadow: 0 12px 36px rgba(207,155,60,0.20);
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-subscribe:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 24px 50px rgba(207,155,60,0.28);
+}
+
+.btn-subscribe:active {
+  transform: translateY(0);
+}
+
+/* ---------- Subscribe row / note ---------- */
+.subscribe-note {
+  margin-top:10px;
+  color: #e0d1b9;
+  font-size:0.9rem;
+  line-height:1.35;
+}
+
+/* ---------- Socials row — gold-accented strip ---------- */
+.social-row {
+  position: relative;
+  margin-top: 5%;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, rgba(192,138,46,0.22), rgba(192,138,46,0.18));
+  border-radius: 10px;
+  border: 1px solid rgba(212,175,55,0.1);
+  box-shadow:
+    0 8px 22px rgba(0,0,0,0.12),
+    inset 0 2px 0 rgba(255,250,240,0.03);
+  overflow: visible;
+  z-index: 6;
+  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
+}
+
+/* top gold accent bar */
+.social-row::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: -8px;
+  height: 6px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #c08a2e 0%, #d9b069 50%, #ffd699 100%);
+  box-shadow: 0 6px 20px rgba(207,155,60,0.15), 0 2px 6px rgba(207,155,60,0.08) inset;
+  z-index: 7;
+  opacity: 0.95;
+}
+
+/* small decorative star */
+.social-row::after {
+  content: "✦";
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85rem;
+  color: rgba(207,155,60,0.9);
+  text-shadow: 0 2px 5px rgba(207,155,60,0.1);
+  z-index: 8;
+  pointer-events: none;
+}
+
+/* hover lift effect */
+.social-row:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 36px rgba(0,0,0,0.14),
+    inset 0 2px 0 rgba(255,250,240,0.04);
+  filter: saturate(110%);
+}
+
+/* icons inside (pokud máš <a> nebo <i> uvnitř) */
+.social-row a {
+  font-size: 1.2rem;
+  color: #a87921;
+  transition: color .2s ease, transform .2s ease;
+}
+
+.social-row a:hover {
+  color: #8f4e03;
+  transform: scale(1.12);
+}
+
+/* responsive */
+@media (max-width: 520px) {
+  .social-row { padding: 12px 10px; border-radius: 8px; }
+  .social-row::before { left: 8px; right: 8px; top: -6px; height: 5px; }
+  .social-row::after { left: 10px; font-size: 0.75rem; }
+}
+
+/* ---------- Social icons ---------- */
+.social-icons { display:flex; gap:5%; margin:5% 5% 5% 5%; }
+.social-link {
+  width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center;
+  border-radius:10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+  color: #efe6cf; /* warm icon color */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.38);
+  transition: transform .18s ease, background .18s ease, color .18s ease;
+}
+.social-link:hover{
+  transform: translateY(-6px) rotate(-6deg);
+  background: linear-gradient(90deg, rgba(255,250,230,0.95), #cf9b3a);
+  color:#22160b;
+}
+
+/* ---------- Footer bottom — enhanced, gold-accented strip ---------- */
+.footer-bottom {
+  position: relative;
+  margin-top: 26px;
+  padding: 18px 20px;
+  text-align: center;
+  color: rgba(34, 22, 11, 0.96);
+  font-weight: 700;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: linear-gradient(180deg, rgba(255,250,236,0.06), rgba(245,230,190,0.02));
+  border-radius: 10px;
+  border: 1px solid rgba(212,175,55,0.08);
+  box-shadow:
+    0 10px 28px rgba(0,0,0,0.12),
+    inset 0 2px 0 rgba(255,250,240,0.02);
+  overflow: visible;
+  z-index: 6;
+  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(180deg, rgba(192, 138, 46, 0.25), rgba(192, 138, 46, 0.25));
+}
+
+/* text fill: subtle gold gradient with dark stroke fallback for contrast */
+.footer-bottom .footer-text {
+  display: inline-block;
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 60%, #ffdca3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #efe6cf; /* fallback for browsers not supporting bg-clip */
+  -webkit-text-stroke: 0.4px rgba(34,22,11,0.85);
+  text-shadow: 0 4px 18px rgba(199,140,52,0.06), 0 2px 6px rgba(0,0,0,0.18);
+  vertical-align: middle;
+}
+
+/* top gold accent bar (thicker + glow) */
+.footer-bottom::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: -10px;
+  height: 8px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #c08a2e 0%, #d9b069 45%, #ffd699 100%);
+  box-shadow: 0 8px 30px rgba(207,155,60,0.18), 0 2px 8px rgba(207,155,60,0.06) inset;
+  z-index: 7;
+  filter: saturate(110%);
+  opacity: 0.98;
+}
+
+/* small decorative diamonds left/right */
+.footer-bottom::after {
+  content: "✦";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  color: rgba(207,155,60,0.95);
+  text-shadow: 0 2px 6px rgba(207,155,60,0.10);
+  z-index: 8;
+  pointer-events: none;
+}
+
+/* hover lift (subtle) */
+.footer-bottom:hover {
   transform: translateY(-3px);
-  box-shadow: 0 20px 50px rgba(207,155,60,0.20);
+  box-shadow:
+    0 22px 48px rgba(0,0,0,0.16),
+    inset 0 3px 0 rgba(255,250,240,0.03);
+  filter: saturate(112%);
 }
 
-/* subscribe note */
-.subscribe-note{
-  margin-top:8px;
-  color:var(--footer-muted);
-  font-size:0.88rem;
+.footer-bottom span {
+  color: #a87921;
+  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
+  white-space: nowrap;
 }
 
-/* contact block */
-.footer-contact .contact-line{
-  margin:8px 0;
-  color:var(--footer-muted);
-  font-weight:700;
-}
-.footer-contact a{
-  color:var(--footer-accent-soft);
-  text-decoration:none;
-}
-.footer-contact a:hover{ text-decoration:underline; }
-
-/* FOOTER BOTTOM (obdelníček) */
-.footer-bottom{
-  margin-top:18px;
-  background: rgba(0,0,0,0.06);
-  padding:14px 18px;
-  text-align:center;
-  color: var(--footer-muted);
-  border-top: 1px solid rgba(255,255,255,0.02);
-  box-shadow: inset 0 2px 0 rgba(255,255,255,0.02);
+.footer-bottom span:hover {
+  color:#8f4e03;
+  text-decoration:underline;
 }
 
-/* VISUALLY HIDDEN (accessible labels) */
+/* responsive: méně paddingu a menší top bar */
+@media (max-width: 520px) {
+  .footer-bottom { padding: 14px 12px; border-radius: 8px; }
+  .footer-bottom::before { left: 10px; right: 10px; top: -8px; height: 6px; }
+  .footer-bottom::after { right: 10px; font-size: 0.8rem; }
+  .footer-bottom .footer-text { font-size: 0.92rem; -webkit-text-stroke: 0.3px; }
+}
+
+/* reduced motion: vypnout animace/pohyb */
+@media (prefers-reduced-motion: reduce) {
+  .footer-bottom, .footer-bottom:hover { transition: none; transform: none; animation: none; }
+}
+
+/* ---------- Helpers ---------- */
 .visually-hidden{
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  padding: 0 !important;
-  margin: -1px !important;
-  overflow: hidden !important;
-  clip: rect(0 0 0 0) !important;
-  white-space: nowrap !important;
-  border: 0 !important;
+  position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0 0 0 0) !important; white-space:nowrap !important; border:0 !important;
 }
 
-/* RESPONSIVE: stack 4 -> 2 -> 1 */
+/* ---------- Responsive ---------- */
 @media (max-width:1000px){
-  .footer-content{ grid-template-columns: repeat(2, 1fr); gap:18px; padding: 20px; }
+  .footer-content { grid-template-columns: repeat(2, 1fr); gap:22px; }
+  .footer-panel::before { left:10px; right:10px; top:10px; }
 }
 @media (max-width:520px){
-  .footer-content{ grid-template-columns: 1fr; gap:14px; padding: 16px; }
-  .footer-logo img{ max-width:160px; }
-  .subscribe-row{ flex-direction:column; align-items:stretch; }
-  .btn-subscribe{ width:100%; }
+  .footer-content { grid-template-columns: 1fr; gap:18px; }
+  .footer-panel { padding:16px; }
+  .subscribe-row { flex-direction:column; align-items:stretch; }
+  .btn-send, .btn-subscribe { width:100%; }
 }
 
-/* reduced motion */
-@media (prefers-reduced-motion:reduce){
-  .social-link, .btn-subscribe, .footer-links a { transition: none !important; animation: none !important; }
+/* ---------- Animations (subtle) ---------- */
+@keyframes subtleGradientShift_ek1{ 0%{transform:translateY(0);} 50%{transform:translateY(-6px);} 100%{transform:translateY(0);} }
+@keyframes particlesDrift_ek1 { 0%{transform:translate(0,0);} 50%{transform:translate(8px,-10px);} 100%{transform:translate(0,0);} }
+
+/* ---------- Reduced motion fallback ---------- */
+@media (prefers-reduced-motion: reduce){
+  .footer-content::before, .footer-content::after, .footer-panel, .btn-send, .btn-subscribe, .social-link { transition:none !important; animation:none !important; transform:none !important; }
 }

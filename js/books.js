@@ -29,6 +29,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let permPos = 0;          // aktuální index v perm
   let lastLimit = detectLimit();
 
+  // search control
+  let debounceTimer = null;
+  let lastQuery = '';
+  let searchCounter = 0; // inkrementujeme pro každé nové hledání, abychom ignorovali staré odpovědi
+
   // fallback obrázok (uprav, ak chceš iné meno)
   const IMG_FALLBACK = '/books-img/books-imgFB.png';
 
@@ -136,9 +141,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const id = item.id ?? (item.nazov + '::' + idx);
       if (seenIds.has(id)) {
         // skip duplicates within this window
-        // but continue to advance permPos so we don't loop forever
-        // if we detect that we've cycled through full perm without adding, break
-        // (but since effectiveLimit <= poolItems.length, this should not happen)
         continue;
       }
       seenIds.add(id);
@@ -302,28 +304,53 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 180);
   });
 
-  // unified search: on Enter do server search (pause rotation)
-  unifiedInput?.addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
+  // Hide clearBtn initially (if exist)
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  // unified search: automatic on input (debounced). When empty -> resume rotation & previous content.
+  unifiedInput?.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
       const q = (unifiedInput.value || '').trim();
-      if (!q) return;
+      // avoid duplicate processing of same query
+      if (q === lastQuery) return;
+      lastQuery = q;
+
+      if (!q) {
+        // restore rotation mode
+        if (clearBtn) clearBtn.style.display = 'none';
+        rotationPaused = false;
+        const items = takeNextWindow(detectLimit());
+        if (items.length) renderBooks(items);
+        startRotation();
+        return;
+      }
+
+      // search mode
       rotationPaused = true;
       stopRotation();
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+
+      const thisSearch = ++searchCounter;
       const items = await fetchBooks(50, q); // search up to 50 results
+
+      // ignore if a newer search already started
+      if (thisSearch !== searchCounter) return;
+
       if (items.length) {
         renderBooks(shuffleArray(items).slice(0, Math.max(1, detectLimit())));
-        clearBtn.style.display = 'inline-block';
       } else {
         booksGrid.innerHTML = '<div class="no-books">Nenašli sa žiadne knihy.</div>';
-        clearBtn.style.display = 'inline-block';
       }
-    }
+    }, 420); // debounce ms
   });
 
-  // clear search -> resume rotation
+  // clear search -> resume rotation (still present as optional UI)
   clearBtn?.addEventListener('click', async () => {
+    if (!unifiedInput) return;
     unifiedInput.value = '';
-    clearBtn.style.display = 'none';
+    lastQuery = '';
+    if (clearBtn) clearBtn.style.display = 'none';
     rotationPaused = false;
     const items = takeNextWindow(detectLimit());
     if (items.length) renderBooks(items);

@@ -40,40 +40,48 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
     }
 
     try {
-        if ($q !== '') {
-            // search: match title, author, category
-            $term = '%' . mb_strtolower($q) . '%';
-            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                           a.meno AS autor, a.id AS author_id,
-                           c.nazov AS category_nazov, c.slug AS category_slug
-                    FROM books b
-                    LEFT JOIN authors a ON b.author_id = a.id
-                    LEFT JOIN categories c ON b.category_id = c.id
-                    WHERE COALESCE(b.is_active,1) = 1
-                      AND (LOWER(b.nazov) LIKE :t OR LOWER(a.meno) LIKE :t OR LOWER(c.nazov) LIKE :t)
-                    ORDER BY b.id DESC
-                    LIMIT :lim";
-            $stmt = $pdo->prepare($sql);
-            $stmt->bindValue(':t', $term, PDO::PARAM_STR);
-            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } else {
-            // random promo
-            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                           a.meno AS autor, a.id AS author_id,
-                           c.nazov AS category_nazov, c.slug AS category_slug
-                    FROM books b
-                    LEFT JOIN authors a ON b.author_id = a.id
-                    LEFT JOIN categories c ON b.category_id = c.id
-                    WHERE COALESCE(b.is_active,1) = 1
-                    ORDER BY RAND()
-                    LIMIT :lim";
-            $stmt = $pdo->prepare($sql);
-            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
+if ($q !== '') {
+    $term = '%' . $q . '%';
+    $coll = 'utf8mb4_unicode_ci';
+
+    $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+               a.meno AS autor, a.id AS author_id,
+               c.nazov AS category_nazov, c.slug AS category_slug
+        FROM books b
+        LEFT JOIN authors a ON b.author_id = a.id
+        LEFT JOIN categories c ON b.category_id = c.id
+        WHERE COALESCE(b.is_active,1) = 1
+          AND (
+               COALESCE(b.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
+            OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t
+            OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
+          )
+        ORDER BY b.id DESC
+        LIMIT {$limit}";   // <- přímo číslo
+
+$stmt = $pdo->prepare($sql);
+$stmt->bindValue(':t', '%' . $q . '%', PDO::PARAM_STR);
+$stmt->execute();
+$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} else {
+    // random promo (ponecháno beze změn)
+    $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+                   a.meno AS autor, a.id AS author_id,
+                   c.nazov AS category_nazov, c.slug AS category_slug
+            FROM books b
+            LEFT JOIN authors a ON b.author_id = a.id
+            LEFT JOIN categories c ON b.category_id = c.id
+            WHERE COALESCE(b.is_active,1) = 1
+            ORDER BY RAND()
+            LIMIT :lim";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+
 
         // uprava ciest (prispôsob si ak treba)
         $baseImg = '/books-img/';   // uprav podľa projektu
@@ -130,20 +138,20 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
   <div class="books-paper-wrap">
     <span class="books-grain-overlay" aria-hidden="true"></span>
     <span class="books-paper-edge" aria-hidden="true"></span>
+    
   <div class="books-container">
-    <div class="books-header">
-      <div class="books-header-left">
-        <h2 class="section-title">Vybrané <span>knihy</span></h2>
-        <div class="search-row">
-          <input id="unifiedSearch" type="search" placeholder="Zadaj žáner, názov alebo autora a stlač Enter" aria-label="Hľadaj">
-          <button id="clearSearch" class="btn btn-clear" type="button" title="Zrušiť hľadanie" style="display:none;">Zrušiť</button>
-        </div>
-      </div>
-
-      <div class="books-header-right">
-        <!--<p class="promo-note">Promo výber autorov a diel — obmedzený výber, pravidelne sa mení.</p>-->
+  <div class="books-header">
+    <div class="books-header-left">
+      <h2 class="section-title">Vybrané <span>knihy</span></h2>
+      <p class="section-subtitle">
+        Nechte se inspirovat naším aktuálním výběrem — každý den nový mix žánrů a autorů.
+      </p>
+      <div class="search-row">
+        <input id="unifiedSearch" type="search" placeholder="Zadaj žáner, názov alebo autora" aria-label="Hľadaj">
       </div>
     </div>
+  </div>
+  </div>
 
     <div id="booksGrid" class="books-grid">
       <?php if (empty($books)): ?>
