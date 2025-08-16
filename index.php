@@ -17,7 +17,6 @@
 
   // Kontaktná sekcia
 
-  include 'partials/top-books.php';
   include 'partials/featured-authors.php';
   include 'partials/support-impact.php';
 

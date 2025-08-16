@@ -88,51 +88,215 @@
   z-index: 5;
 }
 
-/* ======================== HEADER + SEARCH ======================== */
+/* ======================== HEADER + SEARCH — matched to TOPBOOKS style ======================== */
 .books-header {
-  display:flex;
-  justify-content:space-between;
-  gap:18px;
-  align-items:flex-start;
-  margin-bottom:18px;
-  flex-wrap:wrap;
-  position:relative;
-  z-index:6;
-  background: rgba(207,152,58,0.09);
-  border-left: 6px solid #c08a2e;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 6;
+
+  /* pergamenový / frosted base to match topbooks */
+  background: linear-gradient(180deg, rgba(255,247,232,0.14), rgba(255,245,226,0.06));
+  backdrop-filter: blur(6px) saturate(115%);
+  --webkit-backdrop-filter: blur(6px) saturate(115%);
   padding: 18px;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  border-radius: 12px;
+
+  /* subtle depth */
+  box-shadow:
+    0 8px 22px rgba(0,0,0,0.16),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+
+  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
+}
+.books-header-left {
+  margin-left: 2%;
+}
+
+/* decorative gold ribbon on the left (replaces border-left) */
+.books-header::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f8e6b0 0%, #d9b069 40%, #c9972e 100%);
+  box-shadow: 0 6px 16px rgba(207,155,60,0.16), inset 0 1px 0 rgba(255,255,255,0.18);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* small top gold bar (optional accent to tie to topbooks) */
+.books-header::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 6%;
+  right: 6%;
+  height: 6px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(90deg, #e3bb5f 0%, #cf9b3a 38%, #ffe89c 62%, #cfa84d 100%);
+  box-shadow: 0 4px 10px rgba(207,155,60,0.14);
+  z-index: 2;
+}
+
+/* hover / focus visual */
+.books-header:hover,
+.books-header:focus-within {
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 46px rgba(0,0,0,0.22),
+    0 0 14px rgba(207,155,60,0.18),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  filter: saturate(115%);
 }
 
 /* hlavní nadpis */
 .section-title {
-  font-size: 2.6rem;
+  font-family: "Playfair Display", serif;
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
   margin: 0 0 12px 0;
   font-weight: 800;
   color: #3e2a12;
-  text-shadow: 0 2px 0 rgba(255,255,255,0.12), 0 -2px 8px rgba(0,0,0,0.28);
-  -webkit-font-smoothing:antialiased;
+  line-height: 1.04;
+  -webkit-font-smoothing: antialiased;
+
+  /* subtle emboss for legibility */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.30),
+    0 2px 6px rgba(0,0,0,0.30);
+  z-index: 3;
 }
-.section-title span {
-  color: transparent;
-  background: linear-gradient(180deg,#fff4b0 0%,#ffe066 50%,#ffb84d 100%);
-  -webkit-background-clip:text;
-  background-clip:text;
-  font-weight:700;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.85));
+
+/* title + author styling */
+.section-title span{
+  margin:0;
+  font-size:2.6rem;
+  font-family:"Cinzel Decorative", serif;
+  text-transform:uppercase;
+  font-weight:900;
+  letter-spacing:1px;
+
+  /* základní zlatá výplň bez glow */
+  color:#d0a94a;
+
+  /* ostrý tmavý okraj = definice hran */
+  -webkit-text-stroke: 1px #57370f;
+
+  /* sharp shadows (blur=0) pro kontrast, ne rozmazání */
+  text-shadow:
+    1px 1px 0 #2f1b0b,   /* spodní tmavý rez */
+    -0.6px -0.6px 0 rgba(255,255,255,0.12); /* jemný horní odlesk */
+
+  /* zlepšení vykreslení písma */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  position: relative;
+  display: inline-block;
+}
+
+/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
+.section-title span::after{
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+
+  /* highlight pruh nahoře směrem dolů */
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.45) 8%,
+    rgba(255,255,255,0.06) 18%,
+    rgba(255,255,255,0) 30%);
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* lehký posun, aby highlight působil vyrytě, ne rozmazaně */
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+/* END title + author styling */
+
+/* responsive tweaks */
+@media (max-width: 768px) {
+  .books-header { padding: 14px; border-radius: 10px; }
+  .books-header::before { left: 10px; width: 6px; top: 10px; bottom: 10px; }
+  .books-header::after { left: 8%; right: 8%; height: 3px; top: -5px; }
+  .section-title { font-size: clamp(1.6rem, 5.5vw, 2.0rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .books-header { transition: none; transform: none; }
 }
 
 /* nový podnadpis — viac „zaujímavý“ text ako si žiadal */
 .section-subtitle {
-  margin: 0 0 10px 0;
-  color: #8b5a20;
-  font-size: 1.06rem;
-  font-weight: 600;
-  line-height: 1.35;
-  opacity: 0.95;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.06);
-  max-width: 68ch;
+  margin: 0;
+  /* inkoustová barva — hluboká, nikoliv „prahově“ světla */
+  color: #342515;
+  opacity: 0.96;
+
+  /* čitelnost a styl */
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+  font-family: Georgia, "Times New Roman", serif;
+
+  /* omezit šířku pro příjemnou čitelnost (44 znaků ~ ideální) */
+  max-width: 44ch;
+
+  /* ostré vykreslení písma — bez rozmazaných glows */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* lehké „inkoustové“ vykreslení bez blur */
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,      /* spodní tah pro kontrast (blur = 0) */
+    -0.6px -0.6px 0 rgba(255,255,255,0.02); /* jemný horní odlesk */
+
+  /* přechod pro hover / focus (jemný) */
+  transition: color 180ms ease, transform 150ms ease;
+  position: relative; /* pro případ dekorativních pseudo-elem */
+}
+
+/* bezpečnější hover: lehké zesvětlení a drobný „lift“ */
+.section-subtitle:hover,
+.section-subtitle:focus {
+  color: #4a341f; /* teplejší, kontrastní než blýskavá žlutá */
+  transform: translateY(-1px);
+  outline: none; /* pokud chceš, můžeš přidat fokus styl pro přístupnost */
+}
+
+/* volitelný drop-cap (první písmeno) — aktivuj jen pokud chceš starobylý vzhled */
+.section-subtitle.dropcap::first-letter {
+  float: left;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0 .6rem 0 0;
+  font-weight: 700;
+  color: #24150c;
+  -webkit-text-stroke: .6px rgba(0,0,0,0.35); /* definice hran */
+  text-transform: uppercase;
+  font-family: "Cinzel Decorative", Georgia, serif; /* ladí s titulkem */
+}
+
+/* pokud používáš interaktivní karty, zajisti i přístupnost — visible focus */
+.section-subtitle:focus-visible {
+  box-shadow: 0 0 0 3px rgba(200,170,80,0.12);
+  border-radius: 4px;
 }
 
 /* search row — zarovnáno vlevo aby vyhledávání mohlo expandovat */
@@ -184,12 +348,11 @@
 
 /* ======================== GRID (4/3/2/1) ======================== */
 .books-grid {
+  width: 100%;
   display:grid;
-  gap:22px;
   grid-template-columns: repeat(1,1fr);
   align-items:start;
   position:relative;
-  z-index:6;
   transition: all 320ms cubic-bezier(.2,.9,.2,1);
 }
 @media (min-width:1200px){ .books-grid{ grid-template-columns: repeat(4,1fr); } }
@@ -199,20 +362,32 @@
 
 /* ======================== KARTA KNIHY ======================== */
 /* základ karty */
-.book-card { perspective:1200px; transition: transform 420ms ease, opacity 420ms ease; }
+.book-card { margin-right: 10%; transition: transform 420ms ease, opacity 420ms ease; }
 .card-inner {
   position:relative;
   z-index:10;
   background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01));
   border-radius: 12px;
-  overflow: visible;
-  box-shadow:
-    0 22px 70px rgba(0,0,0,0.52),
-    inset 0 6px 16px rgba(255,255,255,0.02);
+  overflow: hidden;
   transition: transform 320ms cubic-bezier(.2,.9,.2,1), box-shadow 320ms cubic-bezier(.2,.9,.2,1), filter 320ms cubic-bezier(.2,.9,.2,1);
-  display:flex;
-  flex-direction:column;
-  min-height:420px;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  border: 4px solid rgba(255,255,255,0.08);
+  /* kožená textura – hnědé tóny s variací */
+  border-image: repeating-linear-gradient(
+    45deg,
+    #5a2a1a,
+    #5a2a1a 10px,
+    #442015 10px,
+    #442015 20px
+  ) 30 round;
+
+  /* lehký emboss efekt (zlatý vnitřní lesk) */
+  box-shadow:
+    inset 0 0 12px rgba(255,215,120,0.25), /* vnitřní záře */
+    inset 0 0 4px rgba(255,215,120,0.1),   /* jemné zlaté orámování */
+    0 6px 18px rgba(0,0,0,0.6);            /* vnější stín */
 }
 
 /* epic hover: strong lift + perspective tilt + light sweep */
@@ -235,8 +410,50 @@
 .card-inner:hover::after{ opacity:1; }
 
 /* meta badge */
-.card-meta { position:absolute; margin:12px; z-index:15; }
-.badge { background: rgba(0,0,0,0.48); padding:6px 10px; border-radius:999px; color:#fff; font-weight:800; }
+.card-meta {
+  position: absolute;
+  margin: 12px;
+  z-index: 15;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-weight: 800;
+  font-family: "Cinzel", serif; /* historický styl fontu */
+  color: #d4af37; /* zlatý text */
+  background: rgba(0,0,0,0.55); /* tmavé sklo */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+
+/* zlatý rámeček efekt */
+.badge::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  padding: 2px;
+  background: linear-gradient(45deg, #d4af37, #f7e98e, #b8860b);
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* jemný lesk při hover */
+.badge:hover {
+  color: #ffd700;
+  text-shadow: 0 0 6px rgba(255, 215, 0, 0.6);
+}
+/* END meta badge */
 
 /* EPIC BOOK CARD */
 .cover-wrap {
@@ -350,41 +567,182 @@
 }
 
 /* title + author styling */
-.book-title {
-  margin: 0;
-  font-size: 1.5rem;
-  color: #3b2a1a;
-  font-weight: 900;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  text-shadow: 0 2px 3px rgba(255,245,230,0.2), 0 6px 18px rgba(0,0,0,0.6), 0 0 16px rgba(255,215,120,0.4);
-  animation: titleFadeIn 1s ease forwards;
+.book-title{
+  margin:0;
+  font-size:2.2rem;
+  font-family:"Cinzel Decorative", serif;
+  text-transform:uppercase;
+  font-weight:900;
+  letter-spacing:1px;
+
+  /* základní zlatá výplň bez glow */
+  color:#d0a94a;
+
+  /* ostrý tmavý okraj = definice hran */
+  -webkit-text-stroke: 1px #57370f;
+
+  /* sharp shadows (blur=0) pro kontrast, ne rozmazání */
+  text-shadow:
+    1px 1px 0 #2f1b0b,   /* spodní tmavý rez */
+    -0.6px -0.6px 0 rgba(255,255,255,0.12); /* jemný horní odlesk */
+
+  /* zlepšení vykreslení písma */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  position: relative;
+  display: inline-block;
 }
-@keyframes titleFadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+
+/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
+.book-title::after{
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+
+  /* highlight pruh nahoře směrem dolů */
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.45) 8%,
+    rgba(255,255,255,0.06) 18%,
+    rgba(255,255,255,0) 30%);
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* lehký posun, aby highlight působil vyrytě, ne rozmazaně */
+  transform: translateY(-1px);
+  opacity: 0.95;
 }
-.book-author {
+
+/* END title + author styling */
+
+/* author — ostrý bronzový nápis */
+.book-author{
   margin: 0;
-  color: #8b5a20;
+  font-family: "Cinzel Decorative", serif;
   font-weight: 800;
-  opacity: 0.97;
-  font-size: 1.05rem;
+  /* velikost navázaná na titul (pokud používáš --book-title-size), fallback 1.05rem */
+  font-size: calc(var(--book-title-size, 2.2rem) * 0.48);
   letter-spacing: 0.4px;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 0 6px rgba(255,215,120,0.3);
+  display: inline-block;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* bronzový fill pomocí gradientu klipnutého do textu */
+  background: linear-gradient(180deg, #c08942 0%, #8b5a20 60%, #5b3614 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* tenký ostrý okraj pro definici hran */
+  -webkit-text-stroke: 0.6px #4a2d14;
+
+  /* sharp (bez blur) stíny pro kontrast */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.06),  /* jemný horní odlesk */
+    0 1px 0 rgba(0,0,0,0.55);        /* definující spodní tah */
+
+  opacity: 0.98;
+  transition: transform .18s ease, opacity .18s ease;
 }
+
+/* thin highlight jako pseudo-vrstva (netvoří blur) */
+.book-author::after{
+  content: attr(data-author);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* highlight pruh nahoře (velmi jemný) */
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.9) 0%,
+    rgba(255,255,255,0.28) 6%,
+    rgba(255,255,255,0.06) 14%,
+    rgba(255,255,255,0) 22%);
+
+  transform: translateY(-0.6px);
+  opacity: 0.85;
+  mix-blend-mode: overlay;
+}
+
+/* fallback pokud nechceš data-attribute — použij raději tento blok místo ::after */
+.book-author.no-data {
+  /* prostý bronz bez pseudo highlightu */
+  background: linear-gradient(180deg, #b97d36, #8b5a20);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+/* END author styling */
+
+/* book description — inkoustový, ostrý a čitelný */
 .book-desc {
   margin: 0;
-  color: #3b2a1a;
-  opacity: 0.94;
-  line-height: 1.6;
-  font-size: 1.05rem;
+  /* inkoustová barva — hluboká, nikoliv „prahově“ světla */
+  color: #342515;
+  opacity: 0.96;
+
+  /* čitelnost a styl */
   font-style: italic;
-  transition: color 0.3s ease;
+  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+  font-family: Georgia, "Times New Roman", serif;
+
+  /* omezit šířku pro příjemnou čitelnost (44 znaků ~ ideální) */
+  max-width: 44ch;
+
+  /* ostré vykreslení písma — bez rozmazaných glows */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* lehké „inkoustové“ vykreslení bez blur */
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,      /* spodní tah pro kontrast (blur = 0) */
+    -0.6px -0.6px 0 rgba(255,255,255,0.02); /* jemný horní odlesk */
+
+  /* přechod pro hover / focus (jemný) */
+  transition: color 180ms ease, transform 150ms ease;
+  position: relative; /* pro případ dekorativních pseudo-elem */
 }
-.book-desc:hover {
-  color: #f8e7b0;
+
+/* bezpečnější hover: lehké zesvětlení a drobný „lift“ */
+.book-desc:hover,
+.book-desc:focus {
+  color: #4a341f; /* teplejší, kontrastní než blýskavá žlutá */
+  transform: translateY(-1px);
+  outline: none; /* pokud chceš, můžeš přidat fokus styl pro přístupnost */
 }
+
+/* volitelný drop-cap (první písmeno) — aktivuj jen pokud chceš starobylý vzhled */
+.book-desc.dropcap::first-letter {
+  float: left;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0 .6rem 0 0;
+  font-weight: 700;
+  color: #24150c;
+  -webkit-text-stroke: .6px rgba(0,0,0,0.35); /* definice hran */
+  text-transform: uppercase;
+  font-family: "Cinzel Decorative", Georgia, serif; /* ladí s titulkem */
+}
+
+/* pokud používáš interaktivní karty, zajisti i přístupnost — visible focus */
+.book-desc:focus-visible {
+  box-shadow: 0 0 0 3px rgba(200,170,80,0.12);
+  border-radius: 4px;
+}
+
 
 /* subtle divider */
 .card-info .meta-row {
@@ -396,73 +754,232 @@
   font-size: 0.9rem;
 }
 
-/* ======================== ACTIONS (centered) ======================== */
-.card-actions, .book-actions {
+/* =========================
+   ACTIONS (centrované)
+   ========================= */
+.card-actions,
+.book-actions {
+  --gap: 16px;
+  --pad-vertical: 14px;
+  --pad-horizontal: 16px;
+  --btn-radius: 12px;
+  --btn-radius-primary: 16px;
+  --shimmer-name: epic-shimmer-081625;
+  --shadow-dark-lg: 0 18px 40px rgba(0,0,0,0.45);
+  --shadow-seal: 0 8px 18px rgba(164,95,36,0.35);
+  --gold-strong: rgba(207,155,58,0.14);
+
   display: flex;
   justify-content: center;
-  gap: 14px;
-  padding: 14px 16px 18px;
+  align-items: center;
+  gap: var(--gap);
+  padding: var(--pad-vertical) var(--pad-horizontal) 18px;
   z-index: 14;
+  perspective: 900px; /* jemný 3D efekt */
 }
 
-.btn {
-  padding: 12px 20px;
-  border-radius: 10px;
+/* =========================
+   BUTTON BASE (bez ikon)
+   ========================= */
+.card-actions .btn,
+.book-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  padding: 10px 18px;
+  border-radius: var(--btn-radius);
   font-weight: 800;
+  letter-spacing: .02em;
   cursor: pointer;
   border: none;
-  transition: all 0.25s ease;
+  background: linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.02));
+  color: inherit;
+  text-decoration: none;
   position: relative;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  backface-visibility: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform .28s cubic-bezier(.2,.9,.3,1),
+    box-shadow .28s ease,
+    filter .2s ease,
+    background .18s ease;
+  z-index: 0;
 }
-.btn::after {
+
+/* text inside button */
+.card-actions .btn .btn-text {
+  display: inline-block;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* anchors behave like buttons visually */
+.card-actions a.btn { display: inline-flex; align-items: center; justify-content: center; }
+
+/* =========================
+   SHIMMER (pseudo ::after)
+   unique keyframe name used from var for clarity
+   ========================= */
+.card-actions .btn::after {
   content: "";
   position: absolute;
-  top: 0;
-  left: -50%;
-  width: 50%;
-  height: 100%;
-  background: linear-gradient(120deg, rgba(255,255,255,0.3) 0%, transparent 80%);
-  transform: skewX(-20deg);
-  transition: transform 0.5s ease;
-}
-.btn:hover::after {
-  transform: translateX(300%) skewX(-20deg);
+  top: -10%;
+  left: -60%;
+  width: 60%;
+  height: 120%;
+  transform: skewX(-18deg);
+  background: linear-gradient(120deg,
+    rgba(255,255,255,0.28) 0%,
+    rgba(255,255,255,0.06) 40%,
+    transparent 70%);
+  pointer-events: none;
+  opacity: .85;
+  z-index: 10;
+  transition: transform .6s cubic-bezier(.2,.9,.3,1), opacity .3s ease;
+  animation: epic-shimmer-081625 2.6s linear infinite paused;
 }
 
-.btn-view {
-  background: linear-gradient(180deg, #2a1a10 0%, #1c1008 100%);
-  color: #fff;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+/* shimmer active on hover/focus */
+.card-actions .btn:hover::after,
+.card-actions .btn:focus::after {
+  transform: translateX(260%) skewX(-18deg);
+  opacity: .95;
 }
-.btn-download {
-  background: linear-gradient(180deg, #f8e7b0, #cf9b3a);
+
+/* keyframes */
+@keyframes epic-shimmer-081625 {
+  0%   { transform: translateX(-100%) skewX(-18deg); opacity: 0; }
+  10%  { opacity: .6; }
+  50%  { transform: translateX(30%) skewX(-18deg); opacity: .9; }
+  100% { transform: translateX(300%) skewX(-18deg); opacity: 0; }
+}
+
+/* run shimmer only on devices with hover & fine pointer */
+@media (hover: hover) and (pointer: fine) {
+  .card-actions .btn::after { animation-play-state: running; }
+}
+@media (hover: none) {
+  .card-actions .btn::after { animation-play-state: paused; opacity: 0; display: none; }
+}
+
+/* =========================
+   INTERACTIONS: FOCUS / HOVER / ACTIVE
+   ========================= */
+.card-actions .btn:focus {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 4px var(--gold-strong), 0 10px 30px rgba(0,0,0,0.45);
+  transform: translateY(-2px) scale(1.02);
+  z-index: 20;
+}
+
+.card-actions .btn:hover {
+  transform: translateY(-6px) scale(1.03);
+  filter: brightness(1.06);
+  z-index: 20;
+}
+
+.card-actions .btn:active {
+  transform: translateY(-2px) scale(.995);
+  transition-duration: .12s;
+}
+
+/* mobile: omez transform a schovej shimmer */
+@media (hover: none) {
+  .card-actions .btn:hover,
+  .card-actions .btn:focus { transform: none; box-shadow: 0 6px 18px rgba(0,0,0,0.2); }
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .card-actions .btn,
+  .card-actions .btn::after { transition: none; animation: none !important; }
+}
+
+/* =========================
+   SPECIFIC BUTTON STYLES
+   (VIEW = tmavé; DOWNLOAD = vosková pečeť)
+   ========================= */
+
+/* VIEW / Prelistovať (dark booky) */
+.card-actions .btn-view,
+.card-actions .btn-outline.view-fallback {
+  background: linear-gradient(180deg, #2a1a10 0%, #150b06 100%);
+  color: #f7ecd8;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+  border: 1px solid rgba(255,215,120,0.06);
+  border-radius: var(--btn-radius);
+}
+.card-actions .btn-view:hover {
+  box-shadow: 0 24px 64px rgba(0,0,0,0.75), 0 6px 24px rgba(207,155,58,0.07);
+}
+
+/* DOWNLOAD / Zvitok (wax-seal look) */
+.card-actions .btn-download,
+.card-actions .btn-primary.download-fallback {
+  background: linear-gradient(180deg, #f8e7b0 0%, #cf9b3a 100%);
   color: #2b1608;
   font-weight: 900;
-  box-shadow: 0 12px 36px rgba(255,215,120,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
-  text-shadow: 0 1px 2px rgba(255,255,255,0.5);
+  box-shadow: 0 18px 40px rgba(199,123,30,0.25), inset 0 1px 0 rgba(255,255,255,0.14);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.45);
+  border-radius: var(--btn-radius-primary);
 }
 
-.btn:hover {
-  transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.7);
-  filter: brightness(1.1);
+/* wax seal pseudo-element (pečeť) */
+.card-actions .btn-download::before {
+  display: none !important;
 }
 
-/* small secondary action (outline) */
-.btn-outline {
-  background: transparent;
-  border: 1px solid rgba(255,215,120,0.25);
-  color: #3b2a1a;
-  padding: 8px 12px;
-  border-radius: 8px;
-  transition: all 0.25s ease;
+/* subtle press effect on the seal */
+.card-actions .btn-download:active::before {
+  transform: translateY(-50%) rotate(-2deg) scale(.98);
+  box-shadow: 0 6px 14px rgba(164,95,36,0.34);
 }
-.btn-outline:hover {
-  background: rgba(255,255,255,0.05);
-  border-color: #cf9b3a;
+
+/* spacing if icon exists */
+.card-actions .btn.has-icon { gap: .6rem; }
+.card-actions .btn.has-icon .btn-text { margin-left: .35rem; }
+
+/* =========================
+   FALLBACK MAPPING (legacy classes)
+   ========================= */
+.card-actions .btn-primary {
+  /* fallback to download visual if .btn-download not present */
+  background: linear-gradient(180deg, #f8e7b0 0%, #cf9b3a 100%);
+  color: #2b1608;
+  font-weight: 900;
+  box-shadow: 0 18px 40px rgba(199,123,30,0.25);
+  border-radius: var(--btn-radius-primary);
+  padding-left: 46px;
 }
+.card-actions .btn-outline {
+  /* fallback to view visual if .btn-view not present */
+  background: linear-gradient(180deg, #2a1a10 0%, #150b06 100%);
+  color: #f7ecd8;
+  border: 1px solid rgba(255,215,120,0.06);
+  border-radius: var(--btn-radius);
+}
+
+/* =========================
+   DISABLED / A11Y / TOUCH
+   ========================= */
+.card-actions .btn[disabled],
+.card-actions .btn.disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  pointer-events: none;
+}
+
+/* contrast utilities */
+.card-actions .btn-view { color: #f7ecd8; }
+.card-actions .btn-download { color: #2b1608; }
+
 
 /* ======================== MODAL ======================== */
 .book-modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(6,4,3,0.6); z-index:99999; padding:20px; }

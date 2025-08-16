@@ -92,21 +92,116 @@
   z-index: 5;
 }
 
-/* ======================== HEADER ======================== */
+/* ======================== AUTHORS HEADER — PŘESNĚ PODLE TOPBOOKS VZORU (BEZ SPAN) ======================== */
 .fauthors-head {
-  text-align: center;
+  position: relative;
   z-index: 6;
-  margin-bottom: 16px;
+  isolation: isolate;
+  max-width: 980px;
+  margin: 0 auto 20px;
+  padding: 22px clamp(18px, 2.5vw, 32px);
+  text-align: center;
+
+  /* pozadí + jemný glass/pergamen efekt */
+  background: linear-gradient(180deg, rgba(255,247,232,0.18), rgba(255,245,226,0.10));
+  backdrop-filter: blur(6px) saturate(115%);
+  -webkit-backdrop-filter: blur(6px) saturate(115%);
+  border: 1px solid rgba(255,245,230,0.08);
+  border-radius: 14px;
+
+  /* hloubka: vnitřní highlight + vnější stín */
+  box-shadow:
+    0 10px 28px rgba(0,0,0,0.20),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+
+  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
 }
+
+/* Zlatá linka nahoře (dekorativní pás přes box) */
+.fauthors-head::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 5%;
+  right: 5%;
+  height: 6px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 40%, #fbe9a1 60%, #cfa84d 100%);
+  box-shadow: 0 3px 8px rgba(207,155,60,0.25);
+  z-index: 2;
+}
+
+/* Jemná dekorace: dvě hvězdičky vycentrovaně (dekorativní detail) */
+.fauthors-head::after {
+  content: "✦\00a0✦";
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(207,155,60,0.92);
+  text-shadow: 0 1px 4px rgba(207,155,60,0.18);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Hover efekt pro celý box (shodný se stylem topbooks) */
+.fauthors-head:hover,
+.fauthors-head:focus-within {
+  transform: translateY(-2px);
+  box-shadow:
+    0 16px 46px rgba(0,0,0,0.24),
+    0 0 14px rgba(207,155,60,0.32),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+  filter: saturate(118%);
+}
+
+/* Nadpis — typografie stejná jako v topbooks */
 .fauthors-title {
   font-family: "Playfair Display", serif;
-  font-size: 2.2rem;
-  color: var(--fa-ink);
-  font-weight: 800;
+  font-size: clamp(1.9rem, 2.6vw, 2.4rem);
+  line-height: 1.15;
+  margin: 0 0 0.5rem;
+  color: #3B2A1A; /* tmavá teplá hnědá */
+  letter-spacing: .3px;
+  position: relative;
+  z-index: 4;
+
+  /* emboss / glow pro eleganci a čitelnost */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.40),
+    0 2px 3px rgba(0,0,0,0.28),
+    0 0 8px rgba(255,224,170,0.10);
 }
+
+/* Podnadpis — stejný styl jako v topbooks-epic-sub */
 .fauthors-sub {
-  color: rgba(59,42,26,0.86);
-  font-weight: 700;
+  font-family: "Merriweather", serif;
+  font-weight: 600;
+  font-size: clamp(0.98rem, 1.25vw, 1.05rem);
+  font-style: italic;
+  line-height: 1.6;
+  max-width: 720px;
+  margin: 0.25rem auto 0;
+  color: rgba(59,42,26,0.92);
+  z-index: 4;
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.20),
+    0 0 4px rgba(255,248,230,0.18);
+}
+
+/* Responzivní drobnosti */
+@media (max-width: 768px) {
+  .fauthors-head { padding: 18px; border-radius: 12px; }
+  .fauthors-title { font-size: clamp(1.7rem, 4.5vw, 2.0rem); }
+  .fauthors-sub { font-size: 0.98rem; line-height: 1.55; }
+}
+
+@media (max-width: 480px) {
+  .fauthors-head { padding: 14px; border-radius: 10px; }
+  .fauthors-title { font-size: 1.6rem; }
+  .fauthors-sub { font-size: 0.92rem; }
 }
 
 /* ======================== GRID ======================== */

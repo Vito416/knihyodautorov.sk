@@ -135,34 +135,32 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
 <script src="/js/books.js" defer></script>
 
 <section id="booksPromo" class="books-section">
-  <div class="books-paper-wrap">
+<div class="books-paper-wrap">
     <span class="books-grain-overlay" aria-hidden="true"></span>
     <span class="books-paper-edge" aria-hidden="true"></span>
-    
   <div class="books-container">
-  <div class="books-header">
-    <div class="books-header-left">
+    <div class="books-header">
+      <div class="books-header-left">
       <h2 class="section-title">Vybrané <span>knihy</span></h2>
       <p class="section-subtitle">
         Nechte se inspirovat naším aktuálním výběrem — každý den nový mix žánrů a autorů.
       </p>
-      <div class="search-row">
+        <div class="search-row">
         <input id="unifiedSearch" type="search" placeholder="Zadaj žáner, názov alebo autora" aria-label="Hľadaj">
+        </div>
       </div>
     </div>
-  </div>
-  </div>
 
     <div id="booksGrid" class="books-grid">
       <?php if (empty($books)): ?>
-        <div class="no-books">Zatiaľ neboli pridané žiadne knihy.</div>
+      <div class="no-books">Zatiaľ neboli pridané žiadne knihy.</div>
       <?php else: foreach ($books as $b):
         $cover = !empty($b['obrazok']) ? '/books-img/' . ltrim($b['obrazok'], '/') : '/assets/placeholder.jpg';
         $pdf   = !empty($b['pdf_file']) ? '/books-pdf/' . ltrim($b['pdf_file'], '/') : '';
         $catSlug = !empty($b['category_slug']) ? $b['category_slug'] : 'uncategorized';
         $authorTag = 'author-' . ((int)($b['author_id'] ?? 0));
       ?>
-      <article class="book-card" tabindex="0" data-category="<?= h($catSlug) ?>" data-author="<?= h($authorTag) ?>" data-title="<?= h(mb_strtolower($b['nazov'])) ?>">
+      <div class="book-card" tabindex="0" data-category="<?= h($catSlug) ?>" data-author="<?= h($authorTag) ?>" data-title="<?= h(mb_strtolower($b['nazov'])) ?>">
         <div class="card-inner">
 
           <?php if (!empty($b['category_nazov'])): ?><div class="card-meta"><span class="badge"><?= h($b['category_nazov']) ?></span></div><?php endif; ?>
@@ -172,24 +170,32 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
 
           </div>
           <div class="card-info">
-            <h3 class="book-title"><?= h($b['nazov']) ?></h3>
+            <h1 class="book-title"><?= h($b['nazov']) ?></h1>
             <p class="book-author"><?= h($b['autor'] ?? 'Neznámy autor') ?></p>
             <p class="book-desc"><?= h(mb_strimwidth($b['popis'] ?? '', 0, 160, '...')) ?></p>
           </div>
           <div class="card-actions">
-            <button class="btn btn-outline open-detail" type="button"
-                    data-title="<?= h($b['nazov']) ?>" data-author="<?= h($b['autor']) ?>"
-                    data-desc="<?= h($b['popis']) ?>" data-cover="<?= h($cover) ?>" data-pdf="<?= h($pdf) ?>">
-              Zobraziť
+          <!-- Zobraziť -->
+            <button class="btn btn-view open-detail" type="button"
+            aria-label="Zobraziť knihu <?= h($b['nazov']) ?>"
+            data-title="<?= h($b['nazov']) ?>" data-author="<?= h($b['autor']) ?>"
+            data-desc="<?= h($b['popis']) ?>" data-cover="<?= h($cover) ?>" data-pdf="<?= h($pdf) ?>">
+            <span class="btn-text">Zobraziť</span>
             </button>
-            <?php if (!empty($pdf)): ?><a class="btn btn-primary" href="<?= h($pdf) ?>" target="_blank" rel="noopener">Stiahnuť</a><?php endif; ?>
+
+           <!-- Stiahnuť (pokud existuje PDF) -->
+            <?php if (!empty($pdf)): ?>
+              <a class="btn btn-download" href="<?= h($pdf) ?>" target="_blank" rel="noopener noreferrer" download="<?= rawurlencode($b['nazov']) ?>.pdf" aria-label="Stiahnuť <?= h($b['nazov']) ?>">
+              <span class="btn-text">Stiahnuť</span>
+              </a>
+            <?php endif; ?>
           </div>
         </div>
-      </article>
+      </div>
       <?php endforeach; endif; ?>
     </div>
   </div>
-  </div>
+</div>
 </section>
 
 <!-- modal detail -->

@@ -67,104 +67,83 @@
   box-shadow: inset 0 6px 0 rgba(255,245,230,0.06), inset 0 -8px 18px rgba(0,0,0,0.08);
 }
 
-/* container + header */
-.hiw-container{ position:relative; z-index:6; }
-.hiw-head{ text-align:center; margin-bottom:18px; }
-.hiw-title{
-  font-family:"Playfair Display",serif;
-  font-size:2.6rem;
-  color:#3b2a1a;
-  margin:0 0 8px;
-  font-weight:900;
-  letter-spacing: -0.02em;
-  line-height:1.02;
-  text-rendering:optimizeLegibility;
-  position:relative;
-}
-.hiw-title::after{
-  content:"";
-  display:block; height:6px; width:68px; margin:10px auto 0;
-  border-radius:4px;
-  background: linear-gradient(90deg,#f8e7b0,#cf9b3a);
-  box-shadow: 0 6px 18px rgba(207,155,60,0.14);
-  opacity:0.95;
-}
-.hiw-sub{
-  margin:0; color:rgba(59,42,26,0.86);
-  font-weight:700; max-width:780px;
-  margin-left:auto; margin-right:auto;
-}
+/* ===== HOW IT WORKS steps container — matched to TOPBOOKS style ===== */
 
-/* CTA */
-.hiw-cta-wrap{ margin-top:14px; display:flex; justify-content:center; }
-.hiw-cta{
-  display:inline-block;
-  padding:14px 28px;
-  border-radius:16px;
-  font-weight:900;
-  text-decoration:none;
-  color:#2b1f0f;
-  background: linear-gradient(90deg,#f8e7b0,#cf9b3a);
-  box-shadow:
-    0 12px 40px rgba(207,155,60,0.20),
-    0 2px 0 rgba(255,255,255,0.06) inset;
-  position:relative;
-  overflow:visible;
-  transform:translateZ(0);
-  transition: transform .18s ease, box-shadow .18s ease;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.12);
-}
-.hiw-cta::before{
-  content:"";
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%);
-  width:140%; height:140%; border-radius:22px; z-index:-1;
-  background: radial-gradient(ellipse at center, rgba(248,231,176,0.18), transparent 35%);
-  filter: blur(10px); opacity:0.9; transition: opacity .18s ease;
-}
-.hiw-cta:hover{
-  transform:translateY(-6px) scale(1.02);
-  box-shadow: 0 30px 80px rgba(207,155,60,0.26);
-}
-@media (prefers-reduced-motion:reduce){
-  .hiw-cta, .hiw-cta::before { transition:none !important; animation:none !important; }
-}
-
-/* ===== HOW IT WORKS steps container ===== */
 .hiw-steps {
   display: grid;
-  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, minmax(220px, 1fr)); /* desktop 4 sloupce */
   gap: 22px;
-  margin-top: 22px;
-  padding: 34px;
+  padding: 0 1% 1% 1%;
   border-radius: 18px;
   position: relative;
   overflow: visible;
-  background: linear-gradient(90deg, rgba(192, 138, 46, 0.18) 0%, rgba(255, 230, 180, 0.25) 50%, rgba(192, 138, 46, 0.18) 100%);
-  border-top: 6px solid #c08a2e;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  isolation: isolate;
+  z-index: 6;
+
+  /* parchment base + subtle centered band (as a soft background layer) */
+  background:
+    linear-gradient(90deg, rgba(255,247,232,0.06), rgba(255,245,226,0.04)),
+    linear-gradient(90deg, transparent 0%, rgba(20,12,6,0.02) 20%, rgba(185,135,50,0.06) 48%, transparent 100%);
+  background-blend-mode: normal;
+  /* odstraněn hrubý border-top — používáme dekorativní pás přes pseudo-element */
+  box-shadow:
+    0 8px 22px rgba(0,0,0,0.16),
+    inset 0 1px 0 rgba(255,255,255,0.04);
 }
+
+/* decorative gold strip across the top (replaces border-top) */
+.hiw-steps::before {
+  content: "";
+  position: absolute;
+  top: -8px;
+  left: 6%;
+  right: 6%;
+  height: 8px;
+  border-radius: 6px 6px 0 0;
+  background: linear-gradient(90deg, #e3bb5f 0%, #cf9b3a 38%, #ffe89c 62%, #cfa84d 100%);
+  box-shadow: 0 4px 12px rgba(207,155,60,0.24);
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* parchment grain overlay (low-opacity texture) */
 .hiw-steps::after {
   content: "";
   position: absolute;
   inset: 0;
-  background-image: url('/images/parchment-grain.png');
-  background-size: 700px 700px;
-  opacity: 0.03;
-  pointer-events: none;
-  z-index: 1;
-}
-.hiw-steps::before {
-  content: "";
-  position: absolute;
-  left: 6%; right: 6%;
-  top: 52%; height: 2px;
-  background: linear-gradient(90deg, transparent 0%, rgba(20,12,6,0.03) 20%, rgba(185,135,50,0.10) 48%, transparent 100%);
-  transform: translateY(-50%);
-  pointer-events: none;
   z-index: 2;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(0,0,0,0.02) 0 1px, transparent 1px),
+    radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0 1px, transparent 1px);
+  background-size: 3px 3px, 4px 4px;
+  opacity: var(--hiw-grain-opacity, 0.04);
 }
-@media (max-width:1200px) { .hiw-steps::before { display: none; } }
+
+/* subtle horizontal divider (visual guide between rows) — gentle, hidden on narrower screens 
+.hiw-steps ._internal-divider-faux {
+  /* This rule is a pure visual fallback in case layout needs an inner divider via element;
+     if you don't want to add an element, the center-band background above already provides the effect. 
+}*/
+
+/* responsive breakpoints: 2 columns and single column fallbacks */
+@media (max-width: 1100px) {
+  .hiw-steps { grid-template-columns: repeat(2, minmax(220px, 1fr)); padding: 28px; border-radius: 16px; }
+  .hiw-steps::before { left: 8%; right: 8%; }
+}
+
+@media (max-width: 520px) {
+  .hiw-steps { grid-template-columns: 1fr; padding: 20px; border-radius: 12px; gap: 14px; }
+  .hiw-steps::before { left: 10%; right: 10%; height: 5px; top: -6px; }
+  .hiw-steps::after { opacity: 0.04; background-size: 420px 420px; }
+}
+
+/* prefers-reduced-motion: keep things static */
+@media (prefers-reduced-motion: reduce) {
+  .hiw-steps { transition: none; }
+  .hiw-steps::before,
+  .hiw-steps::after { transition: none; }
+}
 
 /* ===== Per-card unified ===== */
 .hiw-step {
@@ -174,12 +153,10 @@
   border-radius: 14px;
   overflow: visible;
   text-align: center;
-  border: 1px solid rgba(80,60,34,0.06);
-  border-left: 6px solid #c08a2e;
   background:
     linear-gradient(90deg, rgba(212,160,23,0.12) 0%, rgba(212,160,23,0.06) 30%, transparent 70%),
     linear-gradient(180deg, rgba(255,255,255,0.025), rgba(0,0,0,0.03)),
-    linear-gradient(180deg, #efe7c8 0%, #e7d29a 100%);
+    linear-gradient(180deg, #e7d29a 10%, #e7d29a 5%);
   box-shadow:
     0 28px 60px rgba(18,12,6,0.14),
     inset 0 -12px 28px rgba(230,200,120,0.03);
@@ -201,12 +178,15 @@
 .hiw-step::before {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  left: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f8e6b0 0%, #d9b069 40%, #c9972e 100%);
+  box-shadow: 0 6px 16px rgba(207,155,60,0.16), inset 0 1px 0 rgba(255,255,255,0.18);
   z-index: 2;
   pointer-events: none;
-  background: radial-gradient(280px 100px at 10% 18%, rgba(255,245,210,0.04), transparent 25%);
-  mix-blend-mode: screen;
 }
 .hiw-step:hover {
   transform: translateY(-8px);
@@ -227,7 +207,7 @@
   width: 76px;
   height: 76px;
   margin: 0 auto 14px;
-  border-radius: 50%;
+  border-radius: 40%;
   overflow: hidden;                /* ✅ klíčové pro ořez pseudo-elementů */
   display: flex;
   align-items: center;
@@ -241,6 +221,11 @@
     0 0 26px rgba(212,160,23,0.08),
     inset 0 6px 12px rgba(255,245,210,0.28);
   animation: icon-pulse-v3 6s ease-in-out infinite, icon-tilt-v3 10s ease-in-out infinite;
+}
+.hiw-step-icon svg {
+  width: 60%;
+  height: 60%;
+  overflow: visible; /* zajistí, že SVG se nevystřihne */
 }
 .hiw-step-icon::after {
   content: "";
@@ -292,7 +277,7 @@
 
 /* TEXT */
 .hiw-step-text{
-  margin:0; color:rgba(59,42,26,0.92);
+  margin-left:5%; color:rgba(59,42,26,0.92);
   line-height:1.4; font-weight:600;
   font-size:0.96rem;
 }
