@@ -23,7 +23,7 @@
   position: relative;
   background-image: url('../assets/paper-texture.png');
   background-position: center;
-  background-size: cover;
+  background-size: 100% 100%;
   background-repeat: no-repeat;
   border-radius: 10px;
   padding: 56px;
@@ -115,50 +115,121 @@
   color: var(--ink);
 }
 
-/* TITULEK - odstraněn translateZ aby písmo bylo ostřejší */
+/* TITULEK - přepracováno pro zlatý dekorativní styl */
 .about-title {
-  font-size: 3rem;
+  font-family: "Playfair Display", serif;
+  font-size: clamp(1.8rem, 3.6vw, 3rem);
   margin: 0 0 18px 0;
   font-weight: 800;
-  color: #3e2a12;
-  text-shadow:
-    0 2px 0 rgba(255,255,255,0.12),
-    0 -2px 8px rgba(0,0,0,0.28);
-  /* Lepší text rendering */
+  color: var(--ink);
+  line-height: 1.02;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  position: relative;
+  z-index: 7;
+  /* jemný emboss pro lepší čitelnost */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.30),
+    0 2px 6px rgba(0,0,0,0.28);
 }
 
+/* dekorativní zlatý kus (použij <span data-text="KNIHY">KNIHY</span>) */
 .about-title span {
-  color: transparent;
-  background: linear-gradient(
-    180deg,
-    #fff4b0 0%,   /* světlá žlutozlatá – nejvíce září */
-    #ffe066 50%,  /* sytá žlutá – střední část */
-    #ffb84d 100%  /* teplé zlaté zakončení */
-  );
+  margin:0;
+  font-family: "Cinzel Decorative", serif;
+  font-size: clamp(1.6rem, 4.4vw, 2.6rem);
+  text-transform: uppercase;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #d0a94a; /* základní zlatá výplň */
+  -webkit-text-stroke: 0.9px #57370f; /* ostrý okraj */
+  -moz-text-stroke: 0.9px #57370f;
+  /* shadowy bez blur pro výraznou hranici */
+  text-shadow:
+    1px 1px 0 #2f1b0b,
+    -0.6px -0.6px 0 rgba(255,255,255,0.12);
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
+.about-title span::after{
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.45) 8%,
+    rgba(255,255,255,0.06) 18%,
+    rgba(255,255,255,0) 30%);
   -webkit-background-clip: text;
   background-clip: text;
-  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.85)); /* ostřejší stín pro kontrast */
-  font-weight: 700;
+  -webkit-text-fill-color: transparent;
+  transform: translateY(-1px);
+  opacity: 0.95;
 }
 
-/* text */
+/* hlavní text bloku — styl přiblížený k section-subtitle */
 .about-text {
-  font-size: 1.12rem;
-  line-height: 1.85;
-  margin-bottom: 18px;
-  color: var(--ink);
+  margin: 0 0 18px 0;
+  color: #342515;
+  opacity: 0.96;
+  font-style: italic;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+  max-width: 44ch;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,
+    -0.6px -0.6px 0 rgba(255,255,255,0.02);
+  transition: color 180ms ease, transform 150ms ease;
+  position: relative;
+  z-index: 6;
+}
+
+/* bezpečnější hover/focus pro přístupnost */
+.about-text:hover,
+.about-text:focus {
+  color: #4a341f;
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.about-text.dropcap::first-letter {
+  float: left;
+  font-size: 2.8rem;           /* trochu větší pro lepší efekt */
+  line-height: 1;              /* ale můžeš snížit třeba na 0.9 */
+  margin: 0 .6rem 0 0;
+  font-weight: 400;
+  color: #24150c;
+  -webkit-text-stroke: .6px rgba(0,0,0,0.35);
+  text-transform: uppercase;
+  font-family: "Cinzel Decorative", Georgia, serif;
+
+  margin-top: .65rem;          /* zarovnání dolů */
 }
 
 /* zvýrazněný box */
 .about-highlight {
   background: rgba(207,152,58,0.09);
   border-left: 6px solid #c08a2e;
+  font-weight: 600;
   padding: 18px;
   border-radius: 8px;
   box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  color: var(--ink);
+  font-family: "Playfair Display", serif;
+  line-height: 1.6;
 }
 
 /* ======================== OBRÁZKOVÁ ČÁST ======================== */
@@ -199,7 +270,7 @@
   transform: translateZ(-6px) scale(0.995);
   filter: saturate(1.05) contrast(1.02);
   pointer-events: none;
-  z-index: 0; /* nyní 0 */
+  z-index: 0;
   box-shadow: inset 0 3px 6px rgba(255,255,255,0.08), inset 0 -8px 18px rgba(0,0,0,0.35);
 }
 
@@ -210,7 +281,7 @@
   inset: 12px;
   border-radius: 4px;
   pointer-events: none;
-  z-index: 1; /* nyní 1, obrázek bude mít vyšší z-index */
+  z-index: 1;
   background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0) 30%);
   mix-blend-mode: overlay;
   box-shadow: inset 0 2px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.12);
@@ -227,7 +298,7 @@
   box-shadow: inset 0 0 12px rgba(0,0,0,0.45);
   transition: transform 0.55s ease, box-shadow 0.55s ease;
   position: relative;
-  z-index: 3; /* nad frame::after (1) a frame::before (0) */
+  z-index: 3;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
 }
@@ -250,11 +321,95 @@
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* Responzivita */
+/* ======================== BABYBOX (CALLOUT) ======================== */
+.babybox-highlight {
+  position: relative;
+  z-index: 6;
+  background: rgba(255, 214, 112, 0.12);
+  border: 3px solid #d4a13a;
+  padding: 22px 26px;
+  margin-top: 26px;
+  border-radius: 10px;
+  box-shadow:
+    0 0 22px rgba(212, 161, 58, 0.25),
+    inset 0 2px 0 rgba(255,255,255,0.06),
+    inset 0 -6px 18px rgba(0,0,0,0.08);
+  animation: fadeInUp 1.2s ease forwards;
+  overflow: hidden;
+  font-family: "Playfair Display", serif;
+}
+
+/* dekorativní ornament v pozadí (jemné) */
+.babybox-highlight::before {
+  content: "";
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 200px;
+  height: 200px;
+  background: url('../assets/ornament-corner.png') no-repeat center/contain;
+  opacity: 0.28;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.20)) saturate(1.02);
+  pointer-events: none;
+  z-index: 0;
+}
+.babybox-highlight::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(200px 100px at 85% 15%, rgba(255,245,200,0.06), transparent 30%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 0;
+}
+.babybox-highlight h3 {
+  margin-bottom: 12px;
+  font-size: clamp(1.25rem, 2vw, 1.6rem); /* zvětšeno */
+  font-weight: 800;
+  font-family: "Cinzel Decorative", serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #c08a2e;
+
+  /* jemný stín jen pro kontrast */
+  text-shadow:
+    1px 1px 0 rgba(0,0,0,0.18),
+    -0.6px -0.6px 0 rgba(255,255,255,0.1);
+}
+
+.babybox-highlight p {
+  font-size: 1.08rem;
+  color: var(--ink);
+  line-height: 1.75;
+  font-style: italic;
+  text-shadow:
+    0.5px 0.5px 0 #1f1309,
+    -0.5px -0.5px 0 rgba(255,255,255,0.03);
+}
+
+/* Glow pulsace (jemnější) */
+@keyframes epicGlow {
+  0%, 100% {
+    box-shadow:
+      0 0 18px rgba(212, 161, 58, 0.32),
+      inset 0 0 22px rgba(212, 161, 58, 0.18);
+  }
+  50% {
+    box-shadow:
+      0 0 26px rgba(212, 161, 58, 0.46),
+      inset 0 0 36px rgba(212, 161, 58, 0.26);
+  }
+}
+.babybox-highlight:hover {
+  animation: epicGlow 2.5s infinite ease-in-out;
+}
+
+/* Responzivita upravená pro texty */
 @media (max-width: 1100px) {
   .about-container { gap: 24px; }
   .about-content { flex: 0 0 58%; }
   .about-image-container { flex: 0 0 40%; }
+  .about-title { font-size: clamp(1.6rem, 3.2vw, 2.4rem); }
 }
 @media (max-width: 860px) {
   .about-container {
@@ -265,80 +420,13 @@
   .about-content { flex: 1 1 100%; width: 100%; }
   .about-image-container { flex: 1 1 100%; margin-top: 18px; display:flex; justify-content:center; }
   .frame { max-width: 560px; width: 92%; }
+  .about-text { max-width: 60ch; }
 }
 @media (max-width: 480px) {
   .paper-wrap { padding: 30px; }
   .about-title { font-size: 1.8rem; }
   .about-text { font-size: 0.98rem; line-height: 1.65; }
   .frame { padding: 12px; }
-}
-
-/* Babybox box */
-.babybox-highlight {
-  position: relative;
-  z-index: 6;
-  background: rgba(255, 214, 112, 0.15);
-  border: 3px solid #d4a13a;
-  padding: 22px 26px;
-  margin-top: 26px;
-  border-radius: 10px;
-  box-shadow:
-    0 0 22px rgba(212, 161, 58, 0.35),
-    inset 0 2px 0 rgba(255,255,255,0.06),
-    inset 0 -6px 18px rgba(0,0,0,0.08);
-  animation: fadeInUp 1.2s ease forwards;
-  overflow: hidden;
-}
-.babybox-highlight::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  right: -10px;
-  width: 200px;
-  height: 200px;
-  background: url('../assets/ornament-corner.png') no-repeat center/contain;
-  opacity: 0.36;
-  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25)) saturate(1.05);
-  pointer-events: none;
-  z-index: 0;
-}
-.babybox-highlight::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(200px 100px at 85% 15%, rgba(255,245,200,0.08), transparent 30%);
-  mix-blend-mode: screen;
-  pointer-events: none;
-  z-index: 0;
-}
-.babybox-highlight h3 {
-  margin-bottom: 10px;
-  font-size: 1.4rem;
-  color: #c08a2e;
-  font-weight: 800;
-  text-shadow: 1px 1px 4px rgba(0,0,0,0.15);
-}
-.babybox-highlight p {
-  font-size: 1.08rem;
-  color: var(--ink);
-  line-height: 1.75;
-}
-
-/* Glow pulsace */
-@keyframes epicGlow {
-  0%, 100% {
-    box-shadow:
-      0 0 20px rgba(212, 161, 58, 0.4),
-      inset 0 0 25px rgba(212, 161, 58, 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 30px rgba(212, 161, 58, 0.6),
-      inset 0 0 35px rgba(212, 161, 58, 0.35);
-  }
-}
-.babybox-highlight:hover {
-  animation: epicGlow 2.5s infinite ease-in-out;
 }
 
 /* Reduced motion */

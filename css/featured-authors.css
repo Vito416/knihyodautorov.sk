@@ -1,8 +1,10 @@
-:root {
+:root{
   --fa-gold: #cf9b3a;
+  --fa-gold-soft: #f8e7b0;
   --fa-ink: #3b2a1a;
   --fa-paper: url('/assets/paper-texture.png');
-  --fa-grain-opacity: 0.06;
+  --fa-grain-opacity: 0.07; /* sladěno s ostatními sekcemi */
+  --fa-radius: 10px;
 }
 
 /* ======================== KONTEJNER ======================== */
@@ -12,13 +14,13 @@
   padding: 60px 16px;
 }
 
-/* PAPER WRAP */
+/* PAPER WRAP (sjednocené s ostatními paper-wrapy) */
 .fauthors-paper-wrap {
   width: min(1200px, 96%);
   position: relative;
   background-image: var(--fa-paper);
   background-position: center;
-  background-size: 100% 100%; /* deformuje pozadí přesně na box */
+  background-size: cover; /* sjednoceno */
   background-repeat: no-repeat;
   border-radius: 10px;
   padding: 56px;
@@ -28,9 +30,10 @@
     inset 0 0 120px rgba(0,0,0,0.06);
   overflow: visible;
   z-index: 1;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* burnt edges overlay */
+/* burnt edges overlay (match) */
 .fauthors-paper-wrap::before {
   content: "";
   position: absolute;
@@ -48,7 +51,7 @@
   mix-blend-mode: multiply;
 }
 
-/* rim-light / highlight overlay */
+/* rim-light / highlight overlay (match) */
 .fauthors-paper-wrap::after {
   content: "";
   position: absolute;
@@ -92,7 +95,7 @@
   z-index: 5;
 }
 
-/* ======================== AUTHORS HEADER — PŘESNĚ PODLE TOPBOOKS VZORU (BEZ SPAN) ======================== */
+/* ======================== AUTHORS HEADER — PŘESNĚ PODLE TOPBOOKS VZORU ======================== */
 .fauthors-head {
   position: relative;
   z-index: 6;
@@ -101,23 +104,18 @@
   margin: 0 auto 20px;
   padding: 22px clamp(18px, 2.5vw, 32px);
   text-align: center;
-
-  /* pozadí + jemný glass/pergamen efekt */
   background: linear-gradient(180deg, rgba(255,247,232,0.18), rgba(255,245,226,0.10));
   backdrop-filter: blur(6px) saturate(115%);
   -webkit-backdrop-filter: blur(6px) saturate(115%);
   border: 1px solid rgba(255,245,230,0.08);
   border-radius: 14px;
-
-  /* hloubka: vnitřní highlight + vnější stín */
   box-shadow:
     0 10px 28px rgba(0,0,0,0.20),
     inset 0 1px 0 rgba(255,255,255,0.04);
-
   transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
 }
 
-/* Zlatá linka nahoře (dekorativní pás přes box) */
+/* Zlatá linka nahoře */
 .fauthors-head::before {
   content: "";
   position: absolute;
@@ -131,7 +129,7 @@
   z-index: 2;
 }
 
-/* Jemná dekorace: dvě hvězdičky vycentrovaně (dekorativní detail) */
+/* Hvězdičky */
 .fauthors-head::after {
   content: "✦\00a0✦";
   position: absolute;
@@ -146,7 +144,7 @@
   z-index: 3;
 }
 
-/* Hover efekt pro celý box (shodný se stylem topbooks) */
+/* Hover efekt */
 .fauthors-head:hover,
 .fauthors-head:focus-within {
   transform: translateY(-2px);
@@ -157,25 +155,23 @@
   filter: saturate(118%);
 }
 
-/* Nadpis — typografie stejná jako v topbooks */
+/* Nadpis (Playfair) */
 .fauthors-title {
   font-family: "Playfair Display", serif;
   font-size: clamp(1.9rem, 2.6vw, 2.4rem);
-  line-height: 1.15;
-  margin: 0 0 0.5rem;
-  color: #3B2A1A; /* tmavá teplá hnědá */
+  line-height: 1.08;
+  margin: 0 0 6px;
+  color: var(--fa-ink);
   letter-spacing: .3px;
   position: relative;
   z-index: 4;
-
-  /* emboss / glow pro eleganci a čitelnost */
   text-shadow:
     0 1px 0 rgba(255,255,255,0.40),
     0 2px 3px rgba(0,0,0,0.28),
     0 0 8px rgba(255,224,170,0.10);
 }
 
-/* Podnadpis — stejný styl jako v topbooks-epic-sub */
+/* Podnadpis (italic serif) */
 .fauthors-sub {
   font-family: "Merriweather", serif;
   font-weight: 600;
@@ -197,7 +193,6 @@
   .fauthors-title { font-size: clamp(1.7rem, 4.5vw, 2.0rem); }
   .fauthors-sub { font-size: 0.98rem; line-height: 1.55; }
 }
-
 @media (max-width: 480px) {
   .fauthors-head { padding: 14px; border-radius: 10px; }
   .fauthors-title { font-size: 1.6rem; }
@@ -213,33 +208,115 @@
   z-index: 6;
 }
 
-/* ======================== CARD ======================== */
+/* ======================== CARD (sjednoceno s book-card/babybox) ======================== */
 .fauthor-card {
-  background: rgba(207,152,58,0.06);
-  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(255,250,240,0.02), rgba(0,0,0,0.03)); /* subtle parchment */
+  border-radius: 14px;
   padding: 18px;
   text-align: center;
-  box-shadow: 0 18px 60px rgba(0,0,0,0.48);
-  transition: transform .35s ease;
+  box-shadow:
+    0 22px 50px rgba(0,0,0,0.12),
+    inset 0 2px 0 rgba(255,255,255,0.04);
+  border: 1px solid rgba(0,0,0,0.06);
+  transition: transform .28s cubic-bezier(.2,.9,.3,1), box-shadow .28s ease;
+  position: relative;
+  overflow: visible;
+  font-family: "Playfair Display", serif;
+  color: var(--fa-ink);
 }
+
+/* alternating faint tint for depth like supportimpact */
+.fauthor-card:nth-child(odd){
+  background-image:
+    linear-gradient(180deg, rgba(255,247,230,0.01), rgba(0,0,0,0.03));
+}
+.fauthor-card:nth-child(even){
+  background-image:
+    linear-gradient(180deg, rgba(255,250,240,0.00), rgba(0,0,0,0.035));
+}
+
+/* small gold ribbon accent (top-right) — konzistentní s ostatními kartami */
+.fauthor-card::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 46px;
+  height: 8px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255,250,230,0.95), rgba(207,155,60,0.98));
+  box-shadow: 0 6px 14px rgba(207,155,60,0.06);
+  transform: rotate(8deg);
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+/* hover / focus — sjednoceno s card behavior */
 .fauthor-card:hover {
   transform: translateY(-8px);
-  box-shadow: 0 40px 100px rgba(0,0,0,0.6);
+  box-shadow: 0 44px 110px rgba(0,0,0,0.14);
 }
+.fauthor-card:focus-within {
+  outline: none;
+  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.06);
+  border-radius: 14px;
+}
+
+/* photo — gold border, inset shadow, kruh */
 .fauthor-photo {
   width: 120px;
   height: 120px;
   object-fit: cover;
   border-radius: 50%;
-  border: 4px solid var(--fa-gold);
-  margin: 0 auto 12px auto;
   display: block;
+  margin: 0 auto 12px;
+  border: 4px solid var(--fa-gold);
+  box-shadow: inset 0 4px 8px rgba(255,245,210,0.12), 0 8px 20px rgba(0,0,0,0.12);
+  background-clip: padding-box;
+  -webkit-backface-visibility: hidden;
 }
+
+/* jméno autora — dekorativní Cinzel (clipovaný highlight jako u titulku) */
+/* Note: add data-text="Full Name" attribute to the element for perfect highlight */
 .fauthor-name {
   margin: 0;
+  font-family: "Cinzel Decorative", serif;
+  font-size: 1.05rem;
+  text-transform: uppercase;
   font-weight: 900;
-  color: var(--fa-ink);
+  letter-spacing: 0.9px;
+  color: var(--fa-gold-soft);
+  -webkit-text-stroke: 0.9px #57370f;
+  text-shadow:
+    1px 1px 0 #2f1b0b,
+    -0.6px -0.6px 0 rgba(255,255,255,0.12);
+  display: inline-block;
+  position: relative;
+  padding: 2px 6px;
+  -webkit-font-smoothing: antialiased;
 }
+
+/* clipovaný zlatý highlight bez blur */
+.fauthor-name::after {
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.45) 8%,
+    rgba(255,255,255,0.06) 18%,
+    rgba(255,255,255,0) 30%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+/* meta (role / count) — drop-in Playfair small-caps feeling */
 .fauthor-meta {
   display: flex;
   justify-content: center;
@@ -247,29 +324,76 @@
   margin: 8px 0;
   color: var(--fa-gold);
   font-weight: 800;
-}
-.fauthor-bio {
-  color: var(--fa-ink);
-  opacity: 0.9;
-  line-height: 1.55;
-  min-height: 56px;
-}
-.fauthor-cta {
-  display: inline-block;
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, var(--fa-gold), #f8e7b0);
-  color: #3b2a12;
-  font-weight: 900;
-  text-decoration: none;
+  font-family: "Playfair Display", serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  -webkit-font-smoothing: antialiased;
+  align-items: center;
 }
 
-/* ======================== RESPONZIVITA ======================== */
-@media (max-width:900px) {
-  .fauthor-photo { width: 96px; height: 96px; }
+/* bio — ink-style paragraph like about-text */
+.fauthor-bio {
+  color: var(--fa-ink);
+  opacity: 0.96;
+  line-height: 1.6;
+  min-height: 56px;
+  margin-top: 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.0vw, 1.02rem);
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,
+    -0.6px -0.6px 0 rgba(255,255,255,0.02);
+  text-rendering: optimizeLegibility;
+}
+
+/* CTA — gold button consistent with other CTAs */
+.fauthor-cta {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--fa-gold-soft), var(--fa-gold));
+  color: #2f1b0b;
+  font-weight: 800;
+  text-decoration: none;
+  font-family: "Playfair Display", serif;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 18px rgba(0,0,0,0.16);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.fauthor-cta:hover,
+.fauthor-cta:focus {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 18px 48px rgba(0,0,0,0.28);
+}
+.fauthor-cta:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(207,155,60,0.12);
+}
+
+/* small responsive tweaks */
+@media (max-width: 900px) {
+  .fauthor-photo { width: 96px; height: 96px; border-width: 3px; }
+  .fauthor-name { font-size: 1rem; }
   .fauthors-title { font-size: 1.8rem; }
 }
-@media (prefers-reduced-motion:reduce) {
-  .fauthor-card { transition: none !important; }
+@media (max-width: 520px) {
+  .fauthors-grid { gap: 14px; }
+  .fauthor-card { padding: 14px; border-radius: 12px; }
+  .fauthor-photo { width: 84px; height: 84px; }
+  .fauthor-name { font-size: 0.95rem; -webkit-text-stroke: .7px #57370f; }
+  .fauthor-bio { font-size: 0.95rem; line-height: 1.5; min-height: auto; }
+}
+
+/* Accessibility: reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fauthor-card, .fauthor-card:hover, .fauthor-cta, .fauthor-photo { transition: none !important; animation: none !important; transform: none !important; }
+}
+
+/* Focus helpers for keyboard users */
+.fauthor-card:focus, .fauthor-card:focus-within {
+  outline: none;
+  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.06);
+  border-radius: 14px;
 }

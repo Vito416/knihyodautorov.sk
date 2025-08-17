@@ -1,11 +1,13 @@
-/* support-impact.css — pozadí a okraje stejné jako about; vylepšené vnitřní styly */
+/* ================= S I D E : supportimpact (sjednocené s about) ================= */
+
+/* drobné lokální proměnné — sladěné s hlavním tématem */
 :root{
   --si-paper: url('/assets/paper-texture.png');
   --si-gold: #cf9b3a;
   --si-gold-soft: #f8e7b0;
   --si-ink: #3b2a1a;
-  --si-grain: 0.06;
-  --si-radius: 12px;
+  --si-grain: 0.07; /* sladěno s paper grain */
+  --si-radius: 10px; /* mírně zarovnáváme s paper-wrap */
 }
 
 /* KONTEJNER */
@@ -15,16 +17,16 @@
   padding:60px 16px;
 }
 
-/* PAPER WRAP — background exactly like about-section */
+/* PAPER WRAP — background & shadows MATCHING about-section */
 .supportimpact-paper-wrap{
   width: min(1200px, 96%);
   position: relative;
   background-image: var(--si-paper);
   background-position: center;
-  background-size: 100% 100%; 
+  background-size: cover; /* sjednoceno s about */
   background-repeat: no-repeat;
   border-radius: 10px;
-  padding: 56px; /* same as about */
+  padding: 56px; /* stejný padding jako about */
   box-shadow:
     0 30px 70px rgba(0,0,0,0.14),
     inset 0 18px 40px rgba(0,0,0,0.13),
@@ -52,7 +54,7 @@
   mix-blend-mode: multiply;
 }
 
-/* rim-light / highlight overlay — MATCHING about (slightly tuned for contrast) */
+/* rim-light / highlight overlay — MATCHING about (slightly tuned) */
 .supportimpact-paper-wrap::after {
   content: "";
   position: absolute;
@@ -71,7 +73,7 @@
   filter: blur(4px) contrast(1.02);
 }
 
-/* GRAIN — keep span.supportimpact-grain-overlay in HTML (you have it) */
+/* GRAIN — použij <span class="supportimpact-grain-overlay" aria-hidden="true"></span> */
 .supportimpact-grain-overlay{
   position:absolute; inset:0; z-index:4; pointer-events:none;
   background-image:
@@ -89,9 +91,7 @@
   box-shadow: inset 0 6px 0 rgba(255,245,230,0.06), inset 0 -8px 18px rgba(0,0,0,0.08);
 }
 
-/* ======================== SUPPORT / IMPACT — matched to TOPBOOKS / AUTHORS style ======================== */
-/* Replaces rules from .supportimpact-container onward. Uses only your classes and pseudo-elements. */
-
+/* ======================== SUPPORT / IMPACT — matched typografie & dekor ======================== */
 .supportimpact-container {
   position: relative;
   z-index: 6;
@@ -112,13 +112,11 @@
   text-align: center;
   border-radius: 14px;
 
-  /* same parchment / frosted paper vibe as topbooks */
   background: linear-gradient(180deg, rgba(255,247,232,0.18), rgba(255,245,226,0.10));
   backdrop-filter: blur(6px) saturate(115%);
   -webkit-backdrop-filter: blur(6px) saturate(115%);
   border: 1px solid rgba(255,245,230,0.08);
 
-  /* depth */
   box-shadow:
     0 10px 28px rgba(0,0,0,0.20),
     inset 0 1px 0 rgba(255,255,255,0.04);
@@ -166,13 +164,13 @@
   filter: saturate(118%);
 }
 
-/* title — same Playfair Display look + emboss/glow as topbooks epic title */
+/* title — Playfair Display + emboss / highlight (stejné jako about-title) */
 .supportimpact-title {
   font-family: "Playfair Display", serif;
   font-size: clamp(2.2rem, 3.6vw, 2.6rem);
   line-height: 1.02;
   margin: 0 0 8px;
-  color: #3B2A1A; /* warm dark brown for contrast */
+  color: var(--si-ink);
   font-weight: 900;
   letter-spacing: -0.02em;
   position: relative;
@@ -185,7 +183,33 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* description text — same tone as topbooks sub */
+/* If you want a decorated gold span inside title (same pattern as about-title) */
+.supportimpact-title .gold {
+  display:inline-block;
+  margin:0;
+  font-family: "Cinzel Decorative", serif;
+  font-size: 1.05em;
+  text-transform: uppercase;
+  font-weight:900;
+  letter-spacing:1px;
+  color: var(--si-gold);
+  -webkit-text-stroke: 0.9px rgba(87,55,15,1);
+  text-shadow:
+    1px 1px 0 #2f1b0b,
+    -0.6px -0.6px 0 rgba(255,255,255,0.12);
+  position: relative;
+}
+.supportimpact-title .gold::after{
+  content: attr(data-text);
+  position:absolute; left:0; top:0; width:100%; height:100%;
+  -webkit-background-clip:text; background-clip:text;
+  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.45) 8%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0) 30%);
+  -webkit-text-fill-color: transparent;
+  transform: translateY(-1px); opacity:0.95;
+  pointer-events:none;
+}
+
+/* description text — same tone as about-text */
 .supportimpact-title + .supportimpact-text,
 .supportimpact-text {
   display: block;
@@ -200,6 +224,7 @@
   text-shadow:
     0 1px 0 rgba(255,255,255,0.18),
     0 0 4px rgba(255,248,230,0.12);
+  font-family: Georgia, "Times New Roman", serif;
 }
 
 /* accessibility & reduced motion */
@@ -227,8 +252,7 @@
   .supportimpact-head::after { top: 8px; font-size: 0.78rem; }
 }
 
-
-/* STATS GRID — adaptive grid: 4 / 3 / 2 / 1 */
+/* ======================== STATS GRID — visual tweaks to match cards + type ======================== */
 .supportimpact-stats{
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
@@ -237,7 +261,7 @@
   margin: 28px 0;
 }
 
-/* Card base */
+/* Card base — upraveno, aby ladilo s babybox / paper */
 .supportimpact-item{
   background:
     linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
@@ -253,6 +277,8 @@
   flex-direction:column;
   justify-content:center;
   gap:8px;
+  font-family: "Playfair Display", serif;
+  color: var(--si-ink);
 }
 
 /* Alternating subtle tint for depth */
@@ -281,7 +307,7 @@
   opacity:0.95;
 }
 
-/* hover / focus (keyboard) */
+/* hover / focus (keyboard) — sjednoceno s frame / babybox chováním */
 .supportimpact-item:hover{
   transform: translateY(-8px);
   box-shadow: 0 44px 110px rgba(0,0,0,0.12);
@@ -291,7 +317,7 @@
   box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.08);
 }
 
-/* number: big, shiny, clearly readable */
+/* number: big, shiny, clearly readable — typografie sjednocena */
 .si-number{
   display:inline-block;
   font-size:2.4rem;
@@ -304,6 +330,8 @@
   background-clip: text;
   text-shadow: 0 10px 30px rgba(255,235,180,0.10);
   letter-spacing: -0.01em;
+  font-family: "Cinzel Decorative", serif;
+  -webkit-font-smoothing:antialiased;
 }
 
 /* optional smaller currency or unit line (if present in markup) */
@@ -315,7 +343,7 @@
   margin-top:6px;
 }
 
-/* label: compact, uppercase feeling */
+/* label: compact, uppercase feeling (serif-weighted) */
 .si-label{
   display:block;
   font-size:0.92rem;
@@ -323,15 +351,16 @@
   font-weight:800;
   margin-top:8px;
   letter-spacing:0.02em;
+  font-family: "Playfair Display", serif;
 }
 
-/* subtle divider between value and label on narrow cards */
+/* small responsive tweaks */
 @media (max-width:480px){
   .supportimpact-item{ padding:16px; }
   .si-number{ font-size:2rem; }
 }
 
-/* HIGHLIGHT: emphasis area with optional progress */
+/* ======================== HIGHLIGHT: emphasis area with optional progress (aligned with about-highlight) ======================== */
 .supportimpact-highlight{
   margin-top:20px;
   display:flex;
@@ -346,6 +375,7 @@
   color: var(--si-ink);
   font-weight:800;
   line-height:1.35;
+  font-family: "Playfair Display", serif;
 }
 
 /* small decorative bar above highlight */
@@ -360,7 +390,7 @@
   opacity:0.95;
 }
 
-/* optional progress bar inside highlight (HTML snippet optional) */
+/* progress bar — colors harmonized */
 .si-progress{
   height:14px;
   background: rgba(0,0,0,0.06);
@@ -395,9 +425,10 @@
   color: rgba(59,42,26,0.75);
   font-weight:700;
   font-size:0.95rem;
+  font-family: Georgia, "Times New Roman", serif;
 }
 
-/* RESPONSIVITY: graceful stacking */
+/* RESPONSIVITY: graceful stacking (matching about behaviour) */
 @media (max-width:1100px){
   .supportimpact-stats{ grid-template-columns: repeat(3, minmax(160px, 1fr)); }
 }
@@ -410,9 +441,15 @@
   .supportimpact-text{ font-size:0.98rem; }
 }
 
-/* ACCESSIBILITY */
+/* ACCESSIBILITY: reduced-motion safe */
 @media (prefers-reduced-motion:reduce){
   .supportimpact-item, .supportimpact-item:hover, .si-progress-bar { transition:none !important; animation:none !important; }
   .supportimpact-item:hover{ transform:none !important; box-shadow: 0 12px 30px rgba(0,0,0,0.08) !important; }
 }
 
+/* small focus-visible helpers for keyboard users */
+.supportimpact-item:focus-within, .supportimpact-item:focus {
+  outline: none;
+  box-shadow: 0 44px 110px rgba(0,0,0,0.12), 0 0 0 4px rgba(207,155,60,0.06);
+  border-radius: 14px;
+}

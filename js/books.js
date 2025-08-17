@@ -107,18 +107,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function revealStagger(root = document) {
-    const cards = qsa('.book-card', root);
-    cards.forEach((c, idx) => {
-      c.style.opacity = '0';
-      c.style.transform = 'translateY(20px) rotateX(6deg)';
-      setTimeout(() => {
-        c.classList.add('revealed');
-        c.style.opacity = '';
-        c.style.transform = '';
-      }, 120 + idx * 80);
-    });
-  }
+function revealStagger(root = document) {
+  const cards = qsa('.book-card', root);
+  cards.forEach((c, idx) => {
+    c.style.opacity = '0';
+    c.style.transform = 'translateY(20px) rotateX(6deg)';
+    setTimeout(() => {
+      c.classList.add('book-card-revealed');
+      c.style.opacity = '';
+      c.style.transform = '';
+    }, 120 + idx * 80);
+  });
+}
 
   // create next window from permutace without duplicates
   function takeNextWindow(limit) {
@@ -188,11 +188,16 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             <div class="card-actions">
               <button class="btn btn-outline open-detail" type="button"
-                      data-title="${esc(it.nazov)}" data-author="${esc(it.autor||'')}"
-                      data-desc="${esc(it.popis||'')}" data-cover="${esc(imgSrc)}" data-pdf="${esc(it.pdf||'')}">
-                Zobraziť
+              data-title="${esc(it.nazov)}" data-author="${esc(it.autor||'')}"
+              data-desc="${esc(it.popis||'')}" data-cover="${esc(imgSrc)}" data-pdf="${esc(it.pdf||'')}">
+              Zobraziť
               </button>
-              ${it.pdf ? `<a class="btn btn-primary" href="${esc(it.pdf)}" target="_blank" rel="noopener">Stiahnuť</a>` : ''}
+              ${it.pdf ? `
+              <button class="btn btn-download" type="button"
+              data-href="${esc(it.pdf)}" 
+              data-filename="${encodeURIComponent(it.nazov)}.pdf">
+              Stiahnuť
+              </button>` : ''}
             </div>
           </div>
         `;
@@ -355,6 +360,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const items = takeNextWindow(detectLimit());
     if (items.length) renderBooks(items);
     startRotation();
+  });
+
+  // download binding
+  document.addEventListener("click", e => {
+    const btn = e.target.closest(".btn-download");
+    if (!btn) return;
+
+    const url = btn.dataset.href;
+    const filename = btn.dataset.filename;
+
+    if (url) {
+      const a = document.createElement("a");
+      a.href = url;
+      if (filename) a.download = filename;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   });
 
 });

@@ -348,11 +348,11 @@
 
 /* ======================== GRID (4/3/2/1) ======================== */
 .books-grid {
-  width: 100%;
   display:grid;
   grid-template-columns: repeat(1,1fr);
   align-items:start;
   position:relative;
+  gap: 1%;
   transition: all 320ms cubic-bezier(.2,.9,.2,1);
 }
 @media (min-width:1200px){ .books-grid{ grid-template-columns: repeat(4,1fr); } }
@@ -362,52 +362,75 @@
 
 /* ======================== KARTA KNIHY ======================== */
 /* základ karty */
-.book-card { margin-right: 10%; transition: transform 420ms ease, opacity 420ms ease; }
+
+/* sdílené základní styly pro layout */
+.book-card,
+.book-card.book-card-revealed {
+  /* všechny šířky, paddingy, box model atd. co určuje layout */
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* přechody pro odhalený stav */
+.book-card.book-card-revealed {
+  transition: transform 420ms ease, opacity 420ms ease;
+}
+
 .card-inner {
-  position:relative;
-  z-index:10;
-  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01));
-  border-radius: 12px;
-  overflow: hidden;
-  transition: transform 320ms cubic-bezier(.2,.9,.2,1), box-shadow 320ms cubic-bezier(.2,.9,.2,1), filter 320ms cubic-bezier(.2,.9,.2,1);
+  position: relative;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   min-height: 420px;
-  border: 4px solid rgba(255,255,255,0.08);
-  /* kožená textura – hnědé tóny s variací */
-  border-image: repeating-linear-gradient(
-    45deg,
-    #5a2a1a,
-    #5a2a1a 10px,
-    #442015 10px,
-    #442015 20px
-  ) 30 round;
+  border-radius: 16px;
+  overflow: hidden;
 
-  /* lehký emboss efekt (zlatý vnitřní lesk) */
+  border: 4px solid transparent;
+
+  /* Zlatý gradient pro rámeček */
+  background-image: linear-gradient(145deg, rgba(212, 175, 55, 0.3), rgba(122, 92, 30, 0.3));
+  background-origin: border-box;
+  background-clip: border-box;
+
+  /* Temný kožený vnitřek */
+  background-color: rgba(43, 14, 7, 0.05);
+  background-clip: padding-box;
+
   box-shadow:
-    inset 0 0 12px rgba(255,215,120,0.25), /* vnitřní záře */
-    inset 0 0 4px rgba(255,215,120,0.1),   /* jemné zlaté orámování */
-    0 6px 18px rgba(0,0,0,0.6);            /* vnější stín */
+    inset 0 0 8px rgba(255, 220, 150, 0.25),   /* jemný vnitřní lesk */
+    inset 0 0 3px rgba(255, 220, 150, 0.1),    /* jemné orámování */
+    0 8px 22px rgba(0,0,0,0.7);                /* venkovní stín */
+
+  transition: transform 320ms cubic-bezier(.2,.9,.2,1),
+              box-shadow 320ms cubic-bezier(.2,.9,.2,1);
 }
 
-/* epic hover: strong lift + perspective tilt + light sweep */
+/* Hover: silnější efekt */
 .card-inner:hover {
   transform: translateY(-14px) rotateX(1.2deg) translateZ(10px);
   box-shadow: 0 48px 140px rgba(0,0,0,0.7);
 }
-.card-inner::after{
-  /* subtle light sweep on hover via transition of opacity - requires JS toggle or hover */
-  content:"";
-  position:absolute;
-  inset:0;
-  pointer-events:none;
-  background: linear-gradient(120deg, rgba(255,255,255,0.0) 0%, rgba(255,255,255,0.04) 45%, rgba(255,255,255,0.0) 70%);
-  opacity:0;
+
+/* světelný průlet */
+.card-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    rgba(255,255,255,0.0) 0%,
+    rgba(255,255,255,0.08) 45%,
+    rgba(255,255,255,0.0) 70%
+  );
+  opacity: 0;
   transition: opacity 420ms ease;
-  border-radius:inherit;
-  z-index:11;
+  z-index: 11;
 }
-.card-inner:hover::after{ opacity:1; }
+.card-inner:hover::after { opacity: 1; }
+
 
 /* meta badge */
 .card-meta {
@@ -644,7 +667,7 @@
 
   /* sharp (bez blur) stíny pro kontrast */
   text-shadow:
-    0 1px 0 rgba(255,255,255,0.06),  /* jemný horní odlesk */
+    0 1px 0 rgba(255,255,255,0.2),  /* jemný horní odlesk */
     0 1px 0 rgba(0,0,0,0.55);        /* definující spodní tah */
 
   opacity: 0.98;
@@ -755,31 +778,30 @@
 }
 
 /* =========================
-   ACTIONS (centrované)
+   ACTIONS WRAPPER
    ========================= */
 .card-actions,
 .book-actions {
-  --gap: 16px;
+  --gap: 18px;
   --pad-vertical: 14px;
   --pad-horizontal: 16px;
-  --btn-radius: 12px;
-  --btn-radius-primary: 16px;
-  --shimmer-name: epic-shimmer-081625;
-  --shadow-dark-lg: 0 18px 40px rgba(0,0,0,0.45);
-  --shadow-seal: 0 8px 18px rgba(164,95,36,0.35);
-  --gold-strong: rgba(207,155,58,0.14);
+  --btn-radius: 14px;
+  --btn-radius-primary: 18px;
+  --shadow-dark-lg: 0 20px 48px rgba(0,0,0,0.45);
+  --shadow-seal: 0 10px 22px rgba(164,95,36,0.38);
+  --gold-strong: rgba(207,155,58,0.18);
 
   display: flex;
   justify-content: center;
   align-items: center;
   gap: var(--gap);
-  padding: var(--pad-vertical) var(--pad-horizontal) 18px;
+  padding: var(--pad-vertical) var(--pad-horizontal) 20px;
   z-index: 14;
-  perspective: 900px; /* jemný 3D efekt */
+  perspective: 900px;
 }
 
 /* =========================
-   BUTTON BASE (bez ikon)
+   BUTTON BASE
    ========================= */
 .card-actions .btn,
 .book-actions .btn {
@@ -787,42 +809,28 @@
   align-items: center;
   justify-content: center;
   gap: .6rem;
-  padding: 10px 18px;
+  padding: 12px 22px;
   border-radius: var(--btn-radius);
   font-weight: 800;
-  letter-spacing: .02em;
+  letter-spacing: .025em;
   cursor: pointer;
   border: none;
-  background: linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.02));
-  color: inherit;
-  text-decoration: none;
   position: relative;
   overflow: hidden;
+  color: inherit;
+  text-decoration: none;
   -webkit-font-smoothing: antialiased;
   backface-visibility: hidden;
   -webkit-tap-highlight-color: transparent;
   transition:
     transform .28s cubic-bezier(.2,.9,.3,1),
     box-shadow .28s ease,
-    filter .2s ease,
+    filter .22s ease,
     background .18s ease;
   z-index: 0;
 }
 
-/* text inside button */
-.card-actions .btn .btn-text {
-  display: inline-block;
-  line-height: 1;
-  pointer-events: none;
-}
-
-/* anchors behave like buttons visually */
-.card-actions a.btn { display: inline-flex; align-items: center; justify-content: center; }
-
-/* =========================
-   SHIMMER (pseudo ::after)
-   unique keyframe name used from var for clarity
-   ========================= */
+/* shimmer */
 .card-actions .btn::after {
   content: "";
   position: absolute;
@@ -832,139 +840,72 @@
   height: 120%;
   transform: skewX(-18deg);
   background: linear-gradient(120deg,
-    rgba(255,255,255,0.28) 0%,
+    rgba(255,255,255,0.22) 0%,
     rgba(255,255,255,0.06) 40%,
     transparent 70%);
   pointer-events: none;
-  opacity: .85;
+  opacity: .75;
   z-index: 10;
   transition: transform .6s cubic-bezier(.2,.9,.3,1), opacity .3s ease;
-  animation: epic-shimmer-081625 2.6s linear infinite paused;
+  animation: epic-shimmer-081625 3.2s linear infinite paused;
 }
-
-/* shimmer active on hover/focus */
 .card-actions .btn:hover::after,
 .card-actions .btn:focus::after {
   transform: translateX(260%) skewX(-18deg);
-  opacity: .95;
+  opacity: .9;
 }
-
-/* keyframes */
 @keyframes epic-shimmer-081625 {
   0%   { transform: translateX(-100%) skewX(-18deg); opacity: 0; }
-  10%  { opacity: .6; }
-  50%  { transform: translateX(30%) skewX(-18deg); opacity: .9; }
+  15%  { opacity: .55; }
+  50%  { transform: translateX(30%) skewX(-18deg); opacity: .85; }
   100% { transform: translateX(300%) skewX(-18deg); opacity: 0; }
 }
 
-/* run shimmer only on devices with hover & fine pointer */
-@media (hover: hover) and (pointer: fine) {
-  .card-actions .btn::after { animation-play-state: running; }
-}
-@media (hover: none) {
-  .card-actions .btn::after { animation-play-state: paused; opacity: 0; display: none; }
-}
-
 /* =========================
-   INTERACTIONS: FOCUS / HOVER / ACTIVE
+   INTERACTIONS
    ========================= */
 .card-actions .btn:focus {
   outline: 2px solid transparent;
-  box-shadow: 0 0 0 4px var(--gold-strong), 0 10px 30px rgba(0,0,0,0.45);
+  box-shadow: 0 0 0 4px var(--gold-strong), 0 14px 34px rgba(0,0,0,0.55);
   transform: translateY(-2px) scale(1.02);
   z-index: 20;
 }
-
 .card-actions .btn:hover {
-  transform: translateY(-6px) scale(1.03);
-  filter: brightness(1.06);
+  transform: translateY(-6px) scale(1.035);
+  filter: brightness(1.05);
   z-index: 20;
 }
-
 .card-actions .btn:active {
-  transform: translateY(-2px) scale(.995);
+  transform: translateY(-2px) scale(.99);
   transition-duration: .12s;
 }
 
-/* mobile: omez transform a schovej shimmer */
-@media (hover: none) {
-  .card-actions .btn:hover,
-  .card-actions .btn:focus { transform: none; box-shadow: 0 6px 18px rgba(0,0,0,0.2); }
-}
-
-/* respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .card-actions .btn,
-  .card-actions .btn::after { transition: none; animation: none !important; }
-}
-
 /* =========================
-   SPECIFIC BUTTON STYLES
-   (VIEW = tmavé; DOWNLOAD = vosková pečeť)
+   SPECIFIC BUTTONS
    ========================= */
-
-/* VIEW / Prelistovať (dark booky) */
-.card-actions .btn-view,
-.card-actions .btn-outline.view-fallback {
-  background: linear-gradient(180deg, #2a1a10 0%, #150b06 100%);
+/* VIEW (tmavý pergamen) */
+.card-actions .btn-view {
+  background: linear-gradient(180deg, #332218 0%, #1a100b 100%);
   color: #f7ecd8;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.03);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
-  border: 1px solid rgba(255,215,120,0.06);
-  border-radius: var(--btn-radius);
-}
-.card-actions .btn-view:hover {
-  box-shadow: 0 24px 64px rgba(0,0,0,0.75), 0 6px 24px rgba(207,155,58,0.07);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05),
+              0 10px 30px rgba(0,0,0,0.65);
+  border: 1px solid rgba(207,155,58,0.16);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.75);
 }
 
-/* DOWNLOAD / Zvitok (wax-seal look) */
-.card-actions .btn-download,
-.card-actions .btn-primary.download-fallback {
-  background: linear-gradient(180deg, #f8e7b0 0%, #cf9b3a 100%);
+/* DOWNLOAD (vosková pečeť / zlato) */
+.card-actions .btn-download {
+  background: linear-gradient(180deg, #fbe9b8 0%, #d59f38 100%);
   color: #2b1608;
   font-weight: 900;
-  box-shadow: 0 18px 40px rgba(199,123,30,0.25), inset 0 1px 0 rgba(255,255,255,0.14);
+  box-shadow: inset 0 2px 2px rgba(255,255,255,0.18),
+              0 18px 40px rgba(199,123,30,0.28);
+  border-radius: var(--btn-radius-primary);
   text-shadow: 0 1px 0 rgba(255,255,255,0.45);
-  border-radius: var(--btn-radius-primary);
-}
-
-/* wax seal pseudo-element (pečeť) */
-.card-actions .btn-download::before {
-  display: none !important;
-}
-
-/* subtle press effect on the seal */
-.card-actions .btn-download:active::before {
-  transform: translateY(-50%) rotate(-2deg) scale(.98);
-  box-shadow: 0 6px 14px rgba(164,95,36,0.34);
-}
-
-/* spacing if icon exists */
-.card-actions .btn.has-icon { gap: .6rem; }
-.card-actions .btn.has-icon .btn-text { margin-left: .35rem; }
-
-/* =========================
-   FALLBACK MAPPING (legacy classes)
-   ========================= */
-.card-actions .btn-primary {
-  /* fallback to download visual if .btn-download not present */
-  background: linear-gradient(180deg, #f8e7b0 0%, #cf9b3a 100%);
-  color: #2b1608;
-  font-weight: 900;
-  box-shadow: 0 18px 40px rgba(199,123,30,0.25);
-  border-radius: var(--btn-radius-primary);
-  padding-left: 46px;
-}
-.card-actions .btn-outline {
-  /* fallback to view visual if .btn-view not present */
-  background: linear-gradient(180deg, #2a1a10 0%, #150b06 100%);
-  color: #f7ecd8;
-  border: 1px solid rgba(255,215,120,0.06);
-  border-radius: var(--btn-radius);
 }
 
 /* =========================
-   DISABLED / A11Y / TOUCH
+   DISABLED
    ========================= */
 .card-actions .btn[disabled],
 .card-actions .btn.disabled {
@@ -975,11 +916,6 @@
   filter: none !important;
   pointer-events: none;
 }
-
-/* contrast utilities */
-.card-actions .btn-view { color: #f7ecd8; }
-.card-actions .btn-download { color: #2b1608; }
-
 
 /* ======================== MODAL ======================== */
 .book-modal { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(6,4,3,0.6); z-index:99999; padding:20px; }

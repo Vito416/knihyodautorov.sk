@@ -8,9 +8,9 @@
     <div class="about-container">
   <!-- LEVÁ ČÁST: text -->
   <div class="about-content">
-    <h2 id="about-title" class="about-title">O nás <span>— Knihy od autorov</span></h2>
+    <h2 id="about-title" class="about-title">O nás <span>Knihy od autorov</span></h2>
 
-    <p class="about-text">
+    <p class="about-text dropcap">
       Sme nadšení krúhomoli a milovníci slov. Našou misiou je podeliť sa
       o lásku k čítaniu, pomáhať objavovať skryté literárne poklady a
       podporovať komunitu a projekty, ktoré majú zmysel.
