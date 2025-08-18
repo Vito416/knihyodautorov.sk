@@ -251,7 +251,6 @@
 .central-steps > * {
   position: relative;
   z-index: 3;
-  padding: 30px 20px;
   border-radius: 10px;
   background: rgba(255,255,250,0.00);
   text-align: center;
@@ -295,4 +294,19 @@
   .central-steps::before { inset: -10%; opacity: calc(var(--burn-opacity) - 0.18); filter: blur(3px); }
   .central-steps::after  { opacity: 0.86; background-size: cover; }
   .central-steps > * { padding: 16px 14px; }
+}
+
+@media (max-width:1100px){
+  .central-steps{ grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+}
+@media (max-width:820px){
+  .central-steps{ grid-template-columns: repeat(2, minmax(200px, 1fr)); padding: 20px; }
+}
+@media (max-width:480px){
+  .central-steps{ display: grid; grid-template-columns: 1fr;  background-image: none;}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{ transition:none !important; animation:none !important; }
+  .central-steps::before { display:none !important; }
 }

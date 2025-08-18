@@ -19,13 +19,17 @@ if (!function_exists('esc_hiw')) {
     <!-- ikona knihy -->
     <img src="/assets/kniha.png" alt="ikona knihy">
     </div>
-    <h3 id="hiw-step-1" class="hiw-step-title hiw-text-1">Nájdi svoju knihu</h3>
-    <p class="hiw-step-text hiw-text-1">Objav príbeh, ktorý ťa osloví — jasné informácie o diele a cene.</p>
+    <div class="hiw-step-textbox">
+    <h3 id="hiw-step-1" class="section-title hiw-text-1">Nájdi svoju knihu</h3>
+    <p class="section-subtitle hiw-text-1">Objav príbeh, ktorý ťa osloví — jasné informácie o diele a cene.</p>
+    </div>
   </article>
 
   <article class="hiw-step arrow-up" role="listitem" aria-labelledby="hiw-step-2">
-    <h3 id="hiw-step-2" class="hiw-step-title hiw-text-2">Pergamen s pečaťou</h3>
-    <p class="hiw-step-text hiw-text-2">Získaš faktúru (PDF) so zabudovaným QR kódom — oficiálny doklad k tvojmu výberu.</p>
+    <div class="hiw-step-textbox">
+    <h3 id="hiw-step-2" class="section-title hiw-text-2">Pergamen s pečaťou</h3>
+    <p class="section-subtitle hiw-text-2">Získaš faktúru (PDF) so zabudovaným QR kódom — oficiálny doklad k tvojmu výberu.</p>
+    </div>
     <div class="hiw-step-icon" aria-hidden="true">
     <!-- ikona pečate -->
     <img src="/assets/pecat.png" alt="ikona pečate">
@@ -37,13 +41,17 @@ if (!function_exists('esc_hiw')) {
     <!-- ikona platby -->
     <img src="/assets/mince.png" alt="ikona mince">
     </div>
-    <h3 id="hiw-step-3" class="hiw-step-title hiw-text-3">Platba a odkaz</h3>
-    <p class="hiw-step-text hiw-text-3">Po zaplatení ti príde magický odkaz na stiahnutie — priamo do e-mailu.</p>
+    <div class="hiw-step-textbox">
+    <h3 id="hiw-step-3" class="section-title hiw-text-3">Platba a odkaz</h3>
+    <p class="section-subtitle hiw-text-3">Po zaplatení ti príde magický odkaz na stiahnutie — priamo do e-mailu.</p>
+    </div>
   </article>
 
   <article class="hiw-step arrow-up" role="listitem" aria-labelledby="hiw-step-4">
-    <h3 id="hiw-step-4" class="hiw-step-title hiw-text-4">Podpora dobra</h3>
-    <p class="hiw-step-text hiw-text-4">Časť výťažku putuje na podporu babyboxov — pravidelne a transparentne.</p>
+    <div class="hiw-step-textbox">
+    <h3 id="hiw-step-4" class="section-title hiw-text-4">Podpora dobra</h3>
+    <p class="section-subtitle hiw-text-4">Časť výťažku putuje na podporu babyboxov — pravidelne a transparentne.</p>
+    </div>
     <div class="hiw-step-icon" aria-hidden="true">
     <!-- ikona kalich -->
     <img src="/assets/kalich.png" alt="ikona kalich">

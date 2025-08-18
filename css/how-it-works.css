@@ -1,16 +1,11 @@
-/* typography tuning */
-.central-steps .step-number { color: #4b2f16; font-size: 2rem; font-weight:700; }
-.central-steps .step-title, .central-steps h3 { color: #402b12; font-weight:700; }
+.central-steps h3 { color: #402b12; font-weight:700; }
 .central-steps p { color: #5a3f21; line-height:1.45; max-width:86%; margin:0 auto; }
 
-/* ===== Per-card unified ===== */
 .hiw-step {
+  max-height: 100%;
   position: relative;
   z-index: 4;
-  padding: 26px 18px;
-  border-radius: 14px;
   overflow: visible;
-  text-align: center;
   box-shadow:
     0 28px 60px rgba(18,12,6,0.14),
     inset 0 -12px 28px rgba(230,200,120,0.03);
@@ -19,7 +14,7 @@
 
 .hiw-step::after {
   content: "";
-  position: absolute;               /* trošku posunout, aby víc navazovala */
+  position: absolute;
   width: 90%;           /* zvětšit čáru */
   height: 100%;           /* zvětšit čáru */
   left: 40%;
@@ -47,23 +42,16 @@
     0 44px 80px rgba(18,12,6,0.20),
     inset 0 -18px 40px rgba(230,190,100,0.05);
 }
-.hiw-step .divider {
-  height: 1px;
-  margin: 18px 12%;
-  background: linear-gradient(90deg, rgba(20,12,6,0.02), rgba(20,12,6,0.04), rgba(20,12,6,0.02));
-  pointer-events: none;
-}
 
 /* ===== Ikony v krocích ===== */
 .hiw-step-icon {
   width: 100%;
-  margin: 0 auto 14px;
-  position: relative; /* jen kvůli glow */
+  position: relative;
 }
 
 .hiw-step-icon::before {
   content: "";
-  position: absolute;
+  position: relative;
   inset: -8px; /* zkrácený zápis pro top/right/bottom/left */
   border-radius: 50%;
   box-shadow: 0 0 40px rgba(212,160,23,0.10);
@@ -71,89 +59,41 @@
 }
 
 .hiw-step-icon img {
-  display: block;
-  max-width: 90%;
-  position: relative;
+  max-width: 80%;
+  max-height: 60%;
+  height: auto;
+  width: auto;
+  padding-top: 10%;
 }
 
-/* ===== Jemné posuny podle kroků ===== */
+.hiw-step-textbox {
+  max-width: 85%;
+  height: auto;
+  width: auto;
+  padding-bottom: 10%;
+  margin-left: 10%;
+}
+
 .central-steps .hiw-step:nth-child(1) .hiw-step-icon {
-  transform: translateX(10%); /* zarovnání na střed */
-}
-
-.central-steps .hiw-step:nth-child(2) .hiw-step-icon {
-  top: 10%; /* posun dolů doprostřed */
-  transform: translateX(7.5%); /* zarovnání na střed */
-}
-
-.central-steps .hiw-step:nth-child(3) .hiw-step-icon {
-  transform: translateX(7.5%); /* zarovnání na střed */
+  left: 5%;
 }
 
 .central-steps .hiw-step:nth-child(4) .hiw-step-icon {
-  top: 5%; /* posun dolů doprostřed */
-  transform: translateX(15%); /* zarovnání na střed */
+  padding-top: 0;
+  padding-bottom: 5%;
 }
 
 .hiw-step.arrow-up::after {   transform: scaleY(-1) rotate(-10deg); top:5%;}
 .hiw-step.arrow1-down::after { transform: rotate(-10deg); left:50%; top:-5%;}
 .hiw-step.arrow2-down::after { transform: rotate(-10deg); top: -10%;}
 
-/* TEXT */
-
-.hiw-step-title {
-  font-family: "Playfair Display", serif;
-  font-size: clamp(1.8rem, 3.6vw, 3rem);
-  margin: 0 0 18px 0;
-  font-weight: 800;
-  color: var(--ink);
-  line-height: 1.02;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  position: relative;
-  z-index: 7;
-  /* jemný emboss pro lepší čitelnost */
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.30),
-    0 2px 6px rgba(0,0,0,0.28);
-}
-
-.hiw-step-text {
-  margin: 0 0 18px 0;
-  color: #342515;
-  opacity: 0.96;
-  font-style: italic;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
-  line-height: 1.6;
-  letter-spacing: 0.2px;
-  max-width: 44ch;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  text-shadow:
-    0.6px 0.6px 0 #1f1309,
-    -0.6px -0.6px 0 rgba(255,255,255,0.02);
-  transition: color 180ms ease, transform 150ms ease;
-  position: relative;
-  z-index: 6;
-}
-
-/* bezpečnější hover/focus pro přístupnost */
-.hiw-step-text:hover,
-.hiw-step-text:focus {
-  color: #4a341f;
-  transform: translateY(-1px);
-  outline: none;
-}
-
 .hiw-text-1 {
+  margin-left: 5%;
   margin-top: 40%;
 }
 
 .hiw-text-2 {
-  margin-top: 5%;
+  margin-top: 10%;
 }
 
 .hiw-text-3 {
@@ -164,24 +104,21 @@
   margin-top: 10%;
 }
 
-/* responsiveness: 4 / 3 / 2 / 1 */
 @media (max-width:1100px){
-  .central-steps{ grid-template-columns: repeat(3, minmax(200px, 1fr)); padding: 28px; }
   .hiw-step::after { display: none; }
 }
 @media (max-width:820px){
-  .central-steps{ grid-template-columns: repeat(2, minmax(200px, 1fr)); padding: 20px; }
   .hiw-step::after { display: none; }
+  .central-steps .hiw-step:nth-child(4) .hiw-step-icon {
+  padding-bottom: 15%;
+  }
+  .central-steps .hiw-step:nth-child(1) .hiw-step-icon {
+  padding-top: 15%;
+  }
+.hiw-text-2 {
+  margin-top: 20%;
+  }
 }
 @media (max-width:480px){
-  .central-steps{ grid-template-columns: 1fr; padding: 16px; }
-  .hiw-step-icon{ width:56px; height:56px; font-size:22px; }
-  .hiw-title{ font-size:1.9rem; }
   .hiw-step::after { display: none; }
-}
-
-/* accessibility */
-@media (prefers-reduced-motion:reduce){
-  *{ transition:none !important; animation:none !important; }
-  .hiw-cta::before, .central-steps::before { display:none !important; }
 }
