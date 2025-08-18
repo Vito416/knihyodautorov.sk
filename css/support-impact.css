@@ -1,374 +1,109 @@
-/* ================= S I D E : supportimpact (sjednocené s about) ================= */
-
-/* drobné lokální proměnné — sladěné s hlavním tématem */
-:root{
-  --si-paper: url('/assets/paper-texture.png');
-  --si-gold: #cf9b3a;
-  --si-gold-soft: #f8e7b0;
-  --si-ink: #3b2a1a;
-  --si-grain: 0.07; /* sladěno s paper grain */
-  --si-radius: 10px; /* mírně zarovnáváme s paper-wrap */
-}
-
-/* ======================== SUPPORT / IMPACT — matched typografie & dekor ======================== */
-.supportimpact-container {
-  position: relative;
-  z-index: 6;
-  max-width: 1200px;
-  margin: 0 auto 18px;
-  padding: 28px clamp(18px, 2.5vw, 32px);
-  text-align: center;
-  isolation: isolate;
-}
-
-/* wrapper/head — styled to match topbooks epic header look */
 .supportimpact-head {
-  position: relative;
-  margin: 0 auto 18px;
-  display: block;
+  grid-row: 1;
+  grid-column: 1 / -1;
   max-width: 100%;
-  padding: 22px clamp(12px, 2.0vw, 20px);
   text-align: center;
-  border-radius: 14px;
-
-  background: linear-gradient(180deg, rgba(255,247,232,0.18), rgba(255,245,226,0.10));
-  backdrop-filter: blur(6px) saturate(115%);
-  -webkit-backdrop-filter: blur(6px) saturate(115%);
-  border: 1px solid rgba(255,245,230,0.08);
-
-  box-shadow:
-    0 10px 28px rgba(0,0,0,0.20),
-    inset 0 1px 0 rgba(255,255,255,0.04);
-
-  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
 }
 
-/* Gold decorative strip across the top of the head — same as topbooks */
-.supportimpact-head::before {
-  content: "";
-  position: absolute;
-  top: -8px;
-  left: 5%;
-  right: 5%;
-  height: 6px;
-  border-radius: 4px 4px 0 0;
-  background: linear-gradient(90deg, #e3bb5f 0%, #cf9b3a 38%, #ffe89c 62%, #cfa84d 100%);
-  box-shadow: 0 3px 8px rgba(207,155,60,0.25);
-  z-index: 2;
+.central-steps h3 { color: #402b12; font-weight:700; }
+.central-steps p { color: #5a3f21; line-height:1.45; max-width:86%; margin:0 auto; }
+.central-steps > * {
+  padding: 0 0 ;
 }
 
-/* Centered decorative stars like authors header */
-.supportimpact-head::after {
-  content: "✦\00a0✦";
-  position: absolute;
-  top: 10px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: rgba(207,155,60,0.92);
-  text-shadow: 0 1px 4px rgba(207,155,60,0.18);
-  pointer-events: none;
-  z-index: 3;
-}
-
-/* hover/glow effect for the whole head — matches topbooks header behavior */
-.supportimpact-head:hover,
-.supportimpact-head:focus-within {
-  transform: translateY(-2px);
-  box-shadow:
-    0 16px 46px rgba(0,0,0,0.24),
-    0 0 14px rgba(207,155,60,0.32),
-    inset 0 1px 0 rgba(255,255,255,0.05);
-  filter: saturate(118%);
-}
-
-/* title — Playfair Display + emboss / highlight (stejné jako about-title) */
-.supportimpact-title {
-  font-family: "Playfair Display", serif;
-  font-size: clamp(2.2rem, 3.6vw, 2.6rem);
-  line-height: 1.02;
-  margin: 0 0 8px;
-  color: var(--si-ink);
-  font-weight: 900;
-  letter-spacing: -0.02em;
-  position: relative;
-  z-index: 4;
-
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.40),
-    0 2px 4px rgba(0,0,0,0.30),
-    0 0 8px rgba(255,224,170,0.10);
-  -webkit-font-smoothing: antialiased;
-}
-
-/* If you want a decorated gold span inside title (same pattern as about-title) */
-.supportimpact-title .gold {
-  display:inline-block;
-  margin:0;
-  font-family: "Cinzel Decorative", serif;
-  font-size: 1.05em;
-  text-transform: uppercase;
-  font-weight:900;
-  letter-spacing:1px;
-  color: var(--si-gold);
-  -webkit-text-stroke: 0.9px rgba(87,55,15,1);
-  text-shadow:
-    1px 1px 0 #2f1b0b,
-    -0.6px -0.6px 0 rgba(255,255,255,0.12);
-  position: relative;
-}
-.supportimpact-title .gold::after{
-  content: attr(data-text);
-  position:absolute; left:0; top:0; width:100%; height:100%;
-  -webkit-background-clip:text; background-clip:text;
-  background: linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.45) 8%, rgba(255,255,255,0.06) 18%, rgba(255,255,255,0) 30%);
-  -webkit-text-fill-color: transparent;
-  transform: translateY(-1px); opacity:0.95;
-  pointer-events:none;
-}
-
-/* description text — same tone as about-text */
-.supportimpact-title + .supportimpact-text,
-.supportimpact-text {
+.supportimpact-item {
+  max-height: 100%;
   display: block;
-  margin: 0 auto;
-  max-width: 820px;
-  color: rgba(59,42,26,0.92);
-  font-weight: 600;
-  font-size: clamp(0.98rem, 1.0vw, 1rem);
-  line-height: 1.42;
-  padding: 0 6px;
-  z-index: 4;
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.18),
-    0 0 4px rgba(255,248,230,0.12);
-  font-family: Georgia, "Times New Roman", serif;
-}
-
-/* accessibility & reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .supportimpact-head,
-  .supportimpact-head:hover,
-  .supportimpact-head:focus-within { transition: none; transform: none; }
-}
-
-/* responsive adjustments (matching topbooks approach) */
-@media (max-width: 992px) {
-  .supportimpact-container { padding: 20px 12px; }
-  .supportimpact-head { padding: 18px 12px; border-radius: 12px; }
-  .supportimpact-title { font-size: clamp(1.9rem, 6vw, 2.2rem); }
-  .supportimpact-text { font-size: 0.98rem; }
-}
-
-@media (max-width: 520px) {
-  .supportimpact-container { padding: 16px 10px; }
-  .supportimpact-head { padding: 14px 10px; border-radius: 10px; }
-  .supportimpact-title { font-size: 1.6rem; line-height: 1.12; }
-  .supportimpact-title + .supportimpact-text,
-  .supportimpact-text { font-size: 0.92rem; padding: 0 8px; }
-  .supportimpact-head::before { left: 8%; right: 8%; height: 5px; top: -6px; }
-  .supportimpact-head::after { top: 8px; font-size: 0.78rem; }
-}
-
-/* ======================== STATS GRID — visual tweaks to match cards + type ======================== */
-.supportimpact-stats{
-  display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
-  gap: 18px;
-  align-items: stretch;
-  margin: 28px 0;
-}
-
-/* Card base — upraveno, aby ladilo s babybox / paper */
-.supportimpact-item{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.03));
-  border-radius: 14px;
-  padding: 22px 16px;
-  text-align: center;
-  box-shadow: 0 22px 50px rgba(0,0,0,0.09);
-  border: 1px solid rgba(0,0,0,0.06);
+  flex-direction: column;
   position: relative;
+  grid-row: 2;
+  z-index: 4;
   overflow: visible;
-  transition: transform .22s cubic-bezier(.2,.9,.3,1), box-shadow .22s ease, background .22s ease;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  gap:8px;
-  font-family: "Playfair Display", serif;
-  color: var(--si-ink);
+  box-shadow:
+    0 28px 60px rgba(18,12,6,0.14),
+    inset 0 -12px 28px rgba(230,200,120,0.03);
+  transition: transform .28s cubic-bezier(.2,.9,.3,1), box-shadow .28s ease, border-left-color .28s ease;
 }
 
-/* Alternating subtle tint for depth */
-.supportimpact-item:nth-child(odd){
-  background-image:
-    linear-gradient(180deg, rgba(255,247,230,0.01), rgba(0,0,0,0.03));
-}
-.supportimpact-item:nth-child(even){
-  background-image:
-    linear-gradient(180deg, rgba(255,250,240,0.00), rgba(0,0,0,0.035));
-}
-
-/* small gold ribbon accent (top-right) */
-.supportimpact-item::after{
+.supportimpact-item::after {
   content: "";
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 48px;
-  height: 8px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, rgba(255,250,230,0.95), rgba(207,155,60,0.98));
-  box-shadow: 0 6px 14px rgba(207,155,60,0.06);
-  transform: rotate(10deg);
-  pointer-events:none;
-  opacity:0.95;
+  position: absolute;               /* trošku posunout, aby víc navazovala */
+  width: 90%;           /* zvětšit čáru */
+  height: 100%;           /* zvětšit čáru */
+  left: 35%;
+  top: -20%;
+  background: url("/assets/cara.png") no-repeat center/contain;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(0,0,0,0.3)); /* zvýraznění */
+  transition: transform .3s ease, filter .3s ease;
+  transform: rotate(-60deg);
 }
 
-/* hover / focus (keyboard) — sjednoceno s frame / babybox chováním */
-.supportimpact-item:hover{
+.supportimpact-item:hover::after {
+  filter: drop-shadow(0 0 10px rgba(190,127,24,0.6)); /* zlaté zvýraznění při hoveru */
+}
+
+/* poslední krok nepotřebuje čáru */
+.supportimpact-item:last-child::after {
+  display: none;
+}
+
+.supportimpact-item:hover {
   transform: translateY(-8px);
-  box-shadow: 0 44px 110px rgba(0,0,0,0.12);
-}
-.supportimpact-item:focus-within{
-  outline: none;
-  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.08);
-}
-
-/* number: big, shiny, clearly readable — typografie sjednocena */
-.si-number{
-  display:inline-block;
-  font-size:2.4rem;
-  font-weight:900;
-  line-height:1;
-  margin: 2px 0 6px;
-  color: transparent;
-  background: linear-gradient(90deg, var(--si-gold-soft), var(--si-gold));
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 10px 30px rgba(255,235,180,0.10);
-  letter-spacing: -0.01em;
-  font-family: "Cinzel Decorative", serif;
-  -webkit-font-smoothing:antialiased;
+  border-left-color: #be7f18;
+  box-shadow:
+    0 44px 80px rgba(18,12,6,0.20),
+    inset 0 -18px 40px rgba(230,190,100,0.05);
 }
 
-/* optional smaller currency or unit line (if present in markup) */
-.si-number + .si-currency{
-  display:block;
-  font-size:0.88rem;
-  color: rgba(59,42,26,0.72);
-  font-weight:800;
-  margin-top:6px;
+/* ===== Ikony v krocích ===== */
+.supportimpact-icon {
+  max-height: 100%;
+  position: relative; /* jen kvůli glow */
 }
 
-/* label: compact, uppercase feeling (serif-weighted) */
-.si-label{
-  display:block;
-  font-size:0.92rem;
-  color: rgba(59,42,26,0.84);
-  font-weight:800;
-  margin-top:8px;
-  letter-spacing:0.02em;
-  font-family: "Playfair Display", serif;
+.supportimpact-icon::before {
+  content: "";
+  position: relative;
+  inset: -8px; /* zkrácený zápis pro top/right/bottom/left */
+  box-shadow: 0 0 40px rgba(212,160,23,0.10);
+  z-index: -1;
 }
 
-/* small responsive tweaks */
-@media (max-width:480px){
-  .supportimpact-item{ padding:16px; }
-  .si-number{ font-size:2rem; }
+.supportimpact-icon img {
+  max-width: 70%;
+  max-height: 70%;
+  height: auto;
+  width: auto;
+  padding-top: 10%;
 }
 
-/* ======================== HIGHLIGHT: emphasis area with optional progress (aligned with about-highlight) ======================== */
-.supportimpact-highlight{
-  margin-top:20px;
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-  align-items:stretch;
-  background: linear-gradient(90deg, rgba(255,250,230,0.02), rgba(207,155,60,0.03));
-  border-left: 6px solid var(--si-gold);
-  padding:16px 18px;
-  border-radius: 12px;
-  box-shadow: 0 14px 36px rgba(0,0,0,0.08);
-  color: var(--si-ink);
-  font-weight:800;
-  line-height:1.35;
-  font-family: "Playfair Display", serif;
+.supportimpact-item-textbox {
+  width: 30%;
+  height: auto;
+  width: auto;
+  padding-bottom: 10%;
 }
 
-/* small decorative bar above highlight */
-.supportimpact-highlight::before{
-  content:"";
-  display:block;
-  width:64px;
-  height:8px;
-  margin-bottom:6px;
-  border-radius:6px;
-  background: linear-gradient(90deg, var(--si-gold-soft), var(--si-gold));
-  opacity:0.95;
-}
-
-/* progress bar — colors harmonized */
-.si-progress{
-  height:14px;
-  background: rgba(0,0,0,0.06);
-  border-radius:10px;
-  overflow:hidden;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
-  width:100%;
-}
-.si-progress-bar{
-  height:100%;
-  width:0%;
-  background: linear-gradient(90deg, rgba(248,231,176,0.95), rgba(207,155,60,0.95));
-  box-shadow: 0 8px 20px rgba(207,155,60,0.12);
-  transition: width 900ms cubic-bezier(.2,.9,.3,1);
-  border-radius:10px;
-  position:relative;
-}
-/* optional percent label inside bar */
-.si-progress-value{
-  position:absolute;
-  right:8px;
-  top:50%;
-  transform:translateY(-50%);
-  color: rgba(43,31,15,0.95);
-  font-weight:900;
-  font-size:0.79rem;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.12);
-}
-
-/* small helper: muted explanatory text inside highlight */
-.supportimpact-highlight .muted{
-  color: rgba(59,42,26,0.75);
-  font-weight:700;
-  font-size:0.95rem;
-  font-family: Georgia, "Times New Roman", serif;
-}
-
-/* RESPONSIVITY: graceful stacking (matching about behaviour) */
+/* responsiveness: 4 / 3 / 2 / 1 */
 @media (max-width:1100px){
-  .supportimpact-stats{ grid-template-columns: repeat(3, minmax(160px, 1fr)); }
+  .central-steps{ grid-template-columns: repeat(3, minmax(200px, 1fr)); padding: 28px; }
+  .supportimpact-item::after { display: none; }
 }
-@media (max-width:800px){
-  .supportimpact-stats{ grid-template-columns: repeat(2, minmax(160px, 1fr)); }
+@media (max-width:820px){
+  .central-steps{ grid-template-columns: repeat(2, minmax(200px, 1fr)); padding: 20px; }
+  .supportimpact-item::after { display: none; }
 }
 @media (max-width:480px){
-  .supportimpact-stats{ grid-template-columns: 1fr; gap:14px; }
-  .supportimpact-title{ font-size:1.9rem; }
-  .supportimpact-text{ font-size:0.98rem; }
+  .central-steps{ grid-template-columns: 1fr; padding: 16px; }
+  .supportimpact-icon{ width:56px; height:56px; font-size:22px; }
+  .supportimpact-item::after { display: none; }
 }
 
-/* ACCESSIBILITY: reduced-motion safe */
+/* accessibility */
 @media (prefers-reduced-motion:reduce){
-  .supportimpact-item, .supportimpact-item:hover, .si-progress-bar { transition:none !important; animation:none !important; }
-  .supportimpact-item:hover{ transform:none !important; box-shadow: 0 12px 30px rgba(0,0,0,0.08) !important; }
-}
-
-/* small focus-visible helpers for keyboard users */
-.supportimpact-item:focus-within, .supportimpact-item:focus {
-  outline: none;
-  box-shadow: 0 44px 110px rgba(0,0,0,0.12), 0 0 0 4px rgba(207,155,60,0.06);
-  border-radius: 14px;
+  *{ transition:none !important; animation:none !important; }
+  .central-steps::before { display:none !important; }
 }

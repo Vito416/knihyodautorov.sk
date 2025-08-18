@@ -64,37 +64,48 @@ $donated = $totalSales * ($supportPercent / 100.0);
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
 
-    <div class="supportimpact-container">
-      <header class="supportimpact-head">
-        <h2 class="supportimpact-title">Tvoj nákup má zmysel</h2>
-        <p class="supportimpact-text">Časť výťažku systematicky putuje na podporu babyboxov a charitatívnych projektov.</p>
-      </header>
-
-      <div class="supportimpact-stats" role="region" aria-label="Štatistiky podpory">
-        <div class="supportimpact-item">
-          <strong class="si-number"><?php echo esc_si(number_format($totalBooksSold,0,'',' ')); ?></strong>
-          <span class="si-label">Predané knihy</span>
+    <div class="blank-container">
+      <div class="central-steps" role="region" aria-label="Štatistiky podpory">
+        <div class="supportimpact-head">
+        <h1 class="section-title">Tvoj nákup má <span>zmysel</span></h1>
+        <p class="section-subtitle">Časť výťažku systematicky putuje na podporu babyboxov a charitatívnych projektov.</p>
         </div>
         <div class="supportimpact-item">
-          <strong class="si-number"><?php echo esc_si(number_format($totalOrders,0,'',' ')); ?></strong>
-          <span class="si-label">Splatené objednávky</span>
+            <div class="supportimpact-icon" aria-hidden="true">
+            <img src="/assets/kniha2.png" alt="ikona pečate">
+            </div>
+          <div class="supportimpact-item-textbox">
+          <h3 class="section-title supportimpact-text1"><?php echo esc_si(number_format($totalBooksSold,0,'',' ')); ?></h3>
+          <p class="section-subtitle supportimpact-text1">Predané knihy</p>
+          </div>
         </div>
         <div class="supportimpact-item">
-          <strong class="si-number"><?php echo esc_si(number_format($totalSales,2,',',' ')); ?> €</strong>
-          <span class="si-label">Celkové tržby</span>
+            <div class="supportimpact-icon" aria-hidden="true">
+            <img src="/assets/faktura.png" alt="ikona pečate">
+            </div>
+          <div class="supportimpact-item-textbox">
+          <h3 class="section-title supportimpact-text2"><?php echo esc_si(number_format($totalOrders,0,'',' ')); ?></h3>
+          <p class="section-subtitle supportimpact-text2">Splatené objednávky</p>
+          </div>
         </div>
         <div class="supportimpact-item">
-          <strong class="si-number"><?php echo esc_si(number_format($donated,2,',',' ')); ?> €</strong>
-          <span class="si-label">Odhadovaná darovaná suma (<?php echo esc_si($supportPercent); ?>%)</span>
+            <div class="supportimpact-icon" aria-hidden="true">
+            <img src="/assets/mince2.png" alt="ikona pečate">
+            </div>
+          <div class="supportimpact-item-textbox">
+          <h3 class="section-title supportimpact-text2"><?php echo esc_si(number_format($totalSales,2,',',' ')); ?> €</h3>
+          <p class="section-subtitle supportimpact-text3">Celkové tržby</p>
+          </div>
         </div>
-      </div>
-
-      <div class="supportimpact-highlight">
-        <?php if ($supportEnabled): ?>
-          Ďakujeme — podpora babyboxov je aktívna. <?php echo esc_si(number_format($donated,2,',',' ')); ?> € bolo venované z odhadovaných tržieb.
-        <?php else: ?>
-          Momentálne nie je podpora babyboxov aktívna. Kontaktuj administrátora pre viac informácií.
-        <?php endif; ?>
+        <div class="supportimpact-item">
+            <div class="supportimpact-icon" aria-hidden="true">
+            <img src="/assets/dieta.png" alt="ikona pečate">
+            </div>
+          <div class="supportimpact-item-textbox">
+          <h3 class="section-title supportimpact-text4"><?php echo esc_si(number_format($donated,2,',',' ')); ?> €</h3>
+          <p class="section-subtitle supportimpact-text4">Darovaná suma</p>
+          </div>
+        </div>
       </div>
     </div>
   </div>

@@ -141,7 +141,7 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
   <div class="books-container">
     <div class="books-header">
       <div class="books-header-left">
-      <h2 class="section-title">Vybrané <span>knihy</span></h2>
+      <h1 class="section-title">Vybrané <span>knihy</span></h1>
       <p class="section-subtitle">
         Nechte se inspirovat naším aktuálním výběrem každý den nový mix žánrů a autorů.
       </p>

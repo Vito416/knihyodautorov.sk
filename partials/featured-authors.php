@@ -48,10 +48,10 @@ if ($pdo instanceof PDO) {
 ?>
 <link rel="stylesheet" href="/css/featured-authors.css">
 
-<section id="fauthorsSection" class="fauthors-section">
-<div class="fauthors-paper-wrap">
-    <span class="fauthors-grain-overlay" aria-hidden="true"></span>
-    <span class="fauthors-paper-edge" aria-hidden="true"></span>
+<section id="fauthorsSection" class="style-section">
+<div class="paper-wrap">
+    <span class="paper-grain-overlay" aria-hidden="true"></span>
+    <span class="paper-edge" aria-hidden="true"></span>
   <div class="fauthors-container">
     <div class="fauthors-header">
       <div class="fauthors-head">

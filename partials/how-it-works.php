@@ -11,9 +11,9 @@ if (!function_exists('esc_hiw')) {
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
 
-    <div class="hiw-container">
+    <div class="blank-container">
 
-<div class="hiw-steps" role="list" aria-describedby="hiw-sub">
+<div class="central-steps" role="list" aria-describedby="hiw-sub">
   <article class="hiw-step arrow1-down" role="listitem" aria-labelledby="hiw-step-1">
     <div class="hiw-step-icon" aria-hidden="true">
     <!-- ikona knihy -->
