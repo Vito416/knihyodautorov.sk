@@ -6,10 +6,10 @@ if (!function_exists('esc_hiw')) {
 ?>
 <link rel="stylesheet" href="/css/how-it-works.css">
 
-<section class="hiw-section" aria-label="Ako to funguje - Objednávka PDF">
-  <div class="hiw-paper-wrap">
-    <span class="hiw-grain-overlay" aria-hidden="true"></span>
-    <span class="hiw-paper-edge" aria-hidden="true"></span>
+<section class="style-section" aria-label="Ako to funguje - Objednávka PDF">
+  <div class="paper-wrap">
+    <span class="paper-grain-overlay" aria-hidden="true"></span>
+    <span class="paper-edge" aria-hidden="true"></span>
 
     <div class="hiw-container">
 

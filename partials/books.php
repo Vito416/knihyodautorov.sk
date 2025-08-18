@@ -134,10 +134,10 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
 <link rel="stylesheet" href="/css/books.css">
 <script src="/js/books.js" defer></script>
 
-<section id="booksPromo" class="books-section">
-<div class="books-paper-wrap">
-    <span class="books-grain-overlay" aria-hidden="true"></span>
-    <span class="books-paper-edge" aria-hidden="true"></span>
+<section id="booksPromo" class="style-section">
+<div class="paper-wrap">
+    <span class="paper-grain-overlay" aria-hidden="true"></span>
+    <span class="paper-edge" aria-hidden="true"></span>
   <div class="books-container">
     <div class="books-header">
       <div class="books-header-left">

@@ -21,8 +21,8 @@ if (!function_exists('esc_fauth')) {
     function esc_fauth($s){ return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 }
 
-// načítanie autorov: počet kníh, priemerné hodnotenie
-$limit = 6;
+//  načítanie autorov: počet kníh, priemerné hodnotenie
+$limit = 4;
 $authors = [];
 if ($pdo instanceof PDO) {
     try {
@@ -48,33 +48,52 @@ if ($pdo instanceof PDO) {
 ?>
 <link rel="stylesheet" href="/css/featured-authors.css">
 
-<section class="fauthors-section" aria-label="Autori v centre pozornosti">
-  <div class="fauthors-paper-wrap">
+<section id="fauthorsSection" class="fauthors-section">
+<div class="fauthors-paper-wrap">
     <span class="fauthors-grain-overlay" aria-hidden="true"></span>
-
-    <header class="fauthors-head">
-      <h2 class="fauthors-title">Autori v centre pozornosti</h2>
+    <span class="fauthors-paper-edge" aria-hidden="true"></span>
+  <div class="fauthors-container">
+    <div class="fauthors-header">
+      <div class="fauthors-head">
+      <h2 class="fauthors-title">Autori v <span>centre pozornosti</span></h2>
       <p class="fauthors-sub">Predstavujeme autorov, ktorí tvoria príbehy, ktoré si zamiluješ.</p>
-    </header>
+      </div>
+    </div>
 
     <div class="fauthors-grid" role="list">
       <?php if (empty($authors)): ?>
         <div class="fauthors-empty">Žiadni autori na zobrazenie.</div>
       <?php else: foreach ($authors as $a): ?>
         <?php $photo = !empty($a['foto']) ? '/assets/authors/' . ltrim($a['foto'],'/') : '/assets/author-placeholder.png'; ?>
-        <article class="fauthor-card" role="listitem" data-author-id="<?php echo (int)$a['id']; ?>">
+        <div class="fauthor-card" role="listitem" data-author-id="<?php echo (int)$a['id']; ?>">
+          <div class="fauthor-card-inner">
+          <div class="fauthor-photo-wrap" style="transform-style:preserve-3d;">
           <img class="fauthor-photo" src="<?php echo esc_fauth($photo); ?>" alt="<?php echo esc_fauth($a['meno']); ?>"
                onerror="this.onerror=null;this.src='/assets/author-placeholder.png'">
+          <div class="fauthor-card-frame"></div>
+          </div>
+          <div class="fauthor-card-info">
           <h3 class="fauthor-name"><?php echo esc_fauth($a['meno']); ?></h3>
           <div class="fauthor-meta">
             <span class="fauthor-books"><?php echo (int)$a['books_count']; ?> knih</span>
             <span class="fauthor-rating">★ <?php echo $a['avg_rating'] ? esc_fauth($a['avg_rating']) : '—'; ?></span>
           </div>
           <p class="fauthor-bio"><?php echo esc_fauth(mb_strimwidth($a['bio'] ?? '', 0, 220, '...')); ?></p>
-          <a class="fauthor-cta" href="/authors.php?author=<?php echo urlencode($a['slug']); ?>">Zobraziť diela</a>
-        </article>
+          </div>
+          <div class="fauthor-card-action">
+          <button 
+            class="fauthor-btn fauthor-cta" 
+            type="button"
+            aria-label="Zobraziť diela <?php echo esc_fauth($a['meno']); ?>">
+            <span class="btn-text">Zobraziť diela</span>
+          </button>
+          <!-- <a class="fauthor-cta" href="/authors.php?author=<?php echo urlencode($a['slug']); ?>">Zobraziť diela</a> -->
+          </div>
+        </div>
+      </div>
       <?php endforeach; endif; ?>
     </div>
+  </div>  
   </div>
 </section>
 

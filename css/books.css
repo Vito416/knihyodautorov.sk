@@ -343,9 +343,6 @@
   transform: translateY(-2px);
 }
 
-/* promo note small */
-.promo-note { color:#3b2a1a; opacity:0.9; font-weight:600; }
-
 /* ======================== GRID (4/3/2/1) ======================== */
 .books-grid {
   display:grid;

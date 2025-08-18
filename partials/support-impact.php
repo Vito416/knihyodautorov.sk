@@ -59,9 +59,10 @@ $donated = $totalSales * ($supportPercent / 100.0);
 ?>
 <link rel="stylesheet" href="/css/support-impact.css">
 
-<section class="supportimpact-section" aria-label="Podpora a dopad">
-  <div class="supportimpact-paper-wrap">
-    <span class="supportimpact-grain-overlay" aria-hidden="true"></span>
+<section class="style-section" aria-label="Podpora a dopad">
+  <div class="paper-wrap">
+    <span class="paper-grain-overlay" aria-hidden="true"></span>
+    <span class="paper-edge" aria-hidden="true"></span>
 
     <div class="supportimpact-container">
       <header class="supportimpact-head">

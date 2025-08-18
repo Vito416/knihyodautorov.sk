@@ -1,26 +1,16 @@
-:root{
-  --fa-gold: #cf9b3a;
-  --fa-gold-soft: #f8e7b0;
-  --fa-ink: #3b2a1a;
-  --fa-paper: url('/assets/paper-texture.png');
-  --fa-grain-opacity: 0.07; /* sladěno s ostatními sekcemi */
-  --fa-radius: 10px;
-}
-
-/* ======================== KONTEJNER ======================== */
 .fauthors-section {
   display: flex;
   justify-content: center;
   padding: 60px 16px;
 }
 
-/* PAPER WRAP (sjednocené s ostatními paper-wrapy) */
+/* PAPER WRAP */
 .fauthors-paper-wrap {
   width: min(1200px, 96%);
   position: relative;
-  background-image: var(--fa-paper);
+  background-image: url('/assets/paper-texture.png');
   background-position: center;
-  background-size: cover; /* sjednoceno */
+  background-size: 100% 100%; /* deformuje pozadí přesně na box */
   background-repeat: no-repeat;
   border-radius: 10px;
   padding: 56px;
@@ -29,11 +19,9 @@
     inset 0 18px 40px rgba(0,0,0,0.13),
     inset 0 0 120px rgba(0,0,0,0.06);
   overflow: visible;
-  z-index: 1;
-  -webkit-font-smoothing: antialiased;
 }
 
-/* burnt edges overlay (match) */
+/* burnt edges overlay */
 .fauthors-paper-wrap::before {
   content: "";
   position: absolute;
@@ -51,7 +39,7 @@
   mix-blend-mode: multiply;
 }
 
-/* rim-light / highlight overlay (match) */
+/* rim-light / highlight overlay */
 .fauthors-paper-wrap::after {
   content: "";
   position: absolute;
@@ -70,7 +58,7 @@
   filter: blur(4px) contrast(1.02);
 }
 
-/* Grain overlay */
+/* Grain overlay: vlož do HTML jako <span class="fauthors-grain-overlay" aria-hidden="true"></span> */
 .fauthors-paper-wrap .fauthors-grain-overlay {
   position: absolute;
   inset: 0;
@@ -80,12 +68,12 @@
     radial-gradient(circle at 20% 10%, rgba(0,0,0,0.02) 0 1px, transparent 1px),
     radial-gradient(circle at 80% 90%, rgba(0,0,0,0.02) 0 1px, transparent 1px);
   background-size: 3px 3px, 4px 4px;
-  opacity: var(--fa-grain-opacity);
+  opacity: 0.06;
   mix-blend-mode: multiply;
   transform: translateZ(0);
 }
 
-/* vnitřní papírová linka */
+/* volitelná vnitřní linka (paper edge) - vlož jako <span class="fauthors-paper-edge"></span> */
 .fauthors-paper-wrap .fauthors-paper-edge {
   position: absolute;
   inset: 10px;
@@ -95,305 +83,748 @@
   z-index: 5;
 }
 
-/* ======================== AUTHORS HEADER — PŘESNĚ PODLE TOPBOOKS VZORU ======================== */
-.fauthors-head {
+/* ======================== HEADER + SEARCH — matched to TOPBOOKS style ======================== */
+.fauthors-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
   position: relative;
   z-index: 6;
-  isolation: isolate;
-  max-width: 980px;
-  margin: 0 auto 20px;
-  padding: 22px clamp(18px, 2.5vw, 32px);
-  text-align: center;
-  background: linear-gradient(180deg, rgba(255,247,232,0.18), rgba(255,245,226,0.10));
+
+  /* pergamenový / frosted base to match topbooks */
+  background: linear-gradient(180deg, rgba(255,247,232,0.14), rgba(255,245,226,0.06));
   backdrop-filter: blur(6px) saturate(115%);
-  -webkit-backdrop-filter: blur(6px) saturate(115%);
-  border: 1px solid rgba(255,245,230,0.08);
-  border-radius: 14px;
+  --webkit-backdrop-filter: blur(6px) saturate(115%);
+  padding: 18px;
+  border-radius: 12px;
+
+  /* subtle depth */
   box-shadow:
-    0 10px 28px rgba(0,0,0,0.20),
+    0 8px 22px rgba(0,0,0,0.16),
     inset 0 1px 0 rgba(255,255,255,0.04);
+
   transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
 }
+.fauthors-head {
+  margin-left: 2%;
+}
 
-/* Zlatá linka nahoře */
-.fauthors-head::before {
+/* decorative gold ribbon on the left (replaces border-left) */
+.fauthors-header::before {
   content: "";
   position: absolute;
-  top: -8px;
-  left: 5%;
-  right: 5%;
+  left: 12px;
+  top: 12px;
+  bottom: 12px;
+  width: 8px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f8e6b0 0%, #d9b069 40%, #c9972e 100%);
+  box-shadow: 0 6px 16px rgba(207,155,60,0.16), inset 0 1px 0 rgba(255,255,255,0.18);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* small top gold bar (optional accent to tie to topbooks) */
+.fauthors-header::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 6%;
+  right: 6%;
   height: 6px;
   border-radius: 4px 4px 0 0;
-  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 40%, #fbe9a1 60%, #cfa84d 100%);
-  box-shadow: 0 3px 8px rgba(207,155,60,0.25);
+  background: linear-gradient(90deg, #e3bb5f 0%, #cf9b3a 38%, #ffe89c 62%, #cfa84d 100%);
+  box-shadow: 0 4px 10px rgba(207,155,60,0.14);
   z-index: 2;
 }
 
-/* Hvězdičky */
-.fauthors-head::after {
-  content: "✦\00a0✦";
-  position: absolute;
-  top: 10px;
-  left: 0;
-  right: 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: rgba(207,155,60,0.92);
-  text-shadow: 0 1px 4px rgba(207,155,60,0.18);
-  pointer-events: none;
+/* hover / focus visual */
+.fauthors-header:hover,
+.fauthors-header:focus-within {
+  transform: translateY(-2px);
+  box-shadow:
+    0 18px 46px rgba(0,0,0,0.22),
+    0 0 14px rgba(207,155,60,0.18),
+    inset 0 1px 0 rgba(255,255,255,0.04);
+  filter: saturate(115%);
+}
+
+/* hlavní nadpis */
+.fauthors-title {
+  font-family: "Playfair Display", serif;
+  font-size: clamp(1.8rem, 3.6vw, 2.6rem);
+  margin: 0 0 12px 0;
+  font-weight: 800;
+  color: #3e2a12;
+  line-height: 1.04;
+  -webkit-font-smoothing: antialiased;
+
+  /* subtle emboss for legibility */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.30),
+    0 2px 6px rgba(0,0,0,0.30);
   z-index: 3;
 }
 
-/* Hover efekt */
-.fauthors-head:hover,
-.fauthors-head:focus-within {
-  transform: translateY(-2px);
-  box-shadow:
-    0 16px 46px rgba(0,0,0,0.24),
-    0 0 14px rgba(207,155,60,0.32),
-    inset 0 1px 0 rgba(255,255,255,0.05);
-  filter: saturate(118%);
-}
+/* title + author styling */
+.fauthors-title span{
+  margin:0;
+  font-size:2.6rem;
+  font-family:"Cinzel Decorative", serif;
+  text-transform:uppercase;
+  font-weight:900;
+  letter-spacing:1px;
 
-/* Nadpis (Playfair) */
-.fauthors-title {
-  font-family: "Playfair Display", serif;
-  font-size: clamp(1.9rem, 2.6vw, 2.4rem);
-  line-height: 1.08;
-  margin: 0 0 6px;
-  color: var(--fa-ink);
-  letter-spacing: .3px;
-  position: relative;
-  z-index: 4;
+  /* základní zlatá výplň bez glow */
+  color:#d0a94a;
+
+  /* ostrý tmavý okraj = definice hran */
+  -webkit-text-stroke: 1px #57370f;
+
+  /* sharp shadows (blur=0) pro kontrast, ne rozmazání */
   text-shadow:
-    0 1px 0 rgba(255,255,255,0.40),
-    0 2px 3px rgba(0,0,0,0.28),
-    0 0 8px rgba(255,224,170,0.10);
-}
+    1px 1px 0 #2f1b0b,   /* spodní tmavý rez */
+    -0.6px -0.6px 0 rgba(255,255,255,0.12); /* jemný horní odlesk */
 
-/* Podnadpis (italic serif) */
-.fauthors-sub {
-  font-family: "Merriweather", serif;
-  font-weight: 600;
-  font-size: clamp(0.98rem, 1.25vw, 1.05rem);
-  font-style: italic;
-  line-height: 1.6;
-  max-width: 720px;
-  margin: 0.25rem auto 0;
-  color: rgba(59,42,26,0.92);
-  z-index: 4;
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.20),
-    0 0 4px rgba(255,248,230,0.18);
-}
-
-/* Responzivní drobnosti */
-@media (max-width: 768px) {
-  .fauthors-head { padding: 18px; border-radius: 12px; }
-  .fauthors-title { font-size: clamp(1.7rem, 4.5vw, 2.0rem); }
-  .fauthors-sub { font-size: 0.98rem; line-height: 1.55; }
-}
-@media (max-width: 480px) {
-  .fauthors-head { padding: 14px; border-radius: 10px; }
-  .fauthors-title { font-size: 1.6rem; }
-  .fauthors-sub { font-size: 0.92rem; }
-}
-
-/* ======================== GRID ======================== */
-.fauthors-grid {
-  display: grid;
-  gap: 22px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  position: relative;
-  z-index: 6;
-}
-
-/* ======================== CARD (sjednoceno s book-card/babybox) ======================== */
-.fauthor-card {
-  background:
-    linear-gradient(180deg, rgba(255,250,240,0.02), rgba(0,0,0,0.03)); /* subtle parchment */
-  border-radius: 14px;
-  padding: 18px;
-  text-align: center;
-  box-shadow:
-    0 22px 50px rgba(0,0,0,0.12),
-    inset 0 2px 0 rgba(255,255,255,0.04);
-  border: 1px solid rgba(0,0,0,0.06);
-  transition: transform .28s cubic-bezier(.2,.9,.3,1), box-shadow .28s ease;
-  position: relative;
-  overflow: visible;
-  font-family: "Playfair Display", serif;
-  color: var(--fa-ink);
-}
-
-/* alternating faint tint for depth like supportimpact */
-.fauthor-card:nth-child(odd){
-  background-image:
-    linear-gradient(180deg, rgba(255,247,230,0.01), rgba(0,0,0,0.03));
-}
-.fauthor-card:nth-child(even){
-  background-image:
-    linear-gradient(180deg, rgba(255,250,240,0.00), rgba(0,0,0,0.035));
-}
-
-/* small gold ribbon accent (top-right) — konzistentní s ostatními kartami */
-.fauthor-card::after {
-  content: "";
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 46px;
-  height: 8px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, rgba(255,250,230,0.95), rgba(207,155,60,0.98));
-  box-shadow: 0 6px 14px rgba(207,155,60,0.06);
-  transform: rotate(8deg);
-  pointer-events: none;
-  opacity: 0.95;
-}
-
-/* hover / focus — sjednoceno s card behavior */
-.fauthor-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 44px 110px rgba(0,0,0,0.14);
-}
-.fauthor-card:focus-within {
-  outline: none;
-  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.06);
-  border-radius: 14px;
-}
-
-/* photo — gold border, inset shadow, kruh */
-.fauthor-photo {
-  width: 120px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 50%;
-  display: block;
-  margin: 0 auto 12px;
-  border: 4px solid var(--fa-gold);
-  box-shadow: inset 0 4px 8px rgba(255,245,210,0.12), 0 8px 20px rgba(0,0,0,0.12);
-  background-clip: padding-box;
-  -webkit-backface-visibility: hidden;
-}
-
-/* jméno autora — dekorativní Cinzel (clipovaný highlight jako u titulku) */
-/* Note: add data-text="Full Name" attribute to the element for perfect highlight */
-.fauthor-name {
-  margin: 0;
-  font-family: "Cinzel Decorative", serif;
-  font-size: 1.05rem;
-  text-transform: uppercase;
-  font-weight: 900;
-  letter-spacing: 0.9px;
-  color: var(--fa-gold-soft);
-  -webkit-text-stroke: 0.9px #57370f;
-  text-shadow:
-    1px 1px 0 #2f1b0b,
-    -0.6px -0.6px 0 rgba(255,255,255,0.12);
-  display: inline-block;
-  position: relative;
-  padding: 2px 6px;
+  /* zlepšení vykreslení písma */
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  position: relative;
+  display: inline-block;
 }
 
-/* clipovaný zlatý highlight bez blur */
-.fauthor-name::after {
+/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
+.fauthors-title span::after{
   content: attr(data-text);
   position: absolute;
   left: 0; top: 0;
   width: 100%; height: 100%;
   pointer-events: none;
+
+  /* highlight pruh nahoře směrem dolů */
   background: linear-gradient(180deg,
     rgba(255,255,255,0.95) 0%,
     rgba(255,255,255,0.45) 8%,
     rgba(255,255,255,0.06) 18%,
     rgba(255,255,255,0) 30%);
+
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+
+  /* lehký posun, aby highlight působil vyrytě, ne rozmazaně */
   transform: translateY(-1px);
   opacity: 0.95;
 }
 
-/* meta (role / count) — drop-in Playfair small-caps feeling */
+/* END title + author styling */
+
+/* responsive tweaks */
+@media (max-width: 768px) {
+  .fauthors-header { padding: 14px; border-radius: 10px; }
+  .fauthors-header::before { left: 10px; width: 6px; top: 10px; bottom: 10px; }
+  .fauthors-header::after { left: 8%; right: 8%; height: 3px; top: -5px; }
+  .fauthors-title { font-size: clamp(1.6rem, 5.5vw, 2.0rem); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fauthors-header { transition: none; transform: none; }
+}
+
+/* nový podnadpis — viac „zaujímavý“ text ako si žiadal */
+.fauthors-sub {
+  margin: 0;
+  /* inkoustová barva — hluboká, nikoliv „prahově“ světla */
+  color: #342515;
+  opacity: 0.96;
+
+  /* čitelnost a styl */
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+  font-family: Georgia, "Times New Roman", serif;
+
+  /* omezit šířku pro příjemnou čitelnost (44 znaků ~ ideální) */
+  max-width: 44ch;
+
+  /* ostré vykreslení písma — bez rozmazaných glows */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* lehké „inkoustové“ vykreslení bez blur */
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,      /* spodní tah pro kontrast (blur = 0) */
+    -0.6px -0.6px 0 rgba(255,255,255,0.02); /* jemný horní odlesk */
+
+  /* přechod pro hover / focus (jemný) */
+  transition: color 180ms ease, transform 150ms ease;
+  position: relative; /* pro případ dekorativních pseudo-elem */
+}
+
+/* bezpečnější hover: lehké zesvětlení a drobný „lift“ */
+.fauthors-sub:hover,
+.fauthors-sub:focus {
+  color: #4a341f; /* teplejší, kontrastní než blýskavá žlutá */
+  transform: translateY(-1px);
+  outline: none; /* pokud chceš, můžeš přidat fokus styl pro přístupnost */
+}
+
+/* volitelný drop-cap (první písmeno) — aktivuj jen pokud chceš starobylý vzhled */
+.fauthors-sub.dropcap::first-letter {
+  float: left;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0 .6rem 0 0;
+  font-weight: 700;
+  color: #24150c;
+  -webkit-text-stroke: .6px rgba(0,0,0,0.35); /* definice hran */
+  text-transform: uppercase;
+  font-family: "Cinzel Decorative", Georgia, serif; /* ladí s titulkem */
+}
+
+/* pokud používáš interaktivní karty, zajisti i přístupnost — visible focus */
+.fauthors-sub:focus-visible {
+  box-shadow: 0 0 0 3px rgba(200,170,80,0.12);
+  border-radius: 4px;
+}
+
+/* ======================== GRID (4/3/2/1) ======================== */
+.fauthors-grid {
+  display:grid;
+  grid-template-columns: repeat(1,1fr);
+  align-items:start;
+  position:relative;
+  gap: 1%;
+  transition: all 320ms cubic-bezier(.2,.9,.2,1);
+}
+@media (min-width:1200px){ .fauthors-grid{ grid-template-columns: repeat(4,1fr); } }
+@media (min-width:900px) and (max-width:1199px){ .fauthors-grid{ grid-template-columns: repeat(3,1fr); } }
+@media (min-width:700px) and (max-width:899px){ .fauthors-grid{ grid-template-columns: repeat(2,1fr); } }
+@media (max-width:699px){ .fauthors-grid{ grid-template-columns: repeat(1,1fr); } }
+
+/* ======================== KARTA KNIHY ======================== */
+/* základ karty */
+
+/* sdílené základní styly pro layout */
+.fauthor-card {
+  /* všechny šířky, paddingy, box model atd. co určuje layout */
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+/* přechody pro odhalený stav */
+.fauthor-card {
+  transition: transform 420ms ease, opacity 420ms ease;
+}
+
+.fauthor-card-inner {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  border-radius: 16px;
+  overflow: hidden;
+
+  border: 4px solid transparent;
+
+  /* Zlatý gradient pro rámeček */
+  background-image: linear-gradient(145deg, rgba(212, 175, 55, 0.3), rgba(122, 92, 30, 0.3));
+  background-origin: border-box;
+  background-clip: border-box;
+
+  /* Temný kožený vnitřek */
+  background-color: rgba(43, 14, 7, 0.05);
+  background-clip: padding-box;
+
+  box-shadow:
+    inset 0 0 8px rgba(255, 220, 150, 0.25),   /* jemný vnitřní lesk */
+    inset 0 0 3px rgba(255, 220, 150, 0.1),    /* jemné orámování */
+    0 8px 22px rgba(0,0,0,0.7);                /* venkovní stín */
+
+  transition: transform 320ms cubic-bezier(.2,.9,.2,1),
+              box-shadow 320ms cubic-bezier(.2,.9,.2,1);
+}
+
+/* Hover: silnější efekt */
+.fauthor-card-inner:hover {
+  transform: translateY(-14px) rotateX(1.2deg) translateZ(10px);
+  box-shadow: 0 48px 140px rgba(0,0,0,0.7);
+}
+
+/* světelný průlet */
+.fauthor-card-inner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    120deg,
+    rgba(255,255,255,0.0) 0%,
+    rgba(255,255,255,0.08) 45%,
+    rgba(255,255,255,0.0) 70%
+  );
+  opacity: 0;
+  transition: opacity 420ms ease;
+  z-index: 11;
+}
+.fauthor-card-inner:hover::after { opacity: 1; }
+
+/* EPIC AUTHOR CARD */
+
+.fauthor-photo-wrap {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+  display: block;
+  transform-style: preserve-3d;
+}
+
+.fauthor-photo {
+  width: 100%;
+  height: 320px;
+  object-fit: cover;
+  border-radius: 14px 14px 0 0; /* pouze horní hrany zaoblené */
+  display: block;
+  position: relative;
+  z-index: 1;
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.6),
+    inset 0 0 20px rgba(255, 255, 255, 0.05);
+  transition:
+    transform 0.6s cubic-bezier(.19,1,.22,1),
+    box-shadow 0.6s ease,
+    filter 0.6s ease;
+  backface-visibility: hidden;
+}
+
+/* Světelný odlesk */
+.fauthor-photo-wrap::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -75%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(120deg,
+              rgba(255,255,255,0.0) 0%,
+              rgba(255,255,255,0.55) 50%,
+              rgba(255,255,255,0.0) 100%);
+  transform: rotate(25deg);
+  z-index: 2;
+  pointer-events: none;
+  animation: none;
+}
+
+/* Hover efekty */
+.fauthor-card-inner:hover .fauthor-photo {
+  transform: translateY(-12px) scale(1.05) rotateX(3deg) rotateY(-2deg);
+  box-shadow:
+    0 35px 90px rgba(0, 0, 0, 0.9),
+    inset 0 0 28px rgba(255, 255, 255, 0.07),
+    0 0 25px rgba(255, 215, 150, 0.35); /* zlatavý glow */
+  filter: brightness(1.12) saturate(1.18);
+}
+
+.fauthor-card-inner:hover .fauthor-photo-wrap::after {
+  animation: lightSweep3 1.2s ease;
+}
+
+/* Keyframes pro odlesk */
+@keyframes lightSweep3 {
+  0%   { left: -75%; }
+  100% { left: 125%; }
+}
+
+/* Bonus: jemný pohyb karty */
+.fauthor-card-inner {
+  transition: transform 0.4s ease;
+}
+.fauthor-card-inner:hover {
+  transform: perspective(1200px) rotateX(1.5deg) rotateY(0.5deg);
+}
+
+/* ======================== BOOK INFO (text + depth) ======================== */
+.fauthor-card-info {
+  padding: 12px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  z-index: 14;
+}
+
+.fauthor-card-info {
+  padding: 14px 18px;
+  border-radius: 6px 6px 0 0; /* horní hrany zaoblené, spodní rovné */
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45), inset 0 6px 14px rgba(255,255,255,0.05);
+  color: #d9cdb1;
+  backdrop-filter: blur(4px);
+  position: relative;
+  overflow: hidden;
+}
+.fauthor-card-info::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(120deg, rgba(255,255,255,0.25) 0%, transparent 80%);
+  transform: skewX(-20deg);
+  animation: shimmer3 6s infinite;
+}
+@keyframes shimmer3 {
+  0% { transform: translateX(-150%) skewX(-20deg); }
+  50% { transform: translateX(250%) skewX(-20deg); }
+  100% { transform: translateX(250%) skewX(-20deg); }
+}
+
+/* title + author styling */
+.fauthor-name{
+  margin:0;
+  font-size:2.2rem;
+  font-family:"Cinzel Decorative", serif;
+  text-transform:uppercase;
+  font-weight:900;
+  letter-spacing:1px;
+
+  /* základní zlatá výplň bez glow */
+  color:#d0a94a;
+
+  /* ostrý tmavý okraj = definice hran */
+  -webkit-text-stroke: 1px #57370f;
+
+  /* sharp shadows (blur=0) pro kontrast, ne rozmazání */
+  text-shadow:
+    1px 1px 0 #2f1b0b,   /* spodní tmavý rez */
+    -0.6px -0.6px 0 rgba(255,255,255,0.12); /* jemný horní odlesk */
+
+  /* zlepšení vykreslení písma */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  position: relative;
+  display: inline-block;
+}
+
+/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
+.fauthor-name::after{
+  content: attr(data-text);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+
+  /* highlight pruh nahoře směrem dolů */
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.45) 8%,
+    rgba(255,255,255,0.06) 18%,
+    rgba(255,255,255,0) 30%);
+
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* lehký posun, aby highlight působil vyrytě, ne rozmazaně */
+  transform: translateY(-1px);
+  opacity: 0.95;
+}
+
+/* author — ostrý bronzový nápis */
 .fauthor-meta {
+  margin: 0;
+  font-family: "Cinzel Decorative", serif;
+  font-weight: 800;
+  /* velikost navázaná na titul (pokud používáš --book-title-size), fallback 1.05rem */
+  font-size: calc(var(--book-title-size, 2.2rem) * 0.48);
+  letter-spacing: 0.4px;
+  display: inline-block;
+  position: relative;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* bronzový fill pomocí gradientu klipnutého do textu */
+  background: linear-gradient(180deg, #c08942 0%, #8b5a20 60%, #5b3614 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* tenký ostrý okraj pro definici hran */
+  -webkit-text-stroke: 0.6px #4a2d14;
+
+  /* sharp (bez blur) stíny pro kontrast */
+  text-shadow:
+    0 1px 0 rgba(255,255,255,0.2),  /* jemný horní odlesk */
+    0 1px 0 rgba(0,0,0,0.55);        /* definující spodní tah */
+
+  opacity: 0.98;
+  transition: transform .18s ease, opacity .18s ease;
+}
+
+/* thin highlight jako pseudo-vrstva (netvoří blur) */
+.fauthor-meta::after{
+  content: attr(data-author);
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* highlight pruh nahoře (velmi jemný) */
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.9) 0%,
+    rgba(255,255,255,0.28) 6%,
+    rgba(255,255,255,0.06) 14%,
+    rgba(255,255,255,0) 22%);
+
+  transform: translateY(-0.6px);
+  opacity: 0.85;
+  mix-blend-mode: overlay;
+}
+
+/* fallback pokud nechceš data-attribute — použij raději tento blok místo ::after */
+.fauthor-meta.no-data {
+  /* prostý bronz bez pseudo highlightu */
+  background: linear-gradient(180deg, #b97d36, #8b5a20);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* book description — inkoustový, ostrý a čitelný */
+.fauthor-bio {
+  margin: 0;
+  /* inkoustová barva — hluboká, nikoliv „prahově“ světla */
+  color: #342515;
+  opacity: 0.96;
+
+  /* čitelnost a styl */
+  font-style: italic;
+  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
+  line-height: 1.6;
+  letter-spacing: 0.2px;
+  font-family: Georgia, "Times New Roman", serif;
+
+  /* omezit šířku pro příjemnou čitelnost (44 znaků ~ ideální) */
+  max-width: 44ch;
+
+  /* ostré vykreslení písma — bez rozmazaných glows */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+
+  /* lehké „inkoustové“ vykreslení bez blur */
+  text-shadow:
+    0.6px 0.6px 0 #1f1309,      /* spodní tah pro kontrast (blur = 0) */
+    -0.6px -0.6px 0 rgba(255,255,255,0.02); /* jemný horní odlesk */
+
+  /* přechod pro hover / focus (jemný) */
+  transition: color 180ms ease, transform 150ms ease;
+  position: relative; /* pro případ dekorativních pseudo-elem */
+}
+
+/* bezpečnější hover: lehké zesvětlení a drobný „lift“ */
+.fauthor-bio:hover,
+.fauthor-bio:focus {
+  color: #4a341f; /* teplejší, kontrastní než blýskavá žlutá */
+  transform: translateY(-1px);
+  outline: none; /* pokud chceš, můžeš přidat fokus styl pro přístupnost */
+}
+
+/* volitelný drop-cap (první písmeno) — aktivuj jen pokud chceš starobylý vzhled */
+.fauthor-bio.dropcap::first-letter {
+  float: left;
+  font-size: 2.4rem;
+  line-height: 1;
+  margin: 0 .6rem 0 0;
+  font-weight: 700;
+  color: #24150c;
+  -webkit-text-stroke: .6px rgba(0,0,0,0.35); /* definice hran */
+  text-transform: uppercase;
+  font-family: "Cinzel Decorative", Georgia, serif; /* ladí s titulkem */
+}
+
+/* pokud používáš interaktivní karty, zajisti i přístupnost — visible focus */
+.fauthor-bio:focus-visible {
+  box-shadow: 0 0 0 3px rgba(200,170,80,0.12);
+  border-radius: 4px;
+}
+
+
+/* subtle divider */
+.fauthor-card-info .meta-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: rgba(255,215,120,0.85);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+/* =========================
+   ACTIONS WRAPPER
+   ========================= */
+.fauthor-card-action {
+  --gap: 18px;
+  --pad-vertical: 14px;
+  --pad-horizontal: 16px;
+  --btn-radius: 14px;
+  --btn-radius-primary: 18px;
+  --shadow-dark-lg: 0 20px 48px rgba(0,0,0,0.45);
+  --shadow-seal: 0 10px 22px rgba(164,95,36,0.38);
+  --gold-strong: rgba(207,155,58,0.18);
+
   display: flex;
   justify-content: center;
-  gap: 12px;
-  margin: 8px 0;
-  color: var(--fa-gold);
-  font-weight: 800;
-  font-family: "Playfair Display", serif;
-  font-size: 0.95rem;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  -webkit-font-smoothing: antialiased;
   align-items: center;
+  gap: var(--gap);
+  padding: var(--pad-vertical) var(--pad-horizontal) 20px;
+  z-index: 14;
+  perspective: 900px;
+  
 }
 
-/* bio — ink-style paragraph like about-text */
-.fauthor-bio {
-  color: var(--fa-ink);
-  opacity: 0.96;
-  line-height: 1.6;
-  min-height: 56px;
-  margin-top: 8px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-style: italic;
-  font-size: clamp(0.95rem, 1.0vw, 1.02rem);
-  text-shadow:
-    0.6px 0.6px 0 #1f1309,
-    -0.6px -0.6px 0 rgba(255,255,255,0.02);
-  text-rendering: optimizeLegibility;
-}
+/* =========================
+   BUTTON BASE
+   ========================= */
 
-/* CTA — gold button consistent with other CTAs */
-.fauthor-cta {
-  display: inline-block;
-  margin-top: 12px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, var(--fa-gold-soft), var(--fa-gold));
-  color: #2f1b0b;
+.fauthor-card-action .fauthor-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  padding: 12px 22px;
+  border-radius: var(--btn-radius);
   font-weight: 800;
+  letter-spacing: .025em;
+  cursor: pointer;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  color: inherit;
   text-decoration: none;
-  font-family: "Playfair Display", serif;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 6px 18px rgba(0,0,0,0.16);
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-.fauthor-cta:hover,
-.fauthor-cta:focus {
-  transform: translateY(-2px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 18px 48px rgba(0,0,0,0.28);
-}
-.fauthor-cta:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 4px rgba(207,155,60,0.12);
+  -webkit-font-smoothing: antialiased;
+  backface-visibility: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform .28s cubic-bezier(.2,.9,.3,1),
+    box-shadow .28s ease,
+    filter .22s ease,
+    background .18s ease;
+  z-index: 0;
 }
 
-/* small responsive tweaks */
-@media (max-width: 900px) {
-  .fauthor-photo { width: 96px; height: 96px; border-width: 3px; }
-  .fauthor-name { font-size: 1rem; }
-  .fauthors-title { font-size: 1.8rem; }
+/* shimmer */
+.fauthor-card-action .fauthor-btn::after {
+  content: "";
+  position: absolute;
+  top: -10%;
+  left: -60%;
+  width: 60%;
+  height: 120%;
+  transform: skewX(-18deg);
+  background: linear-gradient(120deg,
+    rgba(255,255,255,0.22) 0%,
+    rgba(255,255,255,0.06) 40%,
+    transparent 70%);
+  pointer-events: none;
+  opacity: .75;
+  z-index: 10;
+  transition: transform .6s cubic-bezier(.2,.9,.3,1), opacity .3s ease;
+  animation: epic-shimmer-fauthors 3.2s linear infinite paused;
 }
-@media (max-width: 520px) {
-  .fauthors-grid { gap: 14px; }
-  .fauthor-card { padding: 14px; border-radius: 12px; }
-  .fauthor-photo { width: 84px; height: 84px; }
-  .fauthor-name { font-size: 0.95rem; -webkit-text-stroke: .7px #57370f; }
-  .fauthor-bio { font-size: 0.95rem; line-height: 1.5; min-height: auto; }
+.fauthor-card-action .fauthor-btn:hover::after,
+.fauthor-card-action .fauthor-btn:focus::after {
+  transform: translateX(260%) skewX(-18deg);
+  opacity: .9;
+}
+@keyframes epic-shimmer-fauthors {
+  0%   { transform: translateX(-100%) skewX(-18deg); opacity: 0; }
+  15%  { opacity: .55; }
+  50%  { transform: translateX(30%) skewX(-18deg); opacity: .85; }
+  100% { transform: translateX(300%) skewX(-18deg); opacity: 0; }
 }
 
-/* Accessibility: reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .fauthor-card, .fauthor-card:hover, .fauthor-cta, .fauthor-photo { transition: none !important; animation: none !important; transform: none !important; }
+/* =========================
+   INTERACTIONS
+   ========================= */
+.fauthor-card-action .fauthor-btn:focus {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 4px var(--gold-strong), 0 14px 34px rgba(0,0,0,0.55);
+  transform: translateY(-2px) scale(1.02);
+  z-index: 20;
+}
+.fauthor-card-action .fauthor-btn:hover {
+  transform: translateY(-6px) scale(1.035);
+  filter: brightness(1.05);
+  z-index: 20;
+}
+.fauthor-card-action .fauthor-btn:active {
+  transform: translateY(-2px) scale(.99);
+  transition-duration: .12s;
 }
 
-/* Focus helpers for keyboard users */
-.fauthor-card:focus, .fauthor-card:focus-within {
-  outline: none;
-  box-shadow: 0 44px 110px rgba(0,0,0,0.14), 0 0 0 4px rgba(207,155,60,0.06);
-  border-radius: 14px;
+/* =========================
+   SPECIFIC BUTTONS
+   ========================= */
+
+/* DOWNLOAD (vosková pečeť / zlato) */
+.fauthor-card-action .fauthor-cta {
+  background: linear-gradient(180deg, #fbe9b8 0%, #d59f38 100%);
+  color: #2b1608;
+  font-weight: 900;
+  box-shadow: inset 0 2px 2px rgba(255,255,255,0.18),
+              0 18px 40px rgba(199,123,30,0.28);
+  border-radius: var(--btn-radius-primary);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.45);
+}
+
+/* =========================
+   DISABLED
+   ========================= */
+.fauthor-card-action .fauthor-btn[disabled],
+.fauthor-card-action .fauthor-btn.disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  pointer-events: none;
+}
+
+/* ======================== RESPONSIVE TWEAKS ======================== */
+@media (max-width:1100px){
+  .fauthors-title { font-size: 2.2rem; }
+  .fauthors-section .fauthors-paper-wrap { padding: 26px; }
+}
+@media (max-width:900px){
+  .fauthor-card-inner { min-height:360px; }
+  .fauthor-photo { height:240px; }
+  .fauthors-section .fauthors-paper-wrap { background-size: 100% 120%; /* jemné natiahnutie na menších obrazovkách */ }
+}
+@media (max-width:700px){
+  .fauthors-grid { grid-template-columns: repeat(1,1fr); gap:18px; }
+  .fauthor-card-inner { min-height: auto; }
+  .fauthor-photo { height: 320px; }
+  .fauthor-card-frame { inset: 16px; }
+}
+
+/* ======================== MISC / ACCESSIBILITY ======================== */
+.fauthors-empty { padding:26px; color:#3b2a1a; background: rgba(255,255,255,0.02); border-radius:8px; text-align:center; box-shadow: inset 0 1px 0 rgba(255,255,255,0.02); }
+
+/* reduced motion */
+@media (prefers-reduced-motion: reduce){
+  * { transition: none !important; animation: none !important; transform:none !important; }
 }

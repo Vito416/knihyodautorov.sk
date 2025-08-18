@@ -1,9 +1,8 @@
 <link rel="stylesheet" href="/css/about.css" />
 
-<section class="about-section" aria-labelledby="about-title">
+<section class="style-section" aria-labelledby="about-title">
   <div class="paper-wrap">
-    <span class="grain-overlay" aria-hidden="true"></span>
-    <!-- volitelně pro subtilní vnitřní linku -->
+    <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
     <div class="about-container">
   <!-- LEVÁ ČÁST: text -->
