@@ -11,7 +11,7 @@ if (!function_exists('esc_hiw')) {
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
 
-    <div class="blank-container">
+    <div class="central-container">
 
 <div class="central-steps" role="list" aria-describedby="hiw-sub">
   <article class="hiw-step arrow1-down" role="listitem" aria-labelledby="hiw-step-1">

@@ -64,7 +64,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
 
-    <div class="blank-container">
+    <div class="central-container">
       <div class="central-steps" role="region" aria-label="Štatistiky podpory">
         <div class="supportimpact-head">
         <h1 class="section-title">Tvoj nákup má <span>zmysel</span></h1>
@@ -75,8 +75,8 @@ $donated = $totalSales * ($supportPercent / 100.0);
             <img src="/assets/kniha2.png" alt="ikona pečate">
             </div>
           <div class="supportimpact-item-textbox">
-          <h3 class="section-title supportimpact-text1"><?php echo esc_si(number_format($totalBooksSold,0,'',' ')); ?></h3>
-          <p class="section-subtitle supportimpact-text1">Predané knihy</p>
+          <h3 class="section-title supportimpact-text1"><span><?php echo esc_si(number_format($totalBooksSold,0,'',' ')); ?></span></h3>
+          <h3 class="section-title supportimpact-text1">Predané knihy</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -84,8 +84,8 @@ $donated = $totalSales * ($supportPercent / 100.0);
             <img src="/assets/faktura.png" alt="ikona pečate">
             </div>
           <div class="supportimpact-item-textbox">
-          <h3 class="section-title supportimpact-text2"><?php echo esc_si(number_format($totalOrders,0,'',' ')); ?></h3>
-          <p class="section-subtitle supportimpact-text2">Splatené objednávky</p>
+          <h3 class="section-title supportimpact-text2"><span><?php echo esc_si(number_format($totalOrders,0,'',' ')); ?></span></h3>
+          <h3 class="section-title supportimpact-text2">Splatené objednávky</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -93,8 +93,8 @@ $donated = $totalSales * ($supportPercent / 100.0);
             <img src="/assets/mince2.png" alt="ikona pečate">
             </div>
           <div class="supportimpact-item-textbox">
-          <h3 class="section-title supportimpact-text2"><?php echo esc_si(number_format($totalSales,2,',',' ')); ?> €</h3>
-          <p class="section-subtitle supportimpact-text3">Celkové tržby</p>
+          <h3 class="section-title supportimpact-text2"><span><?php echo esc_si(number_format($totalSales,2,',',' ')); ?> €</span></h3>
+          <h3 class="section-title supportimpact-text3">Celkové tržby</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -102,8 +102,8 @@ $donated = $totalSales * ($supportPercent / 100.0);
             <img src="/assets/dieta.png" alt="ikona pečate">
             </div>
           <div class="supportimpact-item-textbox">
-          <h3 class="section-title supportimpact-text4"><?php echo esc_si(number_format($donated,2,',',' ')); ?> €</h3>
-          <p class="section-subtitle supportimpact-text4">Darovaná suma</p>
+          <h3 class="section-title supportimpact-text4"><span><?php echo esc_si(number_format($donated,2,',',' ')); ?> €</span></h3>
+          <h3 class="section-title supportimpact-text4">Darovaná suma</h3>
           </div>
         </div>
       </div>

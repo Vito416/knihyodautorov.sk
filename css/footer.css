@@ -1,68 +1,11 @@
-/* =========================================================
-   footer.css — text tones refined: remove very-white shades,
-   warm cream tones and subtle heading accents
-   ========================================================= */
-
-/* ---------- Base / container (pozadí ponecháno) ---------- */
-.site-footer {
-  position: relative;
-  box-sizing: border-box;
-  background-image: url('/assets/paper-texture.png');
-  background-position: center;
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  border-radius: 10px;
-  padding: 56px;
-  box-shadow:
-    0 30px 70px rgba(0,0,0,0.14),
-    inset 0 18px 40px rgba(0,0,0,0.13),
-    inset 0 0 120px rgba(0,0,0,0.06);
-  overflow: visible;
-  -webkit-font-smoothing: antialiased;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  color: #efe6cf; /* warm cream (replaces very-white) */
+.footer-section.paper-wrap {
+  width: 100%;
 }
 
-/* jemný top/bottom vignette pro hlasitost (nezasahuje texturu) */
-.site-footer::before{
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  border-radius: 10px;
-  pointer-events: none;
-  background:
-    radial-gradient(120px 80px at 6% 6%, rgba(0,0,0,0.22), rgba(0,0,0,0) 40%),
-    radial-gradient(120px 80px at 94% 94%, rgba(0,0,0,0.20), rgba(0,0,0,0) 40%),
-    linear-gradient(to top, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) top/100% 26px no-repeat,
-    linear-gradient(to bottom, rgba(0,0,0,0.18), rgba(0,0,0,0) 14%) bottom/100% 26px no-repeat,
-    linear-gradient(to left, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) left/26px 100% no-repeat,
-    linear-gradient(to right, rgba(0,0,0,0.12), rgba(0,0,0,0) 14%) right/26px 100% no-repeat;
-  mix-blend-mode: multiply;
-}
-.site-footer::after{
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-  background:
-    radial-gradient(900px 300px at 85% 10%, rgba(255,230,170,0.16), transparent 16%),
-    linear-gradient(180deg, rgba(255,255,255,0.015), transparent 10%),
-    radial-gradient(40px 26px at 96% 96%, rgba(0,0,0,0.16), rgba(0,0,0,0) 60%),
-    radial-gradient(30px 18px at 5% 5%, rgba(0,0,0,0.12), rgba(0,0,0,0) 60%);
-  background-repeat: no-repeat;
-  background-position: center, top, right bottom, left top;
-  background-size: 100% 60%, 100% 15%, 110px 80px, 90px 60px;
-  mix-blend-mode: screen;
-  filter: blur(4px) contrast(1.02);
-}
-
-/* ---------- Footer grid / dekorace pod panely ---------- */
 .footer-content{
   position:relative;
   z-index:5;
-  max-width:1200px;
+  max-width: 100%;
   margin:0 auto;
   padding:18px;
   display:grid;
@@ -98,14 +41,14 @@
   filter: blur(0.5px);
 }
 
-/* ---------- Panels (karty) ---------- */
-.footer-col { min-width:0; }
 .footer-panel {
-  position:relative;
-  z-index:6;
-  height:100%;
-  display:flex;
-  flex-direction:column;
+  max-height: 100%;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  grid-row: 1;
+  z-index: 4;
   gap:12px;
   justify-content:flex-start;
   padding:22px;
@@ -113,9 +56,8 @@
   border: 1px solid rgba(0,0,0,0.06);
   box-shadow: 0 12px 26px rgba(0,0,0,0.18), inset 0 2px 0 rgba(255,245,230,0.02);
   transition: transform .26s ease, box-shadow .26s ease;
-  background: linear-gradient(90deg, rgba(192, 138, 46, 0.25), rgba(192, 138, 46, 0.25));
+  background: linear-gradient(180deg, rgba(192, 138, 46, 0.75) 0%, rgba(192, 138, 46, 0.45) 60%, rgba(192, 138, 46, 0.25) 100%);
   border-top: 8px #c08a2e solid;
-  color: #efe6cf; /* warm cream for panel text */
 }
 
 /* zdvih při hoveru (jen desktop) */
@@ -124,274 +66,161 @@
   box-shadow: 0 28px 46px rgba(0,0,0,0.28), inset 0 3px 0 rgba(255,245,230,0.028);
 }
 
-/* Logo/brand */
-/* ---------- Logo + Title emphasis for footer ---------- */
 .footer-logo {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* nebo center pokud chceš centrovat */
-  gap: 10px;
-  padding-top: 6px;
   z-index: 8;
-}
-
-/* badge / plate behind the logo to separate it from paper */
-.footer-logo .logo-badge {
-  position: absolute;
-  left: 18px;             /* uprav podle layoutu */
-  top: -12px;
-  width: 86px;
-  height: 86px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255,250,234,0.98), rgba(245,220,140,0.06));
-  box-shadow: 0 18px 40px rgba(0,0,0,0.22), 0 6px 18px rgba(207,155,60,0.06) inset;
-  border: 1px solid rgba(212,175,55,0.18);
-  pointer-events: none;
-  transform: translateY(-6px);
-  z-index: -1;
-  filter: saturate(105%);
-}
-
-/* logo image — větší, ostřejší, s drop-shadow */
-.footer-logo img {
-  display:block;
-  max-width: 220px; /* zvětši pokud se to hodí */
+  width: 100%;
   height: auto;
-  margin: 0;
-  transform: translateY(-4px);
-  filter: drop-shadow(0 10px 24px rgba(0,0,0,0.38));
-  z-index: 9;
 }
 
-/* Titulek — bohatý zlatý text s mírným obrysem a glow */
-.footer-logo h2 {
-  margin: 6px 0 0 0;
-  font-family: "Playfair Display", serif;
-  font-size: 1.6rem;                /* větší, můžeš dát 1.8rem pro desktop */
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: 0.6px;
-  display: inline-block;
-  position: relative;
-  z-index: 9;
-
-  /* gradient fill */
-  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 45%, #ffdfa6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-
-  /* jemný tmavý obrys pro čitelnost na textuře */
-  -webkit-text-stroke: 0.6px rgba(34,22,11,0.76);
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.03),  /* highlight */
-    0 6px 18px rgba(199,140,52,0.08), /* warm glow */
-    0 2px 6px rgba(0,0,0,0.35);       /* depth */
-}
-
-/* drobný zlatý underline / accent (pseudo-element) */
-.footer-logo h2::after {
-  content: "";
-  display: block;
-  height: 6px;
-  width: 56px;
-  margin-top: 10px;
-  border-radius: 4px;
-  background: linear-gradient(90deg,#cf9b3a 0%, #ffd699 100%);
-  box-shadow: 0 6px 18px rgba(207,155,60,0.12);
-  opacity: 0.95;
-}
-
-/* alternativně: pokud chceš více "emboss" efektu, přidej tento outline (není nutné) */
-.footer-logo h2.emboss {
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.05),  /* top highlight */
-    0 -1px 0 rgba(0,0,0,0.06),       /* inner dark */
-    0 6px 18px rgba(199,140,52,0.06);
-}
-
-/* responsive tweaks */
-@media (max-width: 780px) {
-  .footer-logo .logo-badge { left: 12px; top: -10px; width: 72px; height: 72px; border-radius: 12px; }
-  .footer-logo img { max-width: 180px; transform: translateY(-2px); }
-  .footer-logo h2 { font-size: 1.25rem; letter-spacing: 0.3px; }
-}
-
-/* zvýrazněná footer tagline — vylepšená varianta 3 */
-.footer-tagline {
-  display: inline-block;
+.footer-logo img {
   max-width: 100%;
-  position: relative;
-  padding: 8px 14px;
-  border-radius: 10px;
-  background: linear-gradient(180deg, rgba(255,245,226,0.14), rgba(255,245,226,0.06));
-  backdrop-filter: blur(6px) saturate(120%);
-  border: 1px solid rgba(255,245,230,0.08);
-  box-shadow: 0 6px 22px rgba(0,0,0,0.14), inset 0 1px 0 rgba(255,255,255,0.02);
-  color: rgba(34,22,11,0.96);           /* tmavá teplá hnědá pro dobrý kontrast */
-  font-weight: 700;
-  font-size: 1.02rem;
-  line-height: 1.45;
-  letter-spacing: 0.2px;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.03); /* jemné zvýraznění hran */
-  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
-  z-index: 7;
-}
-.footer-tagline span {
-  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
-  white-space: nowrap;
-}
-
-.footer-tagline a {
-  color: #a87921;
-  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
-  white-space: nowrap;
-}
-
-.footer-tagline a:hover {
-  color:#8f4e03;
-  text-decoration:underline;
-}
-
-/* zlatý akcent vlevo (dekorativní pásek) */
-.footer-tagline::before {
-  content: "";
-  position: absolute;
-  left: -12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 6px;
-  height: 64%;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #d9b069 0%, #cf9b3a 100%);
-  box-shadow: 0 6px 18px rgba(207,155,60,0.18);
-}
-
-/* drobná hvězdička vpravo jako detail (volitelné) */
-.footer-tagline::after {
-  content: "✦";
-  position: absolute;
-  right: -18px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.78rem;
-  color: rgba(207,155,60,0.95);
-  opacity: 0.95;
-  text-shadow: 0 1px 6px rgba(207,155,60,0.12);
-}
-
-/* hover / focus efekt — jemné "vystoupení" a glow */
-.footer-tagline:hover,
-.footer-tagline:focus {
-  transform: translateY(-3px);
-  box-shadow: 0 14px 42px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.03);
-  filter: saturate(118%);
-}
-
-/* lehká pulzující animace (není nutná, vypni při reduced-motion) */
-@keyframes taglinePulse {
-  0% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
-  100% { transform: translateY(0); }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .footer-tagline[data-anim="soft"] { animation: taglinePulse 6s ease-in-out infinite; }
-}
-
-/* responzivní škálování */
-@media (max-width: 520px) {
-  .footer-tagline { font-size: 0.96rem; padding: 6px 10px; }
-  .footer-tagline::before { left: -10px; width:5px; }
-  .footer-tagline::after { right: -14px; font-size:0.7rem; }
+  height: auto;
 }
 
 /* Links */
-.footer-col.footer-links .footer-link {
-    color: rgba(34, 22, 11, 0.96);
-    font-weight: 700;
-    font-size: 1.02rem;
-    line-height: 1.45;
-    letter-spacing: 0.2px;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
-    padding: 5% 10%;
-    text-align: left center;
-}
-.footer-col.footer-links .footer-link:hover {
-  color: #cf9b3a;
-  transform: translateX(8px);
-}
-
-/* ---------- Headings unified (ozvláštnění: jemný zlatý gradient) ---------- */
-.footer-section-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-/* --- Footer section headings — stejný styl jako hlavní H2 "Knihy od Autorov" --- */
-
-/* Nadpis sekce — bohatý zlatý gradient + jemný tmavý obrys (fallback) */
-/* Titulek — bohatý zlatý text s mírným obrysem a glow */
-.footer-section-title {
-  margin: 6px 0 0 0;
-  font-family: "Playfair Display", serif;
-  font-size: 1.6rem;                /* větší, můžeš dát 1.8rem pro desktop */
-  font-weight: 800;
-  line-height: 1.05;
-  letter-spacing: 0.6px;
+.footer-panel .footer-link {
   display: inline-block;
+  font-weight: 900;
+  font-size: 1.12rem;
+  padding: 5% 24%;
+  background: url('/assets/sipka.png') no-repeat center/100% 100%;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+  transform-origin: center bottom;
+  animation: sway ease-in-out infinite;
+  animation-duration: var(--time);
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.footer-links-container { /* strom panel */
+    z-index: 6;
+}
+
+.footer-panel:nth-child(2) {
   position: relative;
-  z-index: 9;
-
-  /* gradient fill */
-  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 45%, #ffdfa6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-
-  /* jemný tmavý obrys pro čitelnost na textuře */
-  -webkit-text-stroke: 0.6px rgba(34,22,11,0.76);
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.03),  /* highlight */
-    0 6px 18px rgba(199,140,52,0.08), /* warm glow */
-    0 2px 6px rgba(0,0,0,0.35);       /* depth */
+  overflow: visible;
+  z-index: 3;
 }
 
-/* drobný zlatý underline / accent (pseudo-element) */
-.footer-section-title::after {
+/* strom */
+.footer-panel:nth-child(2)::before {
   content: "";
-  display: block;
-  height: 6px;
-  width: 56px;
-  margin-top: 10px;
-  border-radius: 4px;
-  background: linear-gradient(90deg,#cf9b3a 0%, #ffd699 100%);
-  box-shadow: 0 6px 18px rgba(207,155,60,0.12);
-  opacity: 0.95;
+  position: absolute;
+  top: -50%;
+  left: -100%;
+  width: 300%;
+  height: 150%;
+  background: url("/assets/footer-strom.png") no-repeat center/contain;
+  background-size: 100% 100%;
+  filter: drop-shadow(0 0 6px rgba(0,0,0,0.3));
+  pointer-events: none;
+  z-index: 0; /* pod obsahem a gradientem */
+  transition: transform .3s ease, filter .3s ease;
 }
 
-/* alternativně: pokud chceš více "emboss" efektu, přidej tento outline (není nutné) */
-.footer-section-title.emboss {
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.05),  /* top highlight */
-    0 -1px 0 rgba(0,0,0,0.06),       /* inner dark */
-    0 6px 18px rgba(199,140,52,0.06);
+/* gradient + border */
+.footer-panel:nth-child(2)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, rgba(192, 138, 46, 0.75) 0%, rgba(192, 138, 46, 0.45) 60%, rgba(192, 138, 46, 0.25) 100%);
+  border-top: 8px #c08a2e solid;
+  border-radius: 12px;
+  box-shadow: 0 12px 26px rgba(0,0,0,0.18), inset 0 2px 0 rgba(255,245,230,0.02);
+  z-index: 1; /* nad stromem */
 }
 
-/* responzivní úprava */
-@media (max-width: 520px) {
-  .footer-section-title { font-size: 1.0rem; letter-spacing: 0.2px; }
-  .footer-section-title::after { width: 40px; height: 3px; margin-top: 6px; }
+/* 🔹 Každá cedule má vlastní hodnoty */
+.footer-home {
+  --offsetX: 17%;
+  --time: 6s;
+  --rotY: -18deg;
+  --rotX: 4deg;
+  --skewX: -6deg;
+  --z: 12px;
+}
+.footer-samples {
+  --offsetX: 9%;
+  --time: 7s;
+  --rotY: 22deg;
+  --rotX: -5deg;
+  --skewX: 10deg;
+  --z: -10px;
+}
+.footer-authors {
+  --offsetX: 6%;
+  --time: 8s;
+  --rotY: -12deg;
+  --rotX: 6deg;
+  --skewX: -5deg;
+  --z: 16px;
+}
+.footer-about {
+  --offsetX: 41%;
+  --time: 9s;
+  --rotY: 16deg;
+  --rotX: -3deg;
+  --skewX: 8deg;
+  --z: -14px;
+}
+.footer-eshop {
+  --offsetX: 5%;
+  --time: 10s;
+  --rotY: -20deg;
+  --rotX: 5deg;
+  --skewX: -7deg;
+  --z: 18px;
+}
+.footer-gdpr {
+  --offsetX: 37%;
+  --time: 11s;
+  --rotY: 24deg;
+  --rotX: -4deg;
+  --skewX: 9deg;
+  --z: -12px;
+}
+
+.footer-link:hover { scale: 1.1; }
+
+/* 🔹 Jediná animace větru – používá proměnné */
+@keyframes sway {
+  0%, 100% {
+    transform:
+      rotateY(var(--rotY))
+      rotateX(var(--rotX))
+      skewX(var(--skewX))
+      translateZ(var(--z))
+      translateX(var(--offsetX));
+  }
+  50% {
+    transform:
+      rotateY(calc(var(--rotY) * 1.1))
+      rotateX(calc(var(--rotX) * 1.1))
+      skewX(calc(var(--skewX) * 1.2))
+      translateZ(calc(var(--z) * 1.1))
+      translateX(var(--offsetX));
+  }
 }
 
 /* ---------- Links / list ---------- */
 .footer-links-list { 
-  list-style: none; 
+  list-style: none;
   margin: 0; 
   padding: 0; 
   display: flex; 
   flex-direction: column; 
-  gap: 4px; /* menší mezera, kompaktnější vzhled */
+  margin-top: 30%;
+  gap: 2%; /* menší mezera, kompaktnější vzhled */
 }
 
 .footer-link-item { 
-  margin: 0; 
+  margin: 0;
 }
 
 .footer-link {
@@ -400,17 +229,11 @@
   gap: 4px;
   padding: 8px 12px;
   border-radius: 8px;
-  color: inherit; 
+  color: rgb(255, 196, 114); 
   text-decoration: none;
 
   /* jemný pergamenový gradient */
   background: linear-gradient(to bottom, rgba(255,245,230,0.35), rgba(230,210,180,0.3));
-  
-  /* decentní embosovaný efekt */
-  box-shadow: 
-    inset 0 1px 1px rgba(255,255,255,0.4),   /* lehké světlo nahoře */
-    inset 0 -1px 1px rgba(0,0,0,0.12);       /* jemný stín dole */
-
   transition: 
     color .2s ease, 
     background .25s ease,
@@ -419,8 +242,7 @@
 }
 
 .footer-link:hover {
-  color: #b88c2a; /* decentní zlatý tón */
-  background: linear-gradient(to bottom, rgba(255,250,235,0.6), rgba(240,220,190,0.5));
+  color: #ffc23f; /* decentní zlatý tón */
   transform: translateY(-1px);
 }
 
@@ -434,8 +256,6 @@
 }
 
 .footer-link .link-icon svg, 
-.footer-section-icon svg, 
-.company-header svg, 
 .social-icons svg {
   margin: 10%; 
   width: 100%; 
@@ -543,53 +363,9 @@
   position: relative;
   margin-top: 5%;
   padding: 14px 18px;
-  background: linear-gradient(180deg, rgba(192,138,46,0.22), rgba(192,138,46,0.18));
-  border-radius: 10px;
-  border: 1px solid rgba(212,175,55,0.1);
-  box-shadow:
-    0 8px 22px rgba(0,0,0,0.12),
-    inset 0 2px 0 rgba(255,250,240,0.03);
   overflow: visible;
   z-index: 6;
   transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
-}
-
-/* top gold accent bar */
-.social-row::before {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  top: -8px;
-  height: 6px;
-  border-radius: 5px;
-  background: linear-gradient(90deg, #c08a2e 0%, #d9b069 50%, #ffd699 100%);
-  box-shadow: 0 6px 20px rgba(207,155,60,0.15), 0 2px 6px rgba(207,155,60,0.08) inset;
-  z-index: 7;
-  opacity: 0.95;
-}
-
-/* small decorative star */
-.social-row::after {
-  content: "✦";
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.85rem;
-  color: rgba(207,155,60,0.9);
-  text-shadow: 0 2px 5px rgba(207,155,60,0.1);
-  z-index: 8;
-  pointer-events: none;
-}
-
-/* hover lift effect */
-.social-row:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 18px 36px rgba(0,0,0,0.14),
-    inset 0 2px 0 rgba(255,250,240,0.04);
-  filter: saturate(110%);
 }
 
 /* icons inside (pokud máš <a> nebo <i> uvnitř) */
@@ -627,105 +403,33 @@
   color:#22160b;
 }
 
+.social-link.FB {
+  background-image: url('/assets/FB-icon.png');
+  background-size: 100% 100%;
+}
+
+.social-link.X {
+  background-image: url('/assets/twitter-icon.png');
+  background-size: 100% 100%;
+}
+
+.social-link.INST {
+  background-image: url('/assets/insta-icon.png');
+  background-size: 100% 100%;
+}
+
+.social-link.YT {
+  background-image: url('/assets/YT-icon.png');
+  background-size: 100% 100%;
+}
+
 /* ---------- Footer bottom — enhanced, gold-accented strip ---------- */
 .footer-bottom {
-  position: relative;
-  margin-top: 26px;
-  padding: 18px 20px;
+  grid-row: 2;
+  grid-column: 1 / -1;
   text-align: center;
-  color: rgba(34, 22, 11, 0.96);
-  font-weight: 700;
-  font-size: 1.02rem;
-  line-height: 1.45;
-  letter-spacing: 0.2px;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
-  background: linear-gradient(180deg, rgba(255,250,236,0.06), rgba(245,230,190,0.02));
-  border-radius: 10px;
-  border: 1px solid rgba(212,175,55,0.08);
-  box-shadow:
-    0 10px 28px rgba(0,0,0,0.12),
-    inset 0 2px 0 rgba(255,250,240,0.02);
-  overflow: visible;
-  z-index: 6;
-  transition: transform .18s ease, box-shadow .22s ease, filter .22s ease;
-  -webkit-font-smoothing: antialiased;
-  background: linear-gradient(180deg, rgba(192, 138, 46, 0.25), rgba(192, 138, 46, 0.25));
-}
-
-/* text fill: subtle gold gradient with dark stroke fallback for contrast */
-.footer-bottom .footer-text {
-  display: inline-block;
-  background: linear-gradient(90deg, #d9b069 0%, #cf9b3a 60%, #ffdca3 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: #efe6cf; /* fallback for browsers not supporting bg-clip */
-  -webkit-text-stroke: 0.4px rgba(34,22,11,0.85);
-  text-shadow: 0 4px 18px rgba(199,140,52,0.06), 0 2px 6px rgba(0,0,0,0.18);
-  vertical-align: middle;
-}
-
-/* top gold accent bar (thicker + glow) */
-.footer-bottom::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  top: -10px;
-  height: 8px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #c08a2e 0%, #d9b069 45%, #ffd699 100%);
-  box-shadow: 0 8px 30px rgba(207,155,60,0.18), 0 2px 8px rgba(207,155,60,0.06) inset;
-  z-index: 7;
-  filter: saturate(110%);
-  opacity: 0.98;
-}
-
-/* small decorative diamonds left/right */
-.footer-bottom::after {
-  content: "✦";
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.9rem;
-  color: rgba(207,155,60,0.95);
-  text-shadow: 0 2px 6px rgba(207,155,60,0.10);
-  z-index: 8;
-  pointer-events: none;
-}
-
-/* hover lift (subtle) */
-.footer-bottom:hover {
-  transform: translateY(-3px);
-  box-shadow:
-    0 22px 48px rgba(0,0,0,0.16),
-    inset 0 3px 0 rgba(255,250,240,0.03);
-  filter: saturate(112%);
-}
-
-.footer-bottom span {
-  color: #a87921;
-  font-size: clamp(0.8rem, 2vw, 1rem); /* minimálně 0.8rem, max 1rem */
-  white-space: nowrap;
-}
-
-.footer-bottom span:hover {
-  color:#8f4e03;
-  text-decoration:underline;
-}
-
-/* responsive: méně paddingu a menší top bar */
-@media (max-width: 520px) {
-  .footer-bottom { padding: 14px 12px; border-radius: 8px; }
-  .footer-bottom::before { left: 10px; right: 10px; top: -8px; height: 6px; }
-  .footer-bottom::after { right: 10px; font-size: 0.8rem; }
-  .footer-bottom .footer-text { font-size: 0.92rem; -webkit-text-stroke: 0.3px; }
-}
-
-/* reduced motion: vypnout animace/pohyb */
-@media (prefers-reduced-motion: reduce) {
-  .footer-bottom, .footer-bottom:hover { transition: none; transform: none; animation: none; }
+  padding-top: 1%;
+  font-size: 1.9rem;
 }
 
 /* ---------- Helpers ---------- */
@@ -745,11 +449,16 @@
   .btn-send, .btn-subscribe { width:100%; }
 }
 
-/* ---------- Animations (subtle) ---------- */
-@keyframes subtleGradientShift_ek1{ 0%{transform:translateY(0);} 50%{transform:translateY(-6px);} 100%{transform:translateY(0);} }
-@keyframes particlesDrift_ek1 { 0%{transform:translate(0,0);} 50%{transform:translate(8px,-10px);} 100%{transform:translate(0,0);} }
-
 /* ---------- Reduced motion fallback ---------- */
 @media (prefers-reduced-motion: reduce){
   .footer-content::before, .footer-content::after, .footer-panel, .btn-send, .btn-subscribe, .social-link { transition:none !important; animation:none !important; transform:none !important; }
+}
+
+@media (hover: none) {
+  .footer-panel:hover,
+  .footer-link:hover,
+  .social-link:hover {
+    transform: none;
+    box-shadow: none;
+  }
 }
