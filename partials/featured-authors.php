@@ -55,8 +55,8 @@ if ($pdo instanceof PDO) {
   <div class="fauthors-container">
     <div class="fauthors-header">
       <div class="fauthors-head">
-      <h2 class="fauthors-title">Autori v <span>centre pozornosti</span></h2>
-      <p class="fauthors-sub">Predstavujeme autorov, ktorí tvoria príbehy, ktoré si zamiluješ.</p>
+      <h2 class="section-title" data-lines="3">Autori v <span>centre</span> pozornosti</h2>
+      <p class="section-subtitle">Predstavujeme autorov, ktorí tvoria príbehy, ktoré si zamiluješ.</p>
       </div>
     </div>
 

@@ -44,6 +44,6 @@
     </button>
   </div>
 </header>
-
 <script src="/js/header.js" defer></script>
+<script src="/js/script.js" defer></script>
 

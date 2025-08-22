@@ -20,14 +20,14 @@ if (!function_exists('esc_hiw')) {
     <img src="/assets/kniha.png" alt="ikona knihy">
     </div>
     <div class="hiw-step-textbox">
-    <h3 id="hiw-step-1" class="section-title hiw-text-1">Nájdi svoju knihu</h3>
+    <h3 id="hiw-step-1" class="section-title hiw-text-1" data-lines="2">Nájdi svoju knihu</h3>
     <p class="section-subtitle hiw-text-1">Objav príbeh, ktorý ťa osloví — jasné informácie o diele a cene.</p>
     </div>
   </article>
 
   <article class="hiw-step arrow-up" role="listitem" aria-labelledby="hiw-step-2">
     <div class="hiw-step-textbox">
-    <h3 id="hiw-step-2" class="section-title hiw-text-2">Pergamen s pečaťou</h3>
+    <h3 id="hiw-step-2" class="section-title hiw-text-2" data-lines="2">Pergamen s pečaťou</h3>
     <p class="section-subtitle hiw-text-2">Získaš faktúru (PDF) so zabudovaným QR kódom — oficiálny doklad k tvojmu výberu.</p>
     </div>
     <div class="hiw-step-icon" aria-hidden="true">
@@ -42,14 +42,14 @@ if (!function_exists('esc_hiw')) {
     <img src="/assets/mince.png" alt="ikona mince">
     </div>
     <div class="hiw-step-textbox">
-    <h3 id="hiw-step-3" class="section-title hiw-text-3">Platba a odkaz</h3>
+    <h3 id="hiw-step-3" class="section-title hiw-text-3" data-lines="2">Platba a odkaz</h3>
     <p class="section-subtitle hiw-text-3">Po zaplatení ti príde magický odkaz na stiahnutie — priamo do e-mailu.</p>
     </div>
   </article>
 
   <article class="hiw-step arrow-up" role="listitem" aria-labelledby="hiw-step-4">
     <div class="hiw-step-textbox">
-    <h3 id="hiw-step-4" class="section-title hiw-text-4">Podpora dobra</h3>
+    <h3 id="hiw-step-4" class="section-title hiw-text-4" data-lines="2">Podpora dobra</h3>
     <p class="section-subtitle hiw-text-4">Časť výťažku putuje na podporu babyboxov — pravidelne a transparentne.</p>
     </div>
     <div class="hiw-step-icon" aria-hidden="true">

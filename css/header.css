@@ -12,9 +12,11 @@
 *::before,
 *::after { box-sizing: border-box; }
 
-/* zabránit nechtěnému horizontálnímu scrollu */
-html, body { width: 100%; overflow-x: hidden; }
-
+html, body {
+  width: 99.3%;
+  padding: 1%;
+  overflow-x: hidden;
+}
 /* proměnné */
 :root{
   --brand-dark-1: #3b2b1e;

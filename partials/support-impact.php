@@ -67,7 +67,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
     <div class="central-container">
       <div class="central-steps" role="region" aria-label="Štatistiky podpory">
         <div class="supportimpact-head">
-        <h1 class="section-title">Tvoj nákup má <span>zmysel</span></h1>
+        <h1 class="section-title" data-lines="2">Tvoj nákup má <span>zmysel</span></h1>
         <p class="section-subtitle">Časť výťažku systematicky putuje na podporu babyboxov a charitatívnych projektov.</p>
         </div>
         <div class="supportimpact-item">
@@ -76,7 +76,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
             </div>
           <div class="supportimpact-item-textbox">
           <h3 class="section-title supportimpact-text1"><span><?php echo esc_si(number_format($totalBooksSold,0,'',' ')); ?></span></h3>
-          <h3 class="section-title supportimpact-text1">Predané knihy</h3>
+          <h3 class="section-title supportimpact-text1" data-lines="2">Predané knihy</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -85,7 +85,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
             </div>
           <div class="supportimpact-item-textbox">
           <h3 class="section-title supportimpact-text2"><span><?php echo esc_si(number_format($totalOrders,0,'',' ')); ?></span></h3>
-          <h3 class="section-title supportimpact-text2">Splatené objednávky</h3>
+          <h3 class="section-title supportimpact-text2" data-lines="2">Splatené objednávky</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -94,7 +94,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
             </div>
           <div class="supportimpact-item-textbox">
           <h3 class="section-title supportimpact-text2"><span><?php echo esc_si(number_format($totalSales,2,',',' ')); ?> €</span></h3>
-          <h3 class="section-title supportimpact-text3">Celkové tržby</h3>
+          <h3 class="section-title supportimpact-text3" data-lines="2">Celkové tržby</h3>
           </div>
         </div>
         <div class="supportimpact-item">
@@ -103,7 +103,7 @@ $donated = $totalSales * ($supportPercent / 100.0);
             </div>
           <div class="supportimpact-item-textbox">
           <h3 class="section-title supportimpact-text4"><span><?php echo esc_si(number_format($donated,2,',',' ')); ?> €</span></h3>
-          <h3 class="section-title supportimpact-text4">Darovaná suma</h3>
+          <h3 class="section-title supportimpact-text4"  data-lines="2">Darovaná suma</h3>
           </div>
         </div>
       </div>
