@@ -7,231 +7,223 @@
   --ink: #3b2a1a;
   --deep-shadow: rgba(0,0,0,0.5);
   --warm-light: rgba(255,230,170,0.14);
+
+  /* vizuální ladění obrazu */
+  --lift-z: 28px;
+  --shadow-opa: 0.40;
+  --gloss-opa: 0.14;
+  --texture-opa: 0.06;
 }
 
-/* ======================== OBSAH ======================== */
+/* ======================== KONTEJNER / GRID ======================== */
 .about-container {
   position: relative;
+  width: 100%;
   z-index: 6;
-  display: flex;
-  gap: 40px;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr minmax(240px, 50%);
+  gap: 28px;
+  align-items: start;
   justify-content: space-between;
-  flex-wrap: nowrap;
+  padding: 2rem;
+  box-sizing: border-box;
+  overflow: visible;
 }
 
-/* levá textová část */
+/* levá (text) kolona */
 .about-content {
-  flex: 0 0 55%;
-  animation: fadeInLeft 1s ease both;
-  color: var(--ink);
-}
-
-/* TITULEK - přepracováno pro zlatý dekorativní styl */
-.about-title {
-  font-family: "Playfair Display", serif;
-  font-size: clamp(1.8rem, 3.6vw, 3rem);
-  margin: 0 0 18px 0;
-  font-weight: 800;
-  color: var(--ink);
-  line-height: 1.02;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  grid-column: 1 / 2;
+  display: block; /* musí být block, float funguje pouze v toku dokumentu */
   position: relative;
-  z-index: 7;
-  /* jemný emboss pro lepší čitelnost */
-  text-shadow:
-    0 1px 0 rgba(255,255,255,0.30),
-    0 2px 6px rgba(0,0,0,0.28);
+  width: 100%;
 }
 
-/* dekorativní zlatý kus (použij <span data-text="KNIHY">KNIHY</span>) */
-.about-title span {
-  margin:0;
-  font-family: "Cinzel Decorative", serif;
-  font-size: clamp(1.6rem, 4.4vw, 2.6rem);
-  text-transform: uppercase;
-  font-weight: 900;
-  letter-spacing: 1px;
-  color: #d0a94a; /* základní zlatá výplň */
-  -webkit-text-stroke: 0.9px #57370f; /* ostrý okraj */
-  -moz-text-stroke: 0.9px #57370f;
-  /* shadowy bez blur pro výraznou hranici */
-  text-shadow:
-    1px 1px 0 #2f1b0b,
-    -0.6px -0.6px 0 rgba(255,255,255,0.12);
-  display: inline-block;
-  position: relative;
-  vertical-align: middle;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* hlavička (title + subtitle) */
+.about-header {
+  display: block;
+  margin-bottom: 12px;
 }
 
-/* tenká vrstva lesku – BEZ rozmazaného blur, klipnutá do textu */
-.about-title span::after{
-  content: attr(data-text);
-  position: absolute;
-  left: 0; top: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-  background: linear-gradient(180deg,
-    rgba(255,255,255,0.95) 0%,
-    rgba(255,255,255,0.45) 8%,
-    rgba(255,255,255,0.06) 18%,
-    rgba(255,255,255,0) 30%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  transform: translateY(-1px);
-  opacity: 0.95;
-}
-
-/* hlavní text bloku — styl přiblížený k section-subtitle */
-.about-text {
-  margin: 0 0 18px 0;
-  color: #342515;
-  opacity: 0.96;
-  font-style: italic;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(0.95rem, 1.05rem + 0.2vw, 1.15rem);
-  line-height: 1.6;
-  letter-spacing: 0.2px;
-  max-width: 44ch;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  text-shadow:
-    0.6px 0.6px 0 #1f1309,
-    -0.6px -0.6px 0 rgba(255,255,255,0.02);
-  transition: color 180ms ease, transform 150ms ease;
-  position: relative;
-  z-index: 6;
-}
-
-/* bezpečnější hover/focus pro přístupnost */
-.about-text:hover,
-.about-text:focus {
-  color: #4a341f;
-  transform: translateY(-1px);
-  outline: none;
-}
-
-.about-text.dropcap::first-letter {
-  float: left;
-  font-size: 2.8rem;           /* trochu větší pro lepší efekt */
-  line-height: 1;              /* ale můžeš snížit třeba na 0.9 */
-  margin: 0 .6rem 0 0;
-  font-weight: 400;
-  color: #24150c;
-  -webkit-text-stroke: .6px rgba(0,0,0,0.35);
-  text-transform: uppercase;
-  font-family: "Cinzel Decorative", Georgia, serif;
-
-  margin-top: .65rem;          /* zarovnání dolů */
-}
-
-/* zvýrazněný box */
-.about-highlight {
-  background: rgba(207,152,58,0.09);
-  border-left: 6px solid #c08a2e;
-  font-weight: 600;
-  padding: 18px;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-  color: var(--ink);
-  font-family: "Playfair Display", serif;
-  line-height: 1.6;
-}
-
-/* ======================== OBRÁZKOVÁ ČÁST ======================== */
+/* pravá (vizuální) kolona */
 .about-image-container {
-  flex: 0 0 40%;
+  grid-column: 2 / 3;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 300px;
+  flex-direction: column;
+  gap: 20px;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: visible;
+  width: 100%;
+  align-self: center;
 }
 
-/* FRAME - upravené z-indexy pseudo vrstev aby obrázek nebyl pod overlay */
-.frame {
+.inkwell {
+  display: block;
+  float: right;
+  width: 60%;
+  aspect-ratio: 798 / 906;
+  margin: 5% 0 5% 5%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-shape-outside: polygon(
+    20% 95%, 80% 95%, 75% 70%,
+    60% 50%, 55% 20%, 40% 0%,
+    30% 10%, 35% 40%, 25% 70%
+  );
+  shape-outside: polygon(
+    20% 95%, 80% 95%, 75% 70%,
+    60% 50%, 55% 20%, 40% 0%,
+    30% 10%, 35% 40%, 25% 70%
+  );
+  -webkit-shape-outside: url('/assets/inkwell-quill-tvar.svg');
+  shape-outside: url('/assets/inkwell-quill-tvar.svg');
+  shape-margin: 12px;
+}
+
+.inkwell-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* -------- TEXTOVÉ BLOKY -------- */
+.section-subtitle {
+  line-height: 1.6;
+  color: var(--ink);
+  font-family: Georgia, serif;
+  display: block; /* musí být block, ne flex item */
+  padding: 2%; /* malé odsazení, nech to lehké */
+}
+
+/* hlavní highlight (Naše hodnoty) */
+.about-highlight {
+  margin-top: 12px;
+  font-family: Georgia, serif;
+  color: var(--ink);
+}
+
+/* -------- POLIČKA -------- */
+.shelf-wrap {
+  margin-top: 18px;
+  display: flex;
+  align-items: flex-end;
+}
+.shelf-image {
+  width: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* -------- PRAVÁ VIZUÁLNÍ OBLAST (GALERIE / RÁM) -------- */
+/* gallery-hang používáme i pro pseudo overlaye místo ::before na img */
+.gallery-hang{
   position: relative;
   width: 100%;
   max-width: 420px;
-  padding: 18px;
-  background: linear-gradient(180deg, #d6b873 0%, #a06d2b 60%, #684219 100%);
-  border: 6px solid #3f2a16;
-  border-radius: 8px;
-  box-shadow:
-    0 28px 70px rgba(0,0,0,0.55),
-    0 6px 18px rgba(0,0,0,0.28),
-    inset 0 6px 12px rgba(255,255,255,0.04);
-  overflow: hidden;
+  margin: 0 auto;
   transform-style: preserve-3d;
   perspective: 1200px;
-  transition: transform .45s cubic-bezier(.2,.9,.3,1), box-shadow .35s;
-}
-
-/* zlacený bevel - dejeme nízké z-index aby byl pod obrázkem */
-.frame::before {
-  content: "";
-  position: absolute;
-  inset: 6px;
-  border-radius: 6px;
-  background: linear-gradient(180deg, var(--gold-1), var(--gold-2) 50%, var(--gold-3));
-  transform: translateZ(-6px) scale(0.995);
-  filter: saturate(1.05) contrast(1.02);
-  pointer-events: none;
-  z-index: 0;
-  box-shadow: inset 0 3px 6px rgba(255,255,255,0.08), inset 0 -8px 18px rgba(0,0,0,0.35);
-}
-
-/* jemný vnitrní reflex - umístíme pod obrázek, ale s menším krytím */
-.frame::after {
-  content: "";
-  position: absolute;
-  inset: 12px;
-  border-radius: 4px;
-  pointer-events: none;
-  z-index: 1;
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0) 30%);
-  mix-blend-mode: overlay;
-  box-shadow: inset 0 2px 0 rgba(255,255,255,0.08), inset 0 -2px 0 rgba(0,0,0,0.12);
-  opacity: 0.9;
-}
-
-/* Obrázek: explicitně nad pseudo-vrstvami, pozice relative zamezí kreslení pod pseudo */
-.about-image {
-  width: 100%;
-  height: 100%;
+  z-index: 10;
+  pointer-events: auto;
   display: block;
-  object-fit: cover;
-  border-radius: 4px;
-  box-shadow: inset 0 0 12px rgba(0,0,0,0.45);
-  transition: transform 0.55s ease, box-shadow 0.55s ease;
-  position: relative;
+}
+
+/* DOM shadow element (stín pod obrazem) */
+.gallery-hang .shadow{
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%) translateY(-6px) rotateX(75deg);
+  width: 84%;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+                rgba(0,0,0,var(--shadow-opa)) 0%,
+                rgba(0,0,0, calc(var(--shadow-opa) * 0.4)) 40%,
+                rgba(0,0,0, 0) 85%);
+  filter: blur(18px) saturate(0.9);
   z-index: 3;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* separační ambient overlay (nahradí pseudo ::after/::before) */
+.gallery-hang .sep{
+  position: absolute;
+  inset: -6px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 4;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.05));
+  mix-blend-mode: overlay;
+  filter: blur(6px) opacity(.9);
+}
+
+/* obraz (framed canvas) */
+.framed-image{
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 420px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 6;
+  transform: translateZ(var(--lift-z)) translateY(-2px) scale(.999);
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  transition: transform 420ms cubic-bezier(.2,.9,.3,1), box-shadow 320ms;
+  will-change: transform, box-shadow;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.45);
+  border-radius: 2px;
+  object-fit: cover;
 }
 
-/* hover efekty: jemný tilt a zvětšení */
-.frame:hover {
-  transform: translateY(-10px) rotateX(1.4deg) translateZ(0);
+/* Lak + textura přes obraz: použito na .gallery-hang místo na img */
+.gallery-hang::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 7;
+  background:
+    radial-gradient(120% 70% at 18% 0%,
+      rgba(255,255,255, var(--gloss-opa)),
+      transparent 42%),
+    linear-gradient(to bottom,
+      rgba(255,255,255, .03),
+      rgba(0,0,0, .06) 70%);
+  mix-blend-mode: screen;
+  opacity: 0.95;
+  filter: blur(1px) saturate(1.02);
+}
+.gallery-hang::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 7;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,var(--texture-opa)) 0 1px, rgba(0,0,0,var(--texture-opa)) 1px 2px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,var(--texture-opa)) 0 1px, rgba(0,0,0,var(--texture-opa)) 1px 2px);
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  transform: translateZ(1px);
+}
+
+/* hover efekt pro desktop */
+.gallery-hang:hover .framed-image{
+  transform: translateZ(calc(var(--lift-z) + 8px)) rotateX(.6deg) rotateY(-.6deg);
   box-shadow:
-    0 44px 110px rgba(0,0,0,0.62),
-    0 12px 30px rgba(0,0,0,0.34);
+    inset 0 0 20px rgba(0,0,0,0.52),
+    0 28px 60px rgba(0,0,0,0.5);
 }
-.frame:hover .about-image {
-  transform: scale(1.03);
-  box-shadow: inset 0 0 18px rgba(0,0,0,0.5);
-}
-
-/* Animace */
-@keyframes fadeInLeft {
-  from { opacity: 0; transform: translateX(-40px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
+.gallery-hang:hover .sep{ opacity: 1; }
 
 /* ======================== BABYBOX (CALLOUT) ======================== */
 .babybox-highlight {
@@ -246,12 +238,8 @@
     0 0 22px rgba(212, 161, 58, 0.25),
     inset 0 2px 0 rgba(255,255,255,0.06),
     inset 0 -6px 18px rgba(0,0,0,0.08);
-  animation: fadeInUp 1.2s ease forwards;
   overflow: hidden;
-  font-family: "Playfair Display", serif;
 }
-
-/* dekorativní ornament v pozadí (jemné) */
 .babybox-highlight::before {
   content: "";
   position: absolute;
@@ -274,30 +262,6 @@
   pointer-events: none;
   z-index: 0;
 }
-.babybox-highlight h3 {
-  margin-bottom: 12px;
-  font-size: clamp(1.25rem, 2vw, 1.6rem); /* zvětšeno */
-  font-weight: 800;
-  font-family: "Cinzel Decorative", serif;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #c08a2e;
-
-  /* jemný stín jen pro kontrast */
-  text-shadow:
-    1px 1px 0 rgba(0,0,0,0.18),
-    -0.6px -0.6px 0 rgba(255,255,255,0.1);
-}
-
-.babybox-highlight p {
-  font-size: 1.08rem;
-  color: var(--ink);
-  line-height: 1.75;
-  font-style: italic;
-  text-shadow:
-    0.5px 0.5px 0 #1f1309,
-    -0.5px -0.5px 0 rgba(255,255,255,0.03);
-}
 
 /* Glow pulsace (jemnější) */
 @keyframes epicGlow {
@@ -312,36 +276,62 @@
       inset 0 0 36px rgba(212, 161, 58, 0.26);
   }
 }
-.babybox-highlight:hover {
-  animation: epicGlow 2.5s infinite ease-in-out;
+.babybox-highlight:hover { animation: epicGlow 2.5s infinite ease-in-out; }
+
+/* ---------- RESPONSIVITA ---------- 
+@media (min-width: 1400px) {
+  /*.about-container { grid-template-columns: 1fr 520px; gap: 36px; }
+  .gallery-hang { max-width: 520px; }
+  .framed-image { max-width: 520px; transform: translateZ(var(--lift-z)) translateY(-2px) scale(.999); }
+  /*.inkwell { width: 180px; margin: -12px 0 18px 22px; }
+  .shelf-image { max-width: 420px; width: 72%; }
 }
 
-/* Responzivita upravená pro texty */
-@media (max-width: 1100px) {
-  .about-container { gap: 24px; }
-  .about-content { flex: 0 0 58%; }
-  .about-image-container { flex: 0 0 40%; }
-  .about-title { font-size: clamp(1.6rem, 3.2vw, 2.4rem); }
-}
-@media (max-width: 860px) {
+/* mobil: přepneme na jednosloupcový tok; inkwell již nebude floatovat */
+@media (max-width: 880px) {
   .about-container {
-    flex-direction: column;
-    align-items: center;
-    text-align: left;
+    display: grid; /* jistota, že máme grid */
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 1.25rem;
   }
-  .about-content { flex: 1 1 100%; width: 100%; }
-  .about-image-container { flex: 1 1 100%; margin-top: 18px; display:flex; justify-content:center; }
-  .frame { max-width: 560px; width: 92%; }
-  .about-text { max-width: 60ch; }
-}
-@media (max-width: 480px) {
-  /*.paper-wrap { padding: 30px; } */
-  .about-title { font-size: 1.8rem; }
-  .about-text { font-size: 0.98rem; line-height: 1.65; }
-  .frame { padding: 12px; }
+
+  /* Explicitně určím pořadí pomocí grid-row (deterministické) */
+  .about-content {
+    grid-column: 1 / -1;
+    grid-row: 1;    /* text jako první */
+    order: 0;       /* necháme 0 pro případ, že někde jinde používáš order */
+  }
+
+  .about-image-container {
+    grid-column: 1 / -1;
+    grid-row: 2;    /* obraz až za textem */
+    order: 0;
+    align-self: start;
+  }
+
+  /* Inkwell: mobil - žádné obtékání, centrovat */
+  .inkwell {
+    float: none !important;
+    margin: 0 auto 12px;
+    shape-outside: none;
+    -webkit-shape-outside: none;
+    background-size: contain;
+    width: 100%;
+    transform: rotate(-6deg);
+    display: block;
+  }
+
+  .shelf-image {
+    display:none;
+  }
 }
 
-/* Reduced motion */
+/* reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .frame, .about-image, .babybox-highlight, .about-container { transition: none !important; animation: none !important; transform: none !important; }
+  .gallery-hang, .framed-image, .babybox-highlight, .about-container {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }

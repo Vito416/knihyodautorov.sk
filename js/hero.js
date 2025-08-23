@@ -1,9 +1,35 @@
 document.addEventListener("DOMContentLoaded", () => {
   const quotes = [
-    '"Kniha je sen, ktorý držíš v ruke."',
-    '"Slová majú moc meniť svet."',
-    '"Čítanie je potravou pre dušu."',
-    '"Každá stránka skrýva nový príbeh."'
+    'Kniha je sen, ktorý držíš v ruke.',
+    'Slová majú moc meniť svet.',
+    'Čítanie je potravou pre dušu.',
+    'Každá stránka skrýva nový príbeh.',
+    'Kniha otvára dvere mysli.',
+    'Čítaj a objavuj nové svety.',
+    'Slová tvoria mosty medzi ľuďmi.',
+    'Každá kniha je dobrodružstvo.',
+    'Čítanie živí dušu a myseľ.',
+    'Knihy šepkajú príbehy ticha.',
+    'Stránky plné fantázie a snov.',
+    'Čítanie je cesta k múdrosti.',
+    'Kniha je priateľ na celý život.',
+    'Slová majú silu meniť srdcia.',
+    'Každý list skrýva nový svet.',
+    'Kniha otvára nové obzory.',
+    'Slová sú kľúč k srdcu.',
+    'Čítanie rozvíja fantáziu a myseľ.',
+    'Každá stránka prináša dobrodružstvo.',
+    'Knihy sú mosty medzi svetmi.',
+    'Čítanie je poklad duše.',
+    'Slová tvoria svet okolo nás.',
+    'Kniha je tichý spoločník.',
+    'Čítaj a snívaj bez hraníc.',
+    'Stránky plné múdrosti a snov.',
+    'Každá kniha je cesta.',
+    'Knihy rozprávajú príbehy života.',
+    'Čítanie prebúdza myšlienky.',
+    'Slová liečia a inšpirujú.',
+    'Kniha je dar pre dušu.'
   ];
 
   const quoteElement = document.querySelector(".changing-quote");

@@ -14,12 +14,12 @@
     Objav <span>svet príbehov</span> v digitálnej podobe
   </h1>
   <p class="changing-quote">
-    "Kniha je sen, ktorý držíš v ruke."
+    Kniha je sen, ktorý držíš v ruke.
   </p>
 
   <div class="cta-wrapper">
     <a href="index.php" class="cta-button sample">
-      <i class="fas fa-book-open"></i> Stiahnuť ukážku zdarma
+      <i class="fas fa-book-open"></i> Ukážka zdarma
     </a>
     <a href="eshop.php" class="cta-button shop">
       <i class="fas fa-shopping-cart"></i> Navštíviť e-shop

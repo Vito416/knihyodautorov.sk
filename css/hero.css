@@ -16,26 +16,49 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 2.5rem;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0,0,0,0.35);
+  -webkit-mask-image: url('/assets/plank_bg.png');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  mask-image: url('/assets/plank_bg.png');
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  mask-position: center;
   border-radius: 20px;
-  border: 2px solid rgba(212,175,55,0.4);
-  box-shadow: 0 0 25px rgba(212,175,55,0.35);
+  box-shadow:
+    inset 0 0 35px rgba(0,0,0,0.5),
+    0 0 30px rgba(212,175,55,0.35);
 }
 
 .hero-content::before {
   content: "";
   position: absolute;
-  inset: -6px;
+  inset: -8px;
   border-radius: inherit;
-  background: linear-gradient(
-    135deg,
-    rgba(212, 175, 55, 0.6),
-    rgba(255,255,255,0.15),
-    rgba(212, 175, 55, 0.4)
-  );
-  filter: blur(18px);
+  background-image:
+    url('/assets/plank_bg.png'),
+    url('/assets/cedule_textura.png'),
+    url('/assets/wood_texture.png'),
+    linear-gradient(
+      180deg,
+      rgba(192, 138, 46, 0.4) 0%,
+      rgba(192, 138, 46, 0.2) 70%,
+      rgba(192, 138, 46, 0.05) 100%
+    );
+  background-size: 100% 100%, cover, cover, cover;
+  background-blend-mode: multiply;
+  -webkit-mask-image: url('/assets/plank_bg.png');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  mask-image: url('/assets/plank_bg.png');
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  mask-position: center;
+  filter: blur(0.5px);
   z-index: -1;
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 /* Titulek – epická verze */
@@ -125,14 +148,14 @@
 
 .changing-quote::before {
   content: "“";
-  left: -1.2rem;
-  top: -0.4rem;
+  left: 20%;
+  top: 5%;
 }
 
 .changing-quote::after {
   content: "”";
-  right: -1.2rem;
-  bottom: -0.4rem;
+  right: 20%;
+  bottom: 5%;
 }
 
 /* Lehký vznášivý pohyb */
@@ -148,7 +171,7 @@
 }
 /* Společný styl tlačítek */
 .cta-button {
-  padding: 1rem 2rem;
+  padding: 3%;
   font-size: 1.1rem;
   font-weight: 700;
   text-decoration: none;
@@ -174,9 +197,20 @@
 
 /* Varianta 1 – ukázka zdarma (královská zlatá) */
 .cta-button.sample {
-  background: linear-gradient(135deg, #c9a636, #f5e08e);
+  background-image: url('/assets/hero-btn1.png');
+  background-size: cover;
+  background-repeat: no-repeat;
+  aspect-ratio: 416 / 170;
   color: #1e1a17;
   box-shadow: 0 4px 18px rgba(212, 175, 55, 0.45), inset 0 2px 4px rgba(255,255,255,0.4);
+  -webkit-mask-image: url('/assets/hero-btn1.png');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  mask-image: url('/assets/hero-btn1.png');
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  mask-position: center;
 }
 
 .cta-button.sample:hover {
@@ -186,9 +220,21 @@
 
 /* Varianta 2 – e-shop (temná s aurou) */
 .cta-button.shop {
-  background: linear-gradient(135deg, #0d0d0d, #1f1f3a);
+  margin-left: 0.5%;
+  background-image: url('/assets/hero-btn2.png');
+  background-size: cover;
+  background-repeat: no-repeat;
+  aspect-ratio: 409 / 171;
   color: #e5e5ff;
   box-shadow: 0 4px 18px rgba(0,0,0,0.6), 0 0 12px rgba(100, 140, 255, 0.35);
+  -webkit-mask-image: url('/assets/hero-btn2.png');
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  mask-image: url('/assets/hero-btn2.png');
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  mask-position: center;
 }
 
 .cta-button.shop:hover {
@@ -299,6 +345,18 @@
 
   .changing-quote {
     font-size: 0.9rem;
+  }
+
+  .changing-quote::before {
+  content: "“";
+  left: 0;
+  top: 10%;
+  }
+
+  .changing-quote::after {
+  content: "”";
+  right: 0;
+  bottom: 5%;
   }
 
   .cta-button {
