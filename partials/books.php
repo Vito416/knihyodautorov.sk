@@ -40,52 +40,45 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
     }
 
     try {
-if ($q !== '') {
-    $term = '%' . $q . '%';
-    $coll = 'utf8mb4_unicode_ci';
-
-    $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-               a.meno AS autor, a.id AS author_id,
-               c.nazov AS category_nazov, c.slug AS category_slug
-        FROM books b
-        LEFT JOIN authors a ON b.author_id = a.id
-        LEFT JOIN categories c ON b.category_id = c.id
-        WHERE COALESCE(b.is_active,1) = 1
-          AND (
-               COALESCE(b.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
-            OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t
-            OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
-          )
-        ORDER BY b.id DESC
-        LIMIT {$limit}";   // <- přímo číslo
-
-$stmt = $pdo->prepare($sql);
-$stmt->bindValue(':t', '%' . $q . '%', PDO::PARAM_STR);
-$stmt->execute();
-$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-} else {
-    // random promo (ponecháno beze změn)
-    $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                   a.meno AS autor, a.id AS author_id,
-                   c.nazov AS category_nazov, c.slug AS category_slug
-            FROM books b
-            LEFT JOIN authors a ON b.author_id = a.id
-            LEFT JOIN categories c ON b.category_id = c.id
-            WHERE COALESCE(b.is_active,1) = 1
-            ORDER BY RAND()
-            LIMIT :lim";
-    $stmt = $pdo->prepare($sql);
-    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-    $stmt->execute();
-    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-}
-
-
+        if ($q !== '') {
+            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+                           a.meno AS autor, a.id AS author_id,
+                           c.nazov AS category_nazov, c.slug AS category_slug
+                    FROM books b
+                    LEFT JOIN authors a ON b.author_id = a.id
+                    LEFT JOIN categories c ON b.category_id = c.id
+                    WHERE COALESCE(b.is_active,1) = 1
+                      AND (
+                           COALESCE(b.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
+                        OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t
+                        OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
+                      )
+                    ORDER BY b.id DESC
+                    LIMIT {$limit}";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindValue(':t', '%' . $q . '%', PDO::PARAM_STR);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+                           a.meno AS autor, a.id AS author_id,
+                           c.nazov AS category_nazov, c.slug AS category_slug
+                    FROM books b
+                    LEFT JOIN authors a ON b.author_id = a.id
+                    LEFT JOIN categories c ON b.category_id = c.id
+                    WHERE COALESCE(b.is_active,1) = 1
+                    ORDER BY RAND()
+                    LIMIT :lim";
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         // uprava ciest (prispôsob si ak treba)
-        $baseImg = '/books-img/';   // uprav podľa projektu
-        $basePdf = '/books-pdf/';   // uprav podľa projektu
+        $baseImg = '/books-img/';
+        $basePdf = '/books-pdf/';
+        $fallbackImg = '/assets/cover-fallback.png';
 
         $out = [];
         foreach ($rows as $r) {
@@ -97,7 +90,7 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 'author_id' => isset($r['author_id']) ? (int)$r['author_id'] : null,
                 'category_nazov' => $r['category_nazov'],
                 'category_slug' => $r['category_slug'],
-                'obrazok' => !empty($r['obrazok']) ? $baseImg . ltrim($r['obrazok'], '/') : '/assets/placeholder.jpg',
+                'obrazok' => !empty($r['obrazok']) ? $baseImg . ltrim($r['obrazok'], '/') : $fallbackImg,
                 'pdf' => !empty($r['pdf_file']) ? $basePdf . ltrim($r['pdf_file'], '/') : ''
             ];
         }
@@ -112,7 +105,6 @@ $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 // ---------- Bežné renderovanie sekcie (non-AJAX) ----------
-// načítame náhodne až 4 položky pre prvé zobrazenie (server-side fallback)
 $books = [];
 if (isset($pdo) && ($pdo instanceof PDO)) {
     try {
@@ -129,85 +121,57 @@ if (isset($pdo) && ($pdo instanceof PDO)) {
     } catch (Throwable $e) { $books = []; }
 }
 
-// -------- HTML výstup sekcie --------
+$fallbackImg = '/assets/cover-fallback.png';
 ?>
 <link rel="stylesheet" href="/css/books.css">
 <script src="/js/books.js" defer></script>
 
 <section id="booksPromo" class="style-section">
-<div class="paper-wrap">
+  <div class="paper-wrap">
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
-  <div class="books-container">
-    <div class="books-header">
-      <div class="books-header-left">
-      <h1 class="section-title">Vybrané <span>knihy</span></h1>
-      <p class="section-subtitle">
-        Nechte se inspirovat naším aktuálním výběrem každý den nový mix žánrů a autorů.
-      </p>
-        <div class="search-row">
-        <input id="unifiedSearch" type="search" placeholder="Zadaj žáner, názov alebo autora" aria-label="Hľadaj">
+    <div class="books-container">
+      <div class="books-header">
+        <div class="books-header-left">
+          <h1 class="section-title">Vybrané <span>knihy</span></h1>
+          <p class="section-subtitle">
+            Nechte se inspirovat naším aktuálním výběrem každý den nový mix žánrů a autorů.
+          </p>
+          <div class="search-row">
+            <input id="unifiedSearch" type="search" placeholder="Zadaj žáner, názov alebo autora" aria-label="Hľadaj">
+          </div>
         </div>
       </div>
-    </div>
 
-<div id="booksGrid" class="books-grid">
-  <?php if (empty($books)): ?>
-    <div class="no-books">Zatiaľ neboli pridané žiadne knihy.</div>
-  <?php else: foreach ($books as $b):
-    $cover = !empty($b['obrazok']) ? '/books-img/' . ltrim($b['obrazok'], '/') : '/assets/placeholder.jpg';
-    $pdf   = !empty($b['pdf_file']) ? '/books-pdf/' . ltrim($b['pdf_file'], '/') : '';
-    $catSlug = !empty($b['category_slug']) ? $b['category_slug'] : 'uncategorized';
-    $authorTag = 'author-' . ((int)($b['author_id'] ?? 0));
-  ?>
-  <div class="book-card" tabindex="0" data-category="<?= h($catSlug) ?>" data-author="<?= h($authorTag) ?>" data-title="<?= h(mb_strtolower($b['nazov'])) ?>">
-    <div class="card-inner">
-
-      <?php if (!empty($b['category_nazov'])): ?>
-        <div class="card-meta"><span class="badge"><?= h($b['category_nazov']) ?></span></div>
-      <?php endif; ?>
-
-      <div class="cover-wrap" style="transform-style:preserve-3d;">
-        <img class="book-cover" data-src="<?= h($cover) ?>" alt="<?= h($b['nazov']) ?>">
-        <div class="book-frame"></div>
-      </div>
-
-      <div class="card-info">
-        <h1 class="book-title"><?= h($b['nazov']) ?></h1>
-        <p class="book-author"><?= h($b['autor'] ?? 'Neznámy autor') ?></p>
-        <p class="book-desc"><?= h(mb_strimwidth($b['popis'] ?? '', 0, 160, '...')) ?></p>
-      </div>
-
-      <div class="card-actions">
-        <!-- Zobraziť -->
-        <button class="btn btn-view open-detail" type="button"
-          aria-label="Zobraziť knihu <?= h($b['nazov']) ?>"
-          data-title="<?= h($b['nazov']) ?>"
-          data-author="<?= h($b['autor']) ?>"
-          data-desc="<?= h($b['popis']) ?>"
-          data-cover="<?= h($cover) ?>"
-          data-pdf="<?= h($pdf) ?>">
-          <span class="btn-text">Zobraziť</span>
-        </button>
-
-        <!-- Stiahnuť (pokud existuje PDF) -->
-        <?php if (!empty($pdf)): ?>
-          <button 
-            class="btn btn-download" 
-            type="button"
-            aria-label="Stiahnuť <?= h($b['nazov']) ?>"
-            data-href="<?= h($pdf) ?>"
-            data-filename="<?= rawurlencode($b['nazov']) ?>.pdf">
-            <span class="btn-text">Stiahnuť</span>
-          </button>
-        <?php endif; ?>
+      <div id="booksGrid" class="books-grid">
+        <?php if (empty($books)): ?>
+          <div class="no-books">Zatiaľ neboli pridané žiadne knihy.</div>
+        <?php else: foreach ($books as $b):
+          $cover = !empty($b['obrazok']) ? '/books-img/' . ltrim($b['obrazok'], '/') : $fallbackImg;
+          $pdf   = !empty($b['pdf_file']) ? '/books-pdf/' . ltrim($b['pdf_file'], '/') : '';
+          $catSlug = !empty($b['category_slug']) ? $b['category_slug'] : 'uncategorized';
+          $authorTag = 'author-' . ((int)($b['author_id'] ?? 0));
+        ?>
+        <div class="book-card"
+             tabindex="0"
+             data-category="<?= h($catSlug) ?>"
+             data-author="<?= h($authorTag) ?>"
+             data-title="<?= h(mb_strtolower($b['nazov'])) ?>"
+             data-cover="<?= h($cover) ?>">
+          <div class="card-inner">
+            <div class="cover-wrap">
+              <img class="book-cover"
+                   src="<?= h($cover) ?>"
+                   alt="<?= h($b['nazov']) ?>"
+                   onerror="this.onerror=null;this.src='<?= h($fallbackImg) ?>'">
+              <div class="book-frame" aria-hidden="true"></div>
+            </div>
+          </div>
+        </div>
+        <?php endforeach; endif; ?>
       </div>
     </div>
   </div>
-  <?php endforeach; endif; ?>
-  </div>
-</div>
-</div>
 </section>
 
 <!-- modal detail -->
