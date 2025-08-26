@@ -164,12 +164,12 @@ $fallbackImg = '/assets/cover-fallback.png';
                    src="<?= h($cover) ?>"
                    alt="<?= h($b['nazov']) ?>"
                    onerror="this.onerror=null;this.src='<?= h($fallbackImg) ?>'">
-              <div class="book-frame" aria-hidden="true"></div>
             </div>
           </div>
         </div>
         <?php endforeach; endif; ?>
       </div>
+      <div class="book-stand"></div>
     </div>
   </div>
 </section>
