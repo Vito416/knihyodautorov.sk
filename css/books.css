@@ -91,13 +91,6 @@
   z-index: 15;
   max-width: 20%;
 }
-.badge {
-  display: inline-block;
-  font-weight: 800;
-  font-family: "Cinzel", serif;
-  color: #d4af37;
-  position: relative;
-}
 
 .book-stand {
   position: absolute;
@@ -127,23 +120,68 @@
   display:block;
 }
 
-/* Author */
+/* Hřbet – název */
 .book-title {
-  padding-top: 50%;
-}
+  padding-top: 20%;
+  margin: 0;
+  text-align: center;
 
-/* Author */
-.book-author {
-  padding-bottom: -300%;
   font-family: "Cinzel Decorative", serif;
-  font-weight: 800;
-  font-size: calc(var(--book-title-size, 2.2rem) * 0.48);
-  background: linear-gradient(180deg, #c08942, #5b3614);
+  font-weight: 700;
+  font-size: calc(var(--book-title-size, 2.2rem));
+  line-height: 1.2;
+  text-transform: uppercase;
+
+  /* efekt raženého zlata */
+  background: linear-gradient(180deg, #fff9d6 0%, #e6c56f 35%, #b78b2e 70%, #6a4a1a 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 0.6px #4a2d14;
-  text-shadow: 0 1px 0 rgba(255,255,255,.2), 0 1px 0 rgba(0,0,0,.55);
+
+  text-shadow:
+    0px 1px 2px rgba(0,0,0,0.7),   /* hlubší reliéf */
+    0px -1px 1px rgba(255,255,255,0.25); /* jemný odlesk nahoře */
 }
+
+/* Hřbet – autor */
+.book-author {
+  margin-top: auto;
+  margin-bottom: 20%;
+  text-align: center;
+
+  font-family: "Cinzel", serif;
+  font-weight: 600;
+  font-size: calc(var(--book-title-size, 2.2rem) * 0.55);
+
+  background: linear-gradient(180deg, #f9edc3 0%, #d6ad47 50%, #8a6622 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  text-shadow:
+    0px 1px 2px rgba(0,0,0,0.65),
+    0px -1px 1px rgba(255,255,255,0.2);
+}
+
+/* Badge – žánr (jako ozdobná destička) */
+.badge {
+  display: inline-block;
+  padding: 0.3em 0.8em;
+  margin: 10% auto 0 auto;
+
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  font-size: 0.9em;
+  color: #e6c56f;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+
+  border: 2px solid #e6c56f;
+  border-radius: 4px;
+
+  background: linear-gradient(180deg, #2e1b0f, #1a0e07);
+  box-shadow: inset 0 1px 2px rgba(255,255,255,0.1),
+              0 2px 4px rgba(0,0,0,0.8);
+}
+
 
 /* ========================= BUTTONS ========================= */
 .card-actions {
@@ -191,12 +229,32 @@
   --spine-width: 0%;
 }
 
+/* základ pro cover-wrap (transition + perspektiva) */
+.card-inner {
+  transition: transform 300ms cubic-bezier(.2,.9,.2,1), box-shadow 260ms;
+  will-change: transform;
+  transform-origin: 50% 50%;
+}
+
+.book-card:hover .card-inner,
+.card-inner:focus-within {
+  transform: translateX(-5%) translateY(5%);
+  outline: none;
+}
+
 .cover-wrap {
+  cursor: pointer;
   position: relative;
   width: 100%;
   aspect-ratio: 581 / 1238; /* zachovává proporce */
   overflow: visible;
   display: block;
+}
+
+.cover-wrap svg { pointer-events: none; }
+
+@media (hover: none) {
+  .card-inner { transform: none; }
 }
 
 .cover-wrap .cover-window {

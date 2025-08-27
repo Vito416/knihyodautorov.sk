@@ -1,7 +1,3 @@
-// /js/books.js — CLEANED & SIMPLIFIED (FIXED)
-// Kompletní náhrada: načítání knih (AJAX), rotace karet, vyhledávání, lazy-load,
-// SVG maska (jednou načtená a cachovaná), bezpečné fallbacky.
-
 document.addEventListener('DOMContentLoaded', () => {
   // ---------- CONFIG & DOM refs ----------
   const booksGrid = document.getElementById('booksGrid');
@@ -16,6 +12,23 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalDownload = document.getElementById('modalDownload');
 
   const IMG_FALLBACK = '/assets/cover-fallback.png';
+
+  // ---------- TIMING CONFIG (safe, centralised) ----------
+  const TIMINGS = {
+    SVG_RESIZE_DEBOUNCE_MS: 120,
+    RENDER_DELAY_MS: 180,
+    REVEAL_BASE_MS: 120,
+    REVEAL_STEP_MS: 80,
+    FADE_IN_REMOVE_MS: 600,
+    MAKE_RESIZED_FETCH_TIMEOUT_MS: 7000,
+    MAKE_RESIZED_IMG_TIMEOUT_MS: 7000,
+    TRYIMAGE_PRELOAD_TIMEOUT_MS: 8000,
+    NATURAL_IMG_LOAD_TIMEOUT_MS: 5000,
+    OBJECTURL_LIFETIME_MS: 4000,
+    ROTATE_MS: 8000,
+    WINDOW_RESIZE_DEBOUNCE_MS: 180,
+    SEARCH_DEBOUNCE_MS: 420
+  };
 
   let poolItems = [];
   let perm = [];
@@ -78,7 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(__svgResizeTimer);
     __svgResizeTimer = setTimeout(() => {
       qsa('svg.cover-svg-generated').forEach(sv => updateSvgPixelSize(sv, sv.parentElement));
-    }, 120);
+    }, TIMINGS.SVG_RESIZE_DEBOUNCE_MS);
   });
 
   // ---------- lazy load images ----------
@@ -108,19 +121,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function revealStagger(root = document) {
     const cards = qsa('.book-card', root);
+    // set initial pre-transition state and per-card transition-delay (no per-card setTimeouts)
     cards.forEach((c, idx) => {
       c.style.opacity = '0';
       c.style.transform = 'translateY(20px) rotateX(6deg)';
-      setTimeout(() => {
-        c.classList.add('book-card-revealed');
-        c.style.opacity = '';
-        c.style.transform = '';
-      }, 120 + idx * 80);
+      // keep transition definition inline to avoid dependency on external CSS changes
+      c.style.transition = 'transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s';
+      c.style.transitionDelay = (TIMINGS.REVEAL_BASE_MS + idx * TIMINGS.REVEAL_STEP_MS) + 'ms';
+    });
+
+    // Force a single reflow so that the browser registers the initial styles,
+    // then add the revealed class to trigger the transitions with the delays above.
+    // This avoids creating many JS timers while preserving the exact delays.
+    void (root.offsetHeight);
+
+    // add class so CSS rules for '.book-card.book-card-revealed' apply
+    cards.forEach(c => c.classList.add('book-card-revealed'));
+
+    // clear inline starting styles so CSS-defined end-state can transition to
+    cards.forEach(c => {
+      c.style.opacity = '';
+      c.style.transform = '';
+      // keep transition and transitionDelay inline; optionally remove if using CSS
+      // c.style.transition = '';
     });
   }
 
   // ---------- image preloader ----------
-  async function tryImagePathsSimple(original, timeout = 8000) {
+  async function tryImagePathsSimple(original, timeout = TIMINGS.TRYIMAGE_PRELOAD_TIMEOUT_MS) {
     if (!original || !String(original).trim()) return IMG_FALLBACK;
     const orig = String(original).trim();
     const candidates = [];
@@ -154,9 +182,81 @@ document.addEventListener('DOMContentLoaded', () => {
     return IMG_FALLBACK;
   }
 
+  // ---------- image resizing/canvas + fetch helper ----------
+  async function makeResizedObjectURL(srcUrl, dstPxW, dstPxH, crossOrigin) {
+    // normalize
+    dstPxW = Math.max(1, Math.round(dstPxW || 1));
+    dstPxH = Math.max(1, Math.round(dstPxH || 1));
+
+    try {
+      // 1) fetch the resource (CORS required on server)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TIMINGS.MAKE_RESIZED_FETCH_TIMEOUT_MS);
+      let resp;
+      try {
+        resp = await fetch(srcUrl, { signal: controller.signal, mode: 'cors' });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!resp || !resp.ok) throw new Error('fetch-failed');
+
+      const blob = await resp.blob();
+
+      // 2) try createImageBitmap (preferred)
+      let bitmap = null;
+      try {
+        bitmap = await createImageBitmap(blob);
+      } catch (e) {
+        // createImageBitmap may not be available; we'll fallback to Image element
+        bitmap = null;
+      }
+
+      // 3) prepare canvas and draw (either from bitmap or from Image)
+      const canvas = document.createElement('canvas');
+      canvas.width = dstPxW;
+      canvas.height = dstPxH;
+      const ctx = canvas.getContext('2d');
+
+      if (bitmap) {
+        // draw bitmap stretched to canvas size (this deforms to exactly dstPxW/dstPxH)
+        ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, canvas.width, canvas.height);
+      } else {
+        // fallback: create tmp image from blob and draw it
+        const tmpUrl = URL.createObjectURL(blob);
+        try {
+          await new Promise((resolve, reject) => {
+            const img = new Image();
+            if (crossOrigin) img.crossOrigin = crossOrigin;
+            let done = false;
+            img.onload = () => { if (done) return; done = true; resolve(img); };
+            img.onerror = (err) => { if (done) return; done = true; reject(err); };
+            img.src = tmpUrl;
+            // small safety timeout
+            setTimeout(() => { if (done) return; done = true; reject(new Error('img-load-timeout')); }, TIMINGS.MAKE_RESIZED_IMG_TIMEOUT_MS);
+          }).then(img => {
+            ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvas.width, canvas.height);
+          });
+        } finally {
+          try { URL.revokeObjectURL(tmpUrl); } catch (e) {}
+        }
+      }
+
+      // 4) export canvas -> blob -> objectURL
+      return await new Promise((resolve, reject) => {
+        // Use PNG for lossless; change to 'image/jpeg' + quality if you want smaller files
+        canvas.toBlob((outBlob) => {
+          if (!outBlob) return resolve(srcUrl); // fallback to original url if export failed
+          resolve(URL.createObjectURL(outBlob));
+        }, 'image/png');
+      });
+
+    } catch (err) {
+      // If anything fails (likely CORS), return original URL as fallback
+      return srcUrl;
+    }
+  }
+
   // ---------- simplified, cached mask loader & applyFrameToCards ----------
-  // This version fetches mask SVG once (cached) and then for each card
-  // creates an SVG with a background frame and mask-clipped cover image.
   const MASK_URL = '/assets/book-cover-transparent-mask.svg';
   const FRAME_PNG_URL = '/assets/book-cover-transparent.png';
   const DEFAULTS = {
@@ -165,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
     CROSSORIGIN: undefined // set to 'anonymous' if needed
   };
 
-  let __maskCache = { svgText: null, doc: null, viewBox: null, holeRect: null };
+  let __maskCache = { svgText: null, doc: null, viewBox: null, holeRect: null, pathD: null, pathBBox: null };
 
   async function loadMaskOnce(url = DEFAULTS.MASK_SVG_URL) {
     if (__maskCache.svgText) return __maskCache;
@@ -273,6 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
       __maskCache.holeRect = { x: vb2.x, y: vb2.y, width: vb2.w, height: vb2.h };
     }
 
+    // EXTRACT pathD once for reuse to avoid reparsing for each card
+    try {
+      const tmpDoc2 = new DOMParser().parseFromString(text, 'image/svg+xml');
+      const p = tmpDoc2.querySelector('path.st0') || tmpDoc2.querySelector('path');
+      __maskCache.pathD = p ? p.getAttribute('d') : null;
+    } catch (e) { /* ignore */ }
+
     return __maskCache;
   }
 
@@ -285,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dispH = natH * scale;
     const x = hole.x + (hole.width - dispW) / 2;
     const y = hole.y + (hole.height - dispH) / 2;
-    return { x, y, width: dispW, height: dispH };
+    return { x, width: dispW, height: dispH, y };
   }
 
   async function applyFrameToCards(root = document, options = {}) {
@@ -304,14 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const xlinkNS = 'http://www.w3.org/1999/xlink';
 
     // extrahuj path data (prefer .st0)
-    let pathD = null;
-    if (maskInfo.svgText) {
-      try {
-        const tmpDoc = new DOMParser().parseFromString(maskInfo.svgText, 'image/svg+xml');
-        const p = tmpDoc.querySelector('path.st0') || tmpDoc.querySelector('path');
-        if (p) pathD = p.getAttribute('d');
-      } catch (e) { /* ignore */ }
-    }
+    let pathD = maskInfo.pathD || null;
 
     const vb = maskInfo.viewBox || { x: 0, y: 0, w: 581, h: 1238 };
 
@@ -365,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         // 1) fetch the resource (CORS required on server)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7000);
+        const timeoutId = setTimeout(() => controller.abort(), TIMINGS.MAKE_RESIZED_FETCH_TIMEOUT_MS);
         let resp;
         try {
           resp = await fetch(srcUrl, { signal: controller.signal, mode: 'cors' });
@@ -406,7 +506,7 @@ document.addEventListener('DOMContentLoaded', () => {
               img.onerror = (err) => { if (done) return; done = true; reject(err); };
               img.src = tmpUrl;
               // small safety timeout
-              setTimeout(() => { if (done) return; done = true; reject(new Error('img-load-timeout')); }, 7000);
+              setTimeout(() => { if (done) return; done = true; reject(new Error('img-load-timeout')); }, TIMINGS.MAKE_RESIZED_IMG_TIMEOUT_MS);
             }).then(img => {
               ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvas.width, canvas.height);
             });
@@ -441,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (initialCoverUrl) card.dataset.cover = initialCoverUrl;
         const coverUrlRaw = card.dataset.cover || '';
         let coverUrl = IMG_FALLBACK;
-        try { coverUrl = await tryImagePathsSimple(coverUrlRaw, 9000); } catch (e) { coverUrl = IMG_FALLBACK; }
+        try { coverUrl = await tryImagePathsSimple(coverUrlRaw, TIMINGS.TRYIMAGE_PRELOAD_TIMEOUT_MS); } catch (e) { coverUrl = IMG_FALLBACK; }
 
         // remove existing visuals
         Array.from(coverWrap.querySelectorAll(':scope > img')).forEach(n => n.remove());
@@ -458,7 +558,7 @@ document.addEventListener('DOMContentLoaded', () => {
             im.onload = () => { if (done) return; done = true; natW = im.naturalWidth || im.width; natH = im.naturalHeight || im.height; res(); };
             im.onerror = () => { if (done) return; done = true; rej(new Error('cover load failed')); };
             im.src = coverUrl;
-            setTimeout(() => { if (done) return; done = true; rej(new Error('timeout')); }, 5000);
+            setTimeout(() => { if (done) return; done = true; rej(new Error('timeout')); }, TIMINGS.NATURAL_IMG_LOAD_TIMEOUT_MS);
           });
         } catch (e) { natW = 0; natH = 0; }
 
@@ -622,7 +722,7 @@ try {
 
         // cleanup objectURL after a moment (allow browser to keep it cached/rendered)
         if (objectUrl && objectUrl.startsWith('blob:')) {
-          setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch (e) {} }, 4000);
+          setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch (e) {} }, TIMINGS.OBJECTURL_LIFETIME_MS);
         }
 
       } catch (err) {
@@ -702,20 +802,22 @@ try {
 
         coverWrap.appendChild(img);
 
-        // open detail button (or visible overlay)
-        const btn = document.createElement('button');
-        btn.className = 'open-detail btn';
-        btn.type = 'button';
-        btn.setAttribute('aria-label', `Otvoriť ${it.nazov || 'kniha'}`);
-        btn.dataset.title = it.nazov || '';
-        btn.dataset.author = it.autor || '';
-        btn.dataset.desc = it.popis || it.popis_short || '';
-        btn.dataset.cover = imgSrc;
-        btn.dataset.pdf = it.pdf || '';
-        btn.textContent = 'Viac';
+        // make cover itself the activator (accessible)
+        coverWrap.classList.add('open-detail');
+        coverWrap.setAttribute('role', 'button');
+        coverWrap.setAttribute('aria-label', `Otvori\u0165 ${it.nazov || 'kniha'}`);
+        coverWrap.tabIndex = 0; // focusable by keyboard
+
+        // move data used by modal to coverWrap
+        coverWrap.dataset.title = it.nazov || '';
+        coverWrap.dataset.author = it.autor || '';
+        coverWrap.dataset.desc = it.popis || it.popis_short || '';
+        coverWrap.dataset.cover = imgSrc;
+        coverWrap.dataset.pdf = it.pdf || '';
 
         inner.appendChild(coverWrap);
-        inner.appendChild(btn);
+        // (není potřeba přidávat tlačítko)
+
         art.appendChild(inner);
         frag.appendChild(art);
       });
@@ -729,8 +831,8 @@ try {
 
       booksGrid.classList.remove('fade-out');
       booksGrid.classList.add('fade-in');
-      setTimeout(() => booksGrid.classList.remove('fade-in'), 600);
-    }, 180);
+      setTimeout(() => booksGrid.classList.remove('fade-in'), TIMINGS.FADE_IN_REMOVE_MS);
+    }, TIMINGS.RENDER_DELAY_MS);
   }
 
   // ---------- modal handling (open/close) ----------
@@ -776,7 +878,6 @@ try {
   }
 
   // ---------- rotation ----------
-  const ROTATE_MS = 8000;
   function startRotation() {
     stopRotation();
     rotationInterval = setInterval(() => {
@@ -784,7 +885,7 @@ try {
       const limit = detectLimit();
       const items = takeNextWindow(limit);
       if (items && items.length) renderBooks(items);
-    }, ROTATE_MS);
+    }, TIMINGS.ROTATE_MS);
   }
   function stopRotation() { if (rotationInterval) { clearInterval(rotationInterval); rotationInterval = null; } }
 
@@ -834,7 +935,7 @@ try {
         const items = takeNextWindow(newLimit);
         if (items.length) renderBooks(items);
       }
-    }, 180);
+    }, TIMINGS.WINDOW_RESIZE_DEBOUNCE_MS);
   });
 
   // ---------- search & clear ----------
@@ -862,7 +963,7 @@ try {
       if (thisSearch !== searchCounter) return;
       if (items.length) renderBooks(shuffleArray(items).slice(0, Math.max(1, detectLimit())));
       else if (booksGrid) booksGrid.innerHTML = '<div class="no-books">Nenašli sa žiadne knihy.</div>';
-    }, 420);
+    }, TIMINGS.SEARCH_DEBOUNCE_MS);
   });
 
   clearBtn?.addEventListener('click', () => {
