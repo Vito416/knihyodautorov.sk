@@ -69,9 +69,24 @@
 @media (min-width:900px) and (max-width:1199px){ .books-grid{ grid-template-columns: repeat(3,1fr); } }
 @media (min-width:700px) and (max-width:899px){ .books-grid{ grid-template-columns: repeat(2,1fr); } }
 
-/* ======================== KARTA KNIHY ======================== */
-.book-card { width: 100%; box-sizing: border-box; z-index: 3; }
-.book-card.book-card-revealed { transition: transform .42s ease, opacity .42s ease; z-index: 3;}
+.book-card {
+  opacity: 0;
+  transform: translateY(20px) rotateX(6deg);
+  transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s;
+  width: 100%;
+  box-sizing: border-box;
+  z-index: 3;
+}
+
+.book-card.book-card-revealed {
+  opacity: 1;
+  transform: none;
+  z-index: 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .book-card, .book-card.book-card-revealed { transition: none !important; transform: none !important; }
+}
+
 
 .card-inner {
   position: relative;

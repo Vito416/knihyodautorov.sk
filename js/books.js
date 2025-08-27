@@ -121,35 +121,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function revealStagger(root = document) {
     const cards = qsa('.book-card', root);
-    // set initial pre-transition state and per-card transition-delay (no per-card setTimeouts)
+
+    // jen delay podle indexu
     cards.forEach((c, idx) => {
-      c.style.opacity = '0';
-      c.style.transform = 'translateY(20px) rotateX(6deg)';
-      // keep transition definition inline to avoid dependency on external CSS changes
-      c.style.transition = 'transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s';
-      c.style.transitionDelay = (TIMINGS.REVEAL_BASE_MS + idx * TIMINGS.REVEAL_STEP_MS) + 'ms';
+      c.style.transitionDelay =
+        (TIMINGS.REVEAL_BASE_MS + idx * TIMINGS.REVEAL_STEP_MS) + 'ms';
     });
 
-    // Force a single reflow so that the browser registers the initial styles,
-    // then add the revealed class to trigger the transitions with the delays above.
-    // This avoids creating many JS timers while preserving the exact delays.
-    void (root.offsetHeight);
+    // force reflow, aby browser zaregistroval delay
+    void root.offsetHeight;
 
-    // add class so CSS rules for '.book-card.book-card-revealed' apply
+    // přidat class -> spustí se CSS transition
     cards.forEach(c => c.classList.add('book-card-revealed'));
+    // remove inline transitionDelay after the reveal finishes (prevents persistent style writes)
+    const maxDelay = TIMINGS.REVEAL_BASE_MS + Math.max(0, cards.length - 1) * TIMINGS.REVEAL_STEP_MS + 500;
+    setTimeout(() => {
+      cards.forEach(c => { c.style.transitionDelay = ''; });
+    }, maxDelay);
 
-    // clear inline starting styles so CSS-defined end-state can transition to
-    cards.forEach(c => {
-      c.style.opacity = '';
-      c.style.transform = '';
-      // keep transition and transitionDelay inline; optionally remove if using CSS
-      // c.style.transition = '';
-    });
   }
 
-  // ---------- image preloader ----------
+  // ---------- image preloader (returns {url, blob}) ----------
+  // tries to obtain a Blob via fetch (CORS). If that fails, falls back to image preloading
   async function tryImagePathsSimple(original, timeout = TIMINGS.TRYIMAGE_PRELOAD_TIMEOUT_MS) {
-    if (!original || !String(original).trim()) return IMG_FALLBACK;
+    if (!original || !String(original).trim()) return { url: IMG_FALLBACK, blob: null };
     const orig = String(original).trim();
     const candidates = [];
     try {
@@ -166,8 +161,36 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
     const uniq = Array.from(new Set(candidates)).filter(Boolean);
-    if (!uniq.length) return IMG_FALLBACK;
+    if (!uniq.length) return { url: IMG_FALLBACK, blob: null };
 
+    // Helper: try fetching blob (preferred) with timeout
+    const tryFetchBlob = async (url) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      try {
+        const resp = await fetch(url, { signal: controller.signal, mode: 'cors' });
+        clearTimeout(timeoutId);
+        if (resp && resp.ok) {
+          const blob = await resp.blob();
+          return { url, blob };
+        }
+      } catch (e) {
+        // fetch failed (could be CORS or network)
+      } finally {
+        try { clearTimeout(timeoutId); } catch (e) {}
+      }
+      return null;
+    };
+
+    // 1) Try fetch for each candidate (fast path if server supports CORS)
+    for (const u of uniq) {
+      try {
+        const r = await tryFetchBlob(u);
+        if (r) return r;
+      } catch (e) { /* ignore */ }
+    }
+
+    // 2) Fallback: image preload (no blob available)
     const preload = url => new Promise((res, rej) => {
       const img = new Image();
       let timer = setTimeout(() => { img.onload = img.onerror = null; rej(new Error('timeout')); }, timeout);
@@ -177,37 +200,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     for (const u of uniq) {
-      try { await preload(u); return u; } catch (e) {}
+      try {
+        await preload(u);
+        return { url: u, blob: null };
+      } catch (e) {}
     }
-    return IMG_FALLBACK;
+    return { url: IMG_FALLBACK, blob: null };
   }
 
-  // ---------- image resizing/canvas + fetch helper ----------
-  async function makeResizedObjectURL(srcUrl, dstPxW, dstPxH, crossOrigin) {
+  // ---------- image resizing/canvas + fetch helper (top-level) ----------
+  // now accepts optional srcBlob (if provided, skip fetching)
+  async function makeResizedObjectURL(srcUrl, dstPxW, dstPxH, crossOrigin, srcBlob = null) {
     // normalize
     dstPxW = Math.max(1, Math.round(dstPxW || 1));
     dstPxH = Math.max(1, Math.round(dstPxH || 1));
 
     try {
-      // 1) fetch the resource (CORS required on server)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), TIMINGS.MAKE_RESIZED_FETCH_TIMEOUT_MS);
-      let resp;
-      try {
-        resp = await fetch(srcUrl, { signal: controller.signal, mode: 'cors' });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      if (!resp || !resp.ok) throw new Error('fetch-failed');
+      let blob = null;
 
-      const blob = await resp.blob();
+      if (srcBlob instanceof Blob) {
+        blob = srcBlob;
+      } else {
+        // 1) fetch the resource (CORS required on server)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMINGS.MAKE_RESIZED_FETCH_TIMEOUT_MS);
+        let resp;
+        try {
+          resp = await fetch(srcUrl, { signal: controller.signal, mode: 'cors' });
+        } finally {
+          clearTimeout(timeoutId);
+        }
+        if (!resp || !resp.ok) throw new Error('fetch-failed');
+        blob = await resp.blob();
+      }
 
       // 2) try createImageBitmap (preferred)
       let bitmap = null;
       try {
         bitmap = await createImageBitmap(blob);
       } catch (e) {
-        // createImageBitmap may not be available; we'll fallback to Image element
         bitmap = null;
       }
 
@@ -218,10 +249,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const ctx = canvas.getContext('2d');
 
       if (bitmap) {
-        // draw bitmap stretched to canvas size (this deforms to exactly dstPxW/dstPxH)
         ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, canvas.width, canvas.height);
       } else {
-        // fallback: create tmp image from blob and draw it
         const tmpUrl = URL.createObjectURL(blob);
         try {
           await new Promise((resolve, reject) => {
@@ -231,7 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onload = () => { if (done) return; done = true; resolve(img); };
             img.onerror = (err) => { if (done) return; done = true; reject(err); };
             img.src = tmpUrl;
-            // small safety timeout
             setTimeout(() => { if (done) return; done = true; reject(new Error('img-load-timeout')); }, TIMINGS.MAKE_RESIZED_IMG_TIMEOUT_MS);
           }).then(img => {
             ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvas.width, canvas.height);
@@ -243,15 +271,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 4) export canvas -> blob -> objectURL
       return await new Promise((resolve, reject) => {
-        // Use PNG for lossless; change to 'image/jpeg' + quality if you want smaller files
         canvas.toBlob((outBlob) => {
-          if (!outBlob) return resolve(srcUrl); // fallback to original url if export failed
+          if (!outBlob) return resolve(srcUrl);
           resolve(URL.createObjectURL(outBlob));
         }, 'image/png');
       });
 
     } catch (err) {
-      // If anything fails (likely CORS), return original URL as fallback
       return srcUrl;
     }
   }
@@ -456,78 +482,10 @@ document.addEventListener('DOMContentLoaded', () => {
         ? [root]
         : (root instanceof Element ? Array.from(root.querySelectorAll('.book-card')) : Array.from(document.querySelectorAll('.book-card')));
 
-    // helper: fetch + resize into exact pixel dims -> return objectURL (blob:)
-    async function makeResizedObjectURL(srcUrl, dstPxW, dstPxH, crossOrigin) {
-      // normalize
-      dstPxW = Math.max(1, Math.round(dstPxW || 1));
-      dstPxH = Math.max(1, Math.round(dstPxH || 1));
-
-      try {
-        // 1) fetch the resource (CORS required on server)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), TIMINGS.MAKE_RESIZED_FETCH_TIMEOUT_MS);
-        let resp;
-        try {
-          resp = await fetch(srcUrl, { signal: controller.signal, mode: 'cors' });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-        if (!resp || !resp.ok) throw new Error('fetch-failed');
-
-        const blob = await resp.blob();
-
-        // 2) try createImageBitmap (preferred)
-        let bitmap = null;
-        try {
-          bitmap = await createImageBitmap(blob);
-        } catch (e) {
-          // createImageBitmap may not be available; we'll fallback to Image element
-          bitmap = null;
-        }
-
-        // 3) prepare canvas and draw (either from bitmap or from Image)
-        const canvas = document.createElement('canvas');
-        canvas.width = dstPxW;
-        canvas.height = dstPxH;
-        const ctx = canvas.getContext('2d');
-
-        if (bitmap) {
-          // draw bitmap stretched to canvas size (this deforms to exactly dstPxW/dstPxH)
-          ctx.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height, 0, 0, canvas.width, canvas.height);
-        } else {
-          // fallback: create tmp image from blob and draw it
-          const tmpUrl = URL.createObjectURL(blob);
-          try {
-            await new Promise((resolve, reject) => {
-              const img = new Image();
-              if (crossOrigin) img.crossOrigin = crossOrigin;
-              let done = false;
-              img.onload = () => { if (done) return; done = true; resolve(img); };
-              img.onerror = (err) => { if (done) return; done = true; reject(err); };
-              img.src = tmpUrl;
-              // small safety timeout
-              setTimeout(() => { if (done) return; done = true; reject(new Error('img-load-timeout')); }, TIMINGS.MAKE_RESIZED_IMG_TIMEOUT_MS);
-            }).then(img => {
-              ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, canvas.width, canvas.height);
-            });
-          } finally {
-            try { URL.revokeObjectURL(tmpUrl); } catch (e) {}
-          }
-        }
-
-        // 4) export canvas -> blob -> objectURL
-        return await new Promise((resolve, reject) => {
-          // Use PNG for lossless; change to 'image/jpeg' + quality if you want smaller files
-          canvas.toBlob((outBlob) => {
-            if (!outBlob) return resolve(srcUrl); // fallback to original url if export failed
-            resolve(URL.createObjectURL(outBlob));
-          }, 'image/png');
-        });
-
-      } catch (err) {
-        // If anything fails (likely CORS), return original URL as fallback
-        return srcUrl;
-      }
+    // helper: makeResizedObjectURL (inner copy) - accepts optional srcBlob
+    async function makeResizedObjectURLInner(srcUrl, dstPxW, dstPxH, crossOrigin, srcBlob = null) {
+      // reuse top-level function (keeps single implementation)
+      return await makeResizedObjectURL(srcUrl, dstPxW, dstPxH, crossOrigin, srcBlob);
     }
 
     for (const card of cards) {
@@ -541,7 +499,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (initialCoverUrl) card.dataset.cover = initialCoverUrl;
         const coverUrlRaw = card.dataset.cover || '';
         let coverUrl = IMG_FALLBACK;
-        try { coverUrl = await tryImagePathsSimple(coverUrlRaw, TIMINGS.TRYIMAGE_PRELOAD_TIMEOUT_MS); } catch (e) { coverUrl = IMG_FALLBACK; }
+        let coverBlob = null;
+        try {
+          const coverResult = await tryImagePathsSimple(coverUrlRaw, TIMINGS.TRYIMAGE_PRELOAD_TIMEOUT_MS);
+          coverUrl = coverResult.url || IMG_FALLBACK;
+          coverBlob = coverResult.blob || null;
+        } catch (e) { coverUrl = IMG_FALLBACK; coverBlob = null; }
 
         // remove existing visuals
         Array.from(coverWrap.querySelectorAll(':scope > img')).forEach(n => n.remove());
@@ -582,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cp.setAttribute('clipPathUnits', 'userSpaceOnUse');
         const p = document.createElementNS(svgNS, 'path');
         if (pathD) p.setAttribute('d', pathD);
-        else p.setAttribute('d', `M ${vb.x} ${vb.y} h ${vb.w} v ${vb.h} h ${-vb.w} z`); // full rect fallback
+        else p.setAttribute('d', `M ${vb.x} ${vb.y} h ${vb.w} v ${vb.h} h ${-vb.w} z`);
         cp.appendChild(p);
         localDefs.appendChild(cp);
         svgEl.appendChild(localDefs);
@@ -590,11 +553,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const imgNode = document.createElementNS(svgNS, 'image');
         imgNode.setAttribute('class', 'cover-image cover-generated');
         if (opt.CROSSORIGIN) imgNode.setAttribute('crossorigin', opt.CROSSORIGIN);
-        // attach local clip-path
         imgNode.setAttribute('clip-path', `url(#${localCpId})`);
 
-        // DON'T set href yet — set after initial sizing to avoid flicker
-        // append image and frame (frame on top)
         svgEl.appendChild(imgNode);
         const frameImg = document.createElementNS(svgNS, 'image');
         frameImg.setAttribute('class', 'frame-image');
@@ -606,23 +566,18 @@ document.addEventListener('DOMContentLoaded', () => {
         frameImg.setAttribute('height', String(vb.h));
         svgEl.appendChild(frameImg);
 
-        // insert svg quickly (so layout stabilizes)
         coverWrap.insertBefore(svgEl, coverWrap.firstChild);
 
-        // two RAFs
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        // ensure svg pixel sizing updated BEFORE calculating px ratios
         updateSvgPixelSize(svgEl, coverWrap);
 
-        // measure actual svg pixels and compute pxPerUnit
         const wrapRect = coverWrap.getBoundingClientRect();
         const svgPixelW = (isFinite(wrapRect.width) && wrapRect.width > 0) ? wrapRect.width : coverWrap.clientWidth || vb.w;
         const svgPixelH = (isFinite(wrapRect.height) && wrapRect.height > 0) ? wrapRect.height : coverWrap.clientHeight || vb.h;
         const pxPerUnitX = svgPixelW / vb.w;
         const pxPerUnitY = svgPixelH / vb.h;
 
-        // compute path bbox in px
         const holePx = {
           x: (pathBBox.x - vb.x) * pxPerUnitX,
           y: (pathBBox.y - vb.y) * pxPerUnitY,
@@ -630,7 +585,6 @@ document.addEventListener('DOMContentLoaded', () => {
           height: pathBBox.height * pxPerUnitY
         };
 
-        // compute final dims in px (what we want at the end)
         let finalPx;
         if (opt.deform || !(natW > 0 && natH > 0)) {
           finalPx = { x: holePx.x, y: holePx.y, width: holePx.width, height: holePx.height, preserve: 'none' };
@@ -646,7 +600,6 @@ document.addEventListener('DOMContentLoaded', () => {
           finalPx = { x: left, y: top, width: dispW, height: dispH, preserve: 'xMidYMid meet' };
         }
 
-        // --- compute initial (shrink-only) px state and apply IMMEDIATELY ---
         let initialPx;
         if (natW > 0 && natH > 0 && !opt.deform) {
           const containScale = Math.min(holePx.width / natW, holePx.height / natH);
@@ -660,7 +613,6 @@ document.addEventListener('DOMContentLoaded', () => {
           initialPx = { ...finalPx };
         }
 
-        // convert px -> user units for initial
         const initialUser = {
           x: vb.x + (initialPx.x / pxPerUnitX),
           y: vb.y + (initialPx.y / pxPerUnitY),
@@ -669,37 +621,43 @@ document.addEventListener('DOMContentLoaded', () => {
           preserve: initialPx.preserve
         };
 
-        // set initial attributes IMMEDIATELY (shrink into hole)
         imgNode.setAttribute('preserveAspectRatio', initialUser.preserve);
         imgNode.setAttribute('x', String(initialUser.x));
         imgNode.setAttribute('y', String(initialUser.y));
         imgNode.setAttribute('width', String(initialUser.width));
         imgNode.setAttribute('height', String(initialUser.height));
 
-        // force a reflow/read to ensure browser applied attributes before moving
         void svgEl.getBoundingClientRect();
 
-// --- LOAD image as blob/objectURL and set href AFTER initial attributes are applied ---
-let objectUrl = null;
-try {
-  // vytváří menší bitmapu přes canvas podle holePx (pixelové rozměry)
-  // použijeme holePx.width/height (v pixelech) — proto Math.round
-  objectUrl = await makeResizedObjectURL(coverUrl, Math.round(holePx.width), Math.round(holePx.height), opt.CROSSORIGIN);
-} catch (e) {
-  objectUrl = coverUrl;
-}
+        // --- LOAD image as blob/objectURL and set href AFTER initial attributes are applied ---
+        let objectUrl = null;
+        try {
+          objectUrl = await makeResizedObjectURLInner(
+            coverUrl,
+            Math.round(holePx.width),
+            Math.round(holePx.height),
+            opt.CROSSORIGIN,
+            coverBlob
+          );
+        } catch (e) {
+          objectUrl = coverUrl;
+        }
 
+        // --- STORE blob URL on the card so we can revoke it on cleanup ---
+        try {
+          if (objectUrl && typeof objectUrl === 'string' && objectUrl.startsWith('blob:')) {
+            card.dataset._objUrl = objectUrl;
+          }
+        } catch (e) { /* ignore if dataset can't be set */ }
 
-        // set href in both modern and xlink namespaces
+        // nyní nastavíš href/y apod.
         try {
           imgNode.setAttributeNS(null, 'href', objectUrl);
           imgNode.setAttributeNS(xlinkNS, 'xlink:href', objectUrl);
         } catch (e) {
-          // last-ditch
           imgNode.setAttribute('href', objectUrl);
         }
 
-        // convert finalPx -> user units
         const finalUser = {
           x: vb.x + (finalPx.x / pxPerUnitX),
           y: vb.y + (finalPx.y / pxPerUnitY),
@@ -708,7 +666,6 @@ try {
           preserve: finalPx.preserve
         };
 
-        // wait a tick to let image start decoding, then apply final sizing (two RAFs)
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
         imgNode.setAttribute('preserveAspectRatio', finalUser.preserve);
@@ -717,20 +674,20 @@ try {
         imgNode.setAttribute('width', String(finalUser.width));
         imgNode.setAttribute('height', String(finalUser.height));
 
-        // final pixel sizing as safety
         updateSvgPixelSize(svgEl, coverWrap);
 
-        // cleanup objectURL after a moment (allow browser to keep it cached/rendered)
-        if (objectUrl && objectUrl.startsWith('blob:')) {
-          setTimeout(() => { try { URL.revokeObjectURL(objectUrl); } catch (e) {} }, TIMINGS.OBJECTURL_LIFETIME_MS);
-        }
+      if (objectUrl && objectUrl.startsWith('blob:')) {
+        setTimeout(() => {
+          try { URL.revokeObjectURL(objectUrl); } catch (e) {}
+          try { delete card.dataset._objUrl; } catch (e) {}
+        }, TIMINGS.OBJECTURL_LIFETIME_MS);
+      }
 
       } catch (err) {
         console.error('applyFrameToCards (fixed-scale v2) error', err);
       }
     } // end for
 
-    // helper: stable hash (unchanged)
     function hashString(s) {
       if (!s) return '0';
       let h = 2166136261 >>> 0;
@@ -742,11 +699,104 @@ try {
     }
   }
 
+  // --- reuseable IntersectionObserver for applyFrameToCards ---
+  let __framesIO = null;
+  let __framesObserved = null;
+
+  function applyFramesWhenVisible(root = document, options = {}) {
+    const {
+      rootMargin = '200px',
+      threshold = 0.01,
+      observeOnce = true
+    } = options || {};
+
+    // Safety: disconnect previous observer to avoid leaks / duplicate observers
+    if (__framesIO) {
+      try { __framesIO.disconnect(); } catch (e) { /* ignore */ }
+      __framesIO = null;
+      __framesObserved = null;
+    }
+
+    // Collect cards under root
+    const cards = (root && root.querySelectorAll) ? Array.from(root.querySelectorAll('.book-card')) : [];
+    if (!cards.length) return null; // nothing to do
+
+    // If no IntersectionObserver support -> fallback (apply immediately)
+    if (!('IntersectionObserver' in window)) {
+      cards.forEach(c => {
+        try { applyFrameToCards(c).catch(()=>{}); } catch (e) { /* ignore */ }
+      });
+      return null;
+    }
+
+    // Create new observer and WeakSet to track processed nodes
+    __framesObserved = new WeakSet();
+    const observerRoot = (root instanceof Element) ? root : null;
+
+    __framesIO = new IntersectionObserver((entries, obs) => {
+      entries.forEach(entry => {
+        const el = entry.target;
+        // Only act when visible enough
+        if (!entry.isIntersecting) return;
+
+        // If already processed, unobserve and skip
+        if (__framesObserved.has(el)) {
+          try { obs.unobserve(el); } catch (e) { /* ignore */ }
+          return;
+        }
+
+        // Mark as seen (prevents duplicate apply if observer fires multiple times)
+        __framesObserved.add(el);
+
+        // Apply frame for single card — catch errors to avoid breaking observer
+        try {
+          // applyFrameToCards accepts element or root; ensure we call it per-card
+          applyFrameToCards(el).catch(() => {});
+        } catch (e) {
+          // swallow
+        } finally {
+          if (observeOnce) {
+            try { obs.unobserve(el); } catch (e) { /* ignore */ }
+          }
+        }
+      });
+    }, { root: observerRoot, rootMargin, threshold });
+
+    // Observe all current cards (only those not already processed)
+    cards.forEach(c => {
+      if (!__framesObserved.has(c)) {
+        try { __framesIO.observe(c); } catch (e) { /* ignore */ }
+      }
+    });
+
+    // Return observer so caller can disconnect if desired
+    return __framesIO;
+  }
+
+  function disconnectApplyFramesObserver() {
+    if (__framesIO) {
+      try { __framesIO.disconnect(); } catch (e) {}
+      __framesIO = null;
+      __framesObserved = null;
+    }
+  }
+
   // ---------- render logic (safe DOM creation) ----------
   function renderBooks(items) {
     if (!booksGrid) return;
     booksGrid.classList.add('fade-out');
     setTimeout(() => {
+      // tidy up observer + revoke any blob objectURLs from old cards
+      try { disconnectApplyFramesObserver(); } catch(e){}
+
+      qsa('.book-card', booksGrid).forEach(card => {
+        const u = card.dataset._objUrl;
+        if (u && typeof u === 'string' && u.startsWith('blob:')) {
+          try { URL.revokeObjectURL(u); } catch (err) {}
+          try { delete card.dataset._objUrl; } catch (e) {}
+        }
+      });
+
       booksGrid.innerHTML = '';
       const frag = document.createDocumentFragment();
 
@@ -802,13 +852,11 @@ try {
 
         coverWrap.appendChild(img);
 
-        // make cover itself the activator (accessible)
         coverWrap.classList.add('open-detail');
         coverWrap.setAttribute('role', 'button');
         coverWrap.setAttribute('aria-label', `Otvori\u0165 ${it.nazov || 'kniha'}`);
-        coverWrap.tabIndex = 0; // focusable by keyboard
+        coverWrap.tabIndex = 0;
 
-        // move data used by modal to coverWrap
         coverWrap.dataset.title = it.nazov || '';
         coverWrap.dataset.author = it.autor || '';
         coverWrap.dataset.desc = it.popis || it.popis_short || '';
@@ -816,7 +864,6 @@ try {
         coverWrap.dataset.pdf = it.pdf || '';
 
         inner.appendChild(coverWrap);
-        // (není potřeba přidávat tlačítko)
 
         art.appendChild(inner);
         frag.appendChild(art);
@@ -825,7 +872,8 @@ try {
       booksGrid.appendChild(frag);
 
       // visuals + behaviors
-      applyFrameToCards(booksGrid).catch(e => console.warn('applyFrameToCards error', e));
+      // <-- swapped: observe cards and apply frames when they enter viewport -->
+      applyFramesWhenVisible(booksGrid);
       lazyLoadImages(booksGrid);
       revealStagger(booksGrid);
 
@@ -844,7 +892,6 @@ try {
     modalDesc.textContent = d.desc || '';
     modalDownload.href = d.pdf || '#';
     modal.setAttribute('aria-hidden', 'false');
-    // store focus
     try { modal.dataset._prevFocus = document.activeElement ? document.activeElement.id || document.activeElement.tagName : ''; } catch (e) {}
     modal.focus && modal.focus();
     document.body.style.overflow = 'hidden';
