@@ -101,10 +101,13 @@
 
 /* Meta badge */
 .card-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: left;
   position: absolute;
-  margin: 30% 2.5%;
+  margin: 25% 2.5%;
   z-index: 15;
-  max-width: 20%;
+  height: 100%;
 }
 
 .book-stand {
@@ -112,7 +115,7 @@
   z-index: 2;
   left: -5%;
   width: 110%;
-  height: 10%;
+  height: 22%;
   bottom: 3%;
   background-image: url('/assets/deska.png');
   background-size: cover;
@@ -150,6 +153,7 @@
   /* efekt raženého zlata */
   background: linear-gradient(180deg, #fff9d6 0%, #e6c56f 35%, #b78b2e 70%, #6a4a1a 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 
   text-shadow:
@@ -169,6 +173,7 @@
 
   background: linear-gradient(180deg, #f9edc3 0%, #d6ad47 50%, #8a6622 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 
   text-shadow:
@@ -176,25 +181,45 @@
     0px -1px 1px rgba(255,255,255,0.2);
 }
 
-/* Badge – žánr (jako ozdobná destička) */
-.badge {
-  display: inline-block;
-  padding: 0.3em 0.8em;
-  margin: 10% auto 0 auto;
+.badge-svg {
+  flex: 0 0 15%;
+}
 
+.title-svg {
+  flex: 0 0 45%;
+}
+
+.author-svg {
+  flex: 0 0 35%;
+  margin-bottom: 15%;
+}
+
+.badge {
   font-family: "Cinzel", serif;
   font-weight: 700;
-  font-size: 0.9em;
-  color: #e6c56f;
-  text-transform: uppercase;
+  font-size: 16px;
   letter-spacing: 1px;
+  text-transform: uppercase;
+  fill: #e6c56f;
+}
 
-  border: 2px solid #e6c56f;
-  border-radius: 4px;
+.badge-rect {
+  stroke: url(#badge-gold);
+  stroke-width: 3;
+  fill: #2a1d12;                 /* tmavě hnědé pozadí */
+  filter: url(#badge-shadow);
+}
 
-  background: linear-gradient(180deg, #2e1b0f, #1a0e07);
-  box-shadow: inset 0 1px 2px rgba(255,255,255,0.1),
-              0 2px 4px rgba(0,0,0,0.8);
+.badge-text {
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  fill: url(#badge-gold);        /* text má stejný zlatý gradient */
+  stroke: #000;
+  stroke-width: 0.8;
+  paint-order: stroke;
 }
 
 
@@ -253,7 +278,7 @@
 
 .book-card:hover .card-inner,
 .card-inner:focus-within {
-  transform: translateX(-5%) translateY(5%);
+  transform: translateX(-10%) translateY(5%);
   outline: none;
 }
 
