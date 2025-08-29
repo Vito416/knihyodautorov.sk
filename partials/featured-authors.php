@@ -60,39 +60,53 @@ if ($pdo instanceof PDO) {
       </div>
     </div>
 
-    <div class="fauthors-grid" role="list">
-      <?php if (empty($authors)): ?>
-        <div class="fauthors-empty">Žiadni autori na zobrazenie.</div>
-      <?php else: foreach ($authors as $a): ?>
-        <?php $photo = !empty($a['foto']) ? '/assets/authors/' . ltrim($a['foto'],'/') : '/assets/author-placeholder.png'; ?>
-        <div class="fauthor-card" role="listitem" data-author-id="<?php echo (int)$a['id']; ?>">
-          <div class="fauthor-card-inner">
-          <div class="fauthor-photo-wrap" style="transform-style:preserve-3d;">
-          <img class="fauthor-photo" src="<?php echo esc_fauth($photo); ?>" alt="<?php echo esc_fauth($a['meno']); ?>"
-               onerror="this.onerror=null;this.src='/assets/author-placeholder.png'">
-          <div class="fauthor-card-frame"></div>
+      <div class="fauthors-grid" role="list">
+        <?php if (empty($authors)): ?>
+          <div class="fauthors-empty">Žiadni autori na zobrazenie.</div>
+        <?php else: foreach ($authors as $a): ?>
+          <?php $photo = !empty($a['foto']) ? '/assets/authors/' . ltrim($a['foto'],'/') : '/assets/author-placeholder.png'; ?>
+          
+          <div class="fauthor-card" role="listitem" data-author-id="<?php echo (int)$a['id']; ?>">
+            <div class="fauthor-card-inner">
+
+              <!-- Hlavička kroniky -->
+              <div class="fauthor-card-header">
+                <h3 class="fauthor-name"><span><?php echo esc_fauth($a['meno']); ?></span></h3>
+                <div class="fauthor-debut">
+                  <span class="fauthor-books"><?php echo (int)$a['books_count']; ?> knih</span> • <span class="fauthor-rating">★ <?php echo $a['avg_rating'] ? esc_fauth($a['avg_rating']) : '—'; ?></span>
+                </div>
+              </div>
+
+              <!-- Foto + základní info -->
+              <div class="fauthor-main">
+                <div class="fauthor-photo-wrap">
+                  <img class="fauthor-photo" 
+                      src="<?php echo esc_fauth($photo); ?>" 
+                      alt="<?php echo esc_fauth($a['meno']); ?>"
+                      onerror="this.onerror=null;this.src='/assets/author-placeholder.png'">
+                </div>
+                <div class="fauthor-seal"></div>
+              </div>
+              <div class="fauthor-card-info">
+                 <p class="fauthor-bio">
+                    <?php echo esc_fauth(mb_strimwidth($a['bio'] ?? '', 0, 220, '...')); ?>
+                  </p>
+              </div>
+              <!-- Pečeť + tlačítko -->
+              <div class="fauthor-footer">
+                <div class="fauthor-card-action">
+                  <button class="fauthor-btn fauthor-cta" type="button"
+                    aria-label="Zobraziť diela <?php echo esc_fauth($a['meno']); ?>">
+                    <span class="btn-text">Přečíst příběh autora</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
           </div>
-          <div class="fauthor-card-info">
-          <h3 class="fauthor-name"><?php echo esc_fauth($a['meno']); ?></h3>
-          <div class="fauthor-meta">
-            <span class="fauthor-books"><?php echo (int)$a['books_count']; ?> knih</span>
-            <span class="fauthor-rating">★ <?php echo $a['avg_rating'] ? esc_fauth($a['avg_rating']) : '—'; ?></span>
-          </div>
-          <p class="fauthor-bio"><?php echo esc_fauth(mb_strimwidth($a['bio'] ?? '', 0, 220, '...')); ?></p>
-          </div>
-          <div class="fauthor-card-action">
-          <button 
-            class="fauthor-btn fauthor-cta" 
-            type="button"
-            aria-label="Zobraziť diela <?php echo esc_fauth($a['meno']); ?>">
-            <span class="btn-text">Zobraziť diela</span>
-          </button>
-          <!-- <a class="fauthor-cta" href="/authors.php?author=<?php echo urlencode($a['slug']); ?>">Zobraziť diela</a> -->
-          </div>
-        </div>
+        <?php endforeach; endif; ?>
       </div>
-      <?php endforeach; endif; ?>
-    </div>
+
   </div>  
   </div>
 </section>
