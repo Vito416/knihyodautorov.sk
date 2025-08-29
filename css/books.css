@@ -3,64 +3,73 @@
    =========================== */
 
 /* ======================== HEADER + SEARCH ======================== */
-
 .books-header {
   display: flex;
   justify-content: space-between;
-  gap: 18px;
   align-items: flex-start;
-  margin-bottom: 18px;
   flex-wrap: wrap;
+  gap: 18px;
+  margin-bottom: 18px;
   position: relative;
   z-index: 1;
-  background-image: url('/assets/about-pergamen.png');
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
+
   padding: 3%;
+  background: url('/assets/about-pergamen.png') no-repeat;
+  background-size: 100% 100%;
 }
 .books-header-left { margin-left: 2%; }
 
 @media (max-width: 768px) {
-  .books-header { padding: 14px; border-radius: 10px; }
+  .books-header {
+    padding: 14px;
+    border-radius: 10px;
+  }
 }
 
-/* Search */
+/* Search row */
 .search-row {
-  display:flex;
-  gap:10px;
-  align-items:center;
-  margin-top:8px;
-  width:100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  width: 100%;
 }
+
 #unifiedSearch {
-  padding: 12px 14px 12px 42px;
+  display: inline-block;
+  box-sizing: border-box;
   width: min(60ch, 100%);
   min-width: 18ch;
+  padding: 12px 14px 12px 42px;
+
+  border: 2px solid rgba(207,152,58,0.65);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(255,245,220,0.12), rgba(255,245,220,0.08));
-  border: 2px solid rgba(207,152,58,0.65);
-  color: #3b2a1a;
-  font-size: 1rem;
-  box-shadow: inset 0 2px 6px rgba(0,0,0,0.22);
-  background-image: url("data:image/svg+xml,%3Csvg ... %3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%233b2a1a' viewBox='0 0 24 24'%3E%3Cpath d='M10 2a8 8 0 105.29 14.71l4 4a1 1 0 001.42-1.42l-4-4A8 8 0 0010 2zm0 2a6 6 0 110 12A6 6 0 0110 4z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: 12px center;
   background-size: 18px 18px;
-  transition: box-shadow .32s cubic-bezier(.2,.9,.2,1), transform .12s, border-color .25s;
-  display: inline-block;
-  box-sizing: border-box;
+
+  color: #3b2a1a;
+  font-size: 1rem;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.22);
+
+  transition: box-shadow .32s cubic-bezier(.2,.9,.2,1),
+              transform .12s,
+              border-color .25s;
 }
 #unifiedSearch::placeholder { color: rgba(60,40,20,0.55); }
 #unifiedSearch:focus {
-  outline:none;
+  outline: none;
   border-color: #f8e7b0;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.18), 0 0 12px rgba(255,215,100,0.45);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18),
+              0 0 12px rgba(255,215,100,0.45);
   transform: translateY(-2px);
 }
 
 /* ======================== GRID ======================== */
 .books-grid {
-  display:grid;
+  display: grid;
   grid-template-columns: repeat(1,1fr);
   gap: 1%;
   transition: all .32s cubic-bezier(.2,.9,.2,1);
@@ -69,251 +78,118 @@
 @media (min-width:900px) and (max-width:1199px){ .books-grid{ grid-template-columns: repeat(3,1fr); } }
 @media (min-width:700px) and (max-width:899px){ .books-grid{ grid-template-columns: repeat(2,1fr); } }
 
+/* ======================== CARD ======================== */
 .book-card {
+  width: 100%;
   opacity: 0;
   transform: translateY(20px) rotateX(6deg);
   transition: transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s;
-  width: 100%;
   box-sizing: border-box;
   z-index: 3;
+  cursor: pointer;
 }
-
+.book-card * {
+  pointer-events: none; /* vnitřek neblokuje kliknutí */
+}
 .book-card.book-card-revealed {
   opacity: 1;
   transform: none;
   z-index: 3;
 }
 @media (prefers-reduced-motion: reduce) {
-  .book-card, .book-card.book-card-revealed { transition: none !important; transform: none !important; }
+  .book-card, .book-card.book-card-revealed {
+    transition: none !important;
+    transform: none !important;
+  }
 }
-
 
 .card-inner {
   position: relative;
-  z-index: 10;
   display: flex;
   flex-direction: column;
   min-height: 420px;
   border-radius: 16px;
-  overflow: visible;
   border: 4px solid transparent;
-}
-
-/* Meta badge */
-.card-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: left;
-  position: absolute;
-  margin: 25% 2.5%;
-  z-index: 15;
-  height: 100%;
-}
-
-.book-stand {
-  position: absolute;
-  z-index: 2;
-  left: -5%;
-  width: 110%;
-  height: 22%;
-  bottom: 3%;
-  background-image: url('/assets/deska.png');
-  background-size: cover;
-  background-repeat: no-repeat;
-  aspect-ratio: 1301 / 217;
-}
-
-/* Cover */
-.cover-wrap {
-  position: relative;
   overflow: visible;
-  display: block;
-  aspect-ratio: 581 / 1238; /* drží proporce obálky */
-}
-.book-cover {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: 14px 14px 0 0;
-  display:block;
-}
+  z-index: 10;
 
-/* Hřbet – název */
-.book-title {
-  padding-top: 20%;
-  margin: 0;
-  text-align: center;
-
-  font-family: "Cinzel Decorative", serif;
-  font-weight: 700;
-  font-size: calc(var(--book-title-size, 2.2rem));
-  line-height: 1.2;
-  text-transform: uppercase;
-
-  /* efekt raženého zlata */
-  background: linear-gradient(180deg, #fff9d6 0%, #e6c56f 35%, #b78b2e 70%, #6a4a1a 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-
-  text-shadow:
-    0px 1px 2px rgba(0,0,0,0.7),   /* hlubší reliéf */
-    0px -1px 1px rgba(255,255,255,0.25); /* jemný odlesk nahoře */
-}
-
-/* Hřbet – autor */
-.book-author {
-  margin-top: auto;
-  margin-bottom: 20%;
-  text-align: center;
-
-  font-family: "Cinzel", serif;
-  font-weight: 600;
-  font-size: calc(var(--book-title-size, 2.2rem) * 0.55);
-
-  background: linear-gradient(180deg, #f9edc3 0%, #d6ad47 50%, #8a6622 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-
-  text-shadow:
-    0px 1px 2px rgba(0,0,0,0.65),
-    0px -1px 1px rgba(255,255,255,0.2);
-}
-
-.badge-svg {
-  flex: 0 0 15%;
-}
-
-.title-svg {
-  flex: 0 0 45%;
-}
-
-.author-svg {
-  flex: 0 0 35%;
-  margin-bottom: 15%;
-}
-
-.badge {
-  font-family: "Cinzel", serif;
-  font-weight: 700;
-  font-size: 16px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  fill: #e6c56f;
-}
-
-.badge-rect {
-  stroke: url(#badge-gold);
-  stroke-width: 3;
-  fill: #2a1d12;                 /* tmavě hnědé pozadí */
-  filter: url(#badge-shadow);
-}
-
-.badge-text {
-  font-family: "Cinzel", serif;
-  font-weight: 700;
-  font-size: 20px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  fill: url(#badge-gold);        /* text má stejný zlatý gradient */
-  stroke: #000;
-  stroke-width: 0.8;
-  paint-order: stroke;
-}
-
-
-/* ========================= BUTTONS ========================= */
-.card-actions {
-  display: flex; justify-content: center; align-items: center; gap: 18px;
-  padding: 14px 16px 20px;
-  perspective: 900px;
-}
-.card-actions .btn {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 12px 22px; border-radius: 14px;
-  font-weight: 800; cursor: pointer;
-  transition: transform .28s cubic-bezier(.2,.9,.3,1), box-shadow .28s ease;
-}
-.card-actions .btn-view { background: linear-gradient(180deg, #332218, #1a100b); color: #f7ecd8; }
-.card-actions .btn-download { background: linear-gradient(180deg, #fbe9b8, #d59f38); color: #2b1608; font-weight: 900; border-radius: 18px; }
-
-/* Disabled */
-.card-actions .btn[disabled] { opacity: .45; cursor: not-allowed; box-shadow: none; }
-
-/* ======================== MODAL ======================== */
-.book-modal {
-  position:fixed; inset:0; display:none;
-  align-items:center; justify-content:center;
-  background: rgba(6,4,3,0.6);
-  z-index:99999; padding:20px;
-}
-.book-modal[aria-hidden="false"]{ display:flex; }
-.modal-inner {
-  width:min(980px,96%);
-  background: rgba(0,0,0,0.02);
-  border-radius:12px;
-  padding:18px;
-  box-shadow: 0 30px 120px rgba(0,0,0,0.75);
-  display:flex;
-  gap:18px;
-}
-.modal-inner img { width:320px; height:420px; object-fit:cover; border-radius:8px; }
-
-/* ======================== FRAME PATCH ======================== */
-:root {
-  --hole-left: 0%;
-  --hole-top: 0%;
-  --hole-width: 100%;
-  --hole-height: 100%;
-  --spine-width: 0%;
-}
-
-/* základ pro cover-wrap (transition + perspektiva) */
-.card-inner {
-  transition: transform 300ms cubic-bezier(.2,.9,.2,1), box-shadow 260ms;
+  transition: transform 300ms cubic-bezier(.2,.9,.2,1),
+              box-shadow 260ms;
   will-change: transform;
   transform-origin: 50% 50%;
 }
-
 .book-card:hover .card-inner,
 .card-inner:focus-within {
   transform: translateX(-10%) translateY(5%);
   outline: none;
 }
 
+/* ======================== CARD META ======================== */
+.card-meta {
+  position: absolute;
+  top: 12.5%;
+  left: 1%;
+  right: 2.5%;
+  bottom: 7.5%;
+  display: flex;
+  flex-direction: column;
+  z-index: 15;
+}
+
+.badge-svg { flex: 0 0 15%; }
+.title-svg { flex: 0 0 60%; transform: rotate(0.5deg); }
+.author-svg { flex: 0 0 25%; transform: rotate(1.5deg); }
+
+/* ======================== TEXT STYLE ======================== */
+.badge-text,
+.book-title,
+.book-author {
+  font-family: "Cinzel", serif;
+  font-weight: bold;
+  text-transform: uppercase;
+  fill: url(#gold-gradient);
+  stroke: #ffe066;
+  stroke-width: 0.5px;
+  paint-order: stroke;
+  filter: url(#gold-emboss);
+}
+.badge-text {
+  letter-spacing: 1px;
+  transform: rotate(-2deg);
+}
+.book-title { letter-spacing: 0.05em; }
+.book-author { letter-spacing: 0.04em; }
+
+/* ======================== COVER ======================== */
 .cover-wrap {
   cursor: pointer;
   position: relative;
-  width: 100%;
-  aspect-ratio: 581 / 1238; /* zachovává proporce */
-  overflow: visible;
   display: block;
+  width: 100%;
+  aspect-ratio: 581 / 1238;
+  overflow: visible;
 }
 
-.cover-wrap svg { pointer-events: none; }
-
-@media (hover: none) {
-  .card-inner { transform: none; }
+.book-cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px 14px 0 0;
 }
 
 .cover-wrap .cover-window {
   position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
+  inset: 0;
 }
-
 .cover-svg {
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
 }
-
 .cover-svg .cover-image {
   display: block;
-  transform: translateY(0); /* zajistí, že obrázek sedí uvnitř SVG */
+  transform: translateY(0);
 }
 
 /* Rámeček PNG */
@@ -322,24 +198,155 @@
   inset: 0;
   z-index: 4;
   background: url('/assets/book-cover-transparent.png') no-repeat 0 0;
-  background-size: 100% 100%; /* vždy sedí s výpočtem z JS */
-  pointer-events: none;
+  background-size: 100% 100%;
+}
+
+/* ======================== BOOK STAND ======================== */
+.book-stand {
+  position: absolute;
+  left: -5%;
+  bottom: 3%;
+  width: 110%;
+  height: 22%;
+  z-index: 2;
+
+  background: url('/assets/deska.png') no-repeat;
+  background-size: cover;
+  aspect-ratio: 1301 / 217;
+}
+
+/* ======================== MODAL ======================== */
+.book-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6,4,3,0.6);
+  z-index: 99999;
+}
+.book-modal[aria-hidden="false"] { display: flex; }
+
+.modal-inner {
+  display: flex;
+  border-radius: 12px;
+  background-image: url("/assets/modal-BG.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  box-shadow: 0 30px 120px rgba(0,0,0,0.75);
+  padding: 2.5%;
+  max-width: 900px;
+  width: auto;
+}
+
+/* Grid layout */
+.modal-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "cover info";
+  gap: 5%;
+  color: #f4e2b8; /* světle zlatý text */
+  font-family: Georgia, serif;
+  align-items: start;
+}
+
+/* Cover */
+.modal-cover {
+  grid-area: cover;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+.modal-cover img {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.7);
+}
+
+/* Info */
+.modal-info {
+  grid-area: info;
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 100%; /* omezení textu kvůli čitelnosti */
+}
+.modal-info h3 {
+  font-size: 1.8rem;
+  margin: 0 0 8px;
+  font-weight: bold;
+  text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+}
+.modal-info .muted {
+  font-size: 1rem;
+  opacity: 0.85;
+  margin: 4px 0 12px;
+}
+.modal-info p {
+  margin: 0 0 12px;
+}
+
+.modal-info button,
+.modal-info a {
+  background: rgba(40,25,15,0.9);
+  border: 1px solid #d6b87c;
+  color: #f4e2b8;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 1rem;
+  text-align: center;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+.modal-info button:hover,
+.modal-info a:hover {
+  background: rgba(70,45,25,0.95);
+  transform: translateY(-2px);
+}
+
+/* ----------------- RESPONSIVE ----------------- */
+@media (max-width: 768px) {
+  .modal-inner {
+    padding: 20px;
+    max-width: 95%;
+  }
+  .modal-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "cover"
+      "info";
+    gap: 20px;
+  }
+  .modal-cover img {
+    max-width: 220px;
+  }
+  .modal-info h3 {
+    font-size: 1.5rem;
+  }
 }
 
 /* ======================== RESPONSIVE ======================== */
 @media (max-width:900px){
   .card-inner { min-height:360px; }
-  .modal-inner { flex-direction:column; align-items:center; }
-  .modal-inner img { width:100%; height:auto; max-height:420px; }
+  .modal-inner {
+    flex-direction: column;
+    align-items: center;
+  }
+  .modal-inner img {
+    width: 100%;
+    height: auto;
+    max-height: 420px;
+  }
 }
 @media (max-width:700px){
-  .books-grid { grid-template-columns: 1fr; gap:18px; }
+  .books-grid { grid-template-columns: 1fr; gap: 18px; }
 }
 
 /* ======================== MISC ======================== */
 .no-books {
-  padding:26px;
-  color:#3b2a1a;
-  border-radius:8px;
-  text-align:center;
+  padding: 26px;
+  text-align: center;
+  color: #3b2a1a;
+  border-radius: 8px;
 }

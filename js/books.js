@@ -60,16 +60,19 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function fetchBooks(limit = 4, q = '') {
-    const path = window.location.pathname.replace(/\/$/, '') + '/partials/books.php';
     const params = new URLSearchParams({ ajax: '1', limit: String(limit) });
     if (q) params.set('q', q);
-    const url = path + '?' + params.toString();
+
+    const url = '/partials/books.php?' + params.toString();
+
     try {
       const res = await fetch(url, { credentials: 'same-origin' });
+      if (!res.ok) return [];
+
       const data = await res.json();
       if (data && Array.isArray(data.items)) return data.items;
       return [];
-    } catch (e) {
+    } catch {
       return [];
     }
   }
@@ -809,6 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
         art.dataset.category = it.category_slug || 'uncategorized';
         art.dataset.title = escText(it.nazov || '');
         art.dataset.author = escText(it.autor || '');
+        art.dataset.desc = escText(it.popis || '');
         art.dataset.titleLower = (it.nazov || '').toLowerCase();
         art.dataset.titleSearch = (it.nazov || '').toLowerCase();
 
@@ -818,217 +822,429 @@ document.addEventListener('DOMContentLoaded', () => {
         const inner = document.createElement('div');
         inner.className = 'card-inner';
 
+      // --- pouze JEDNOU v souboru
+        const SVG_NS = "http://www.w3.org/2000/svg";
+
+      // BEZPEČNOST: běh jen v prohlížeči + validní vstupy
+      if (typeof document === 'undefined') throw new Error('Document není dostupný — tento kód vyžaduje DOM (prohlížeč).');
+      if (typeof it === 'undefined' || it === null) throw new Error('`it` není definováno nebo je null.');
+      if (!inner || inner.nodeType !== 1) throw new Error('`inner` není DOM Element nebo není dostupný.');
+
+      // Příklad: vykreslení badge pokud existuje kategorie
       if (it.category_nazov) {
+
         const meta = document.createElement('div');
         meta.className = 'card-meta';
 
-      // BADGE
-      const svgBadge = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svgBadge.setAttribute("class", "badge-svg");
-      svgBadge.setAttribute("width", "35%");
-      svgBadge.setAttribute("height", "auto");
-      svgBadge.setAttribute("viewBox", "0 0 196 104");
+        // jednorázové globální <svg> pro defs
+        const sprite = document.createElementNS(SVG_NS, "svg");
+        sprite.setAttribute("aria-hidden", "true");
+        sprite.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
 
-// --- OBRYS (4 samostatné vrstvy) ---
-const outlinePathD = "M184.22,11.11c10.23,10.22,10.01,29.1,9.95,43.35-.51,15.22-1.63,29.58-14.04,37.54-14.69,8.65-41.83,5.42-59.13,5.69-26.44.02-52.44,2.13-78.61,3.33-23.81,2.39-39.06.02-40.53-27.84C-1.6,8.41,9.9,5.52,70.92,2.6,94.42,1.36,117.82.19,141.78.83c14.24.32,32.07-.12,42.45,10.28Z";
+        const defs = document.createElementNS(SVG_NS, "defs");
 
-// 1) Vnější nejsvětlejší obrys (široký)
-const pathOuterLight = document.createElementNS("http://www.w3.org/2000/svg", "path");
-pathOuterLight.setAttribute("d", outlinePathD);
-pathOuterLight.setAttribute("fill", "none");
-pathOuterLight.setAttribute("stroke", "#e6cfa1"); // světlá zlatá
-pathOuterLight.setAttribute("stroke-width", "5");
-pathOuterLight.setAttribute("opacity", "0.9");
-svgBadge.appendChild(pathOuterLight);
+        // Zlatý gradient – tmavší a věrnější starému zlatu
+        const gradient = document.createElementNS(SVG_NS, "linearGradient");
+        gradient.setAttribute("id", "gold-gradient");
+        gradient.setAttribute("x1", "0%");
+        gradient.setAttribute("y1", "0%");
+        gradient.setAttribute("x2", "0%");
+        gradient.setAttribute("y2", "100%");
 
-// 2) Druhý obrys – základní zlatý
-const pathMainGold = document.createElementNS("http://www.w3.org/2000/svg", "path");
-pathMainGold.setAttribute("d", outlinePathD);
-pathMainGold.setAttribute("fill", "none");
-pathMainGold.setAttribute("stroke", "#b58a44"); // střední zlatá
-pathMainGold.setAttribute("stroke-width", "3.5");
-svgBadge.appendChild(pathMainGold);
+        [
+          { offset: "0%", color: "#ffffff" }, // čistě bílý lesk
+          { offset: "5%", color: "#fff9b0" }, // jemná světlá žlutá
+          { offset: "30%", color: "#ffe766" }, // jasná zlatá
+          { offset: "80%", color: "#ffd633" }, // živá zlatá
+          { offset: "100%", color: "#fff9b0" } // zpět do světlé žluté
+        ].forEach(s => {
+          const stop = document.createElementNS(SVG_NS, "stop");
+          stop.setAttribute("offset", s.offset);
+          stop.setAttribute("stop-color", s.color);
+          gradient.appendChild(stop);
+        });
+        defs.appendChild(gradient);
 
-// 3) Třetí obrys – tmavší vnitřní hrana
-const pathInnerDark = document.createElementNS("http://www.w3.org/2000/svg", "path");
-pathInnerDark.setAttribute("d", outlinePathD);
-pathInnerDark.setAttribute("fill", "none");
-pathInnerDark.setAttribute("stroke", "#4a3518"); // tmavě hnědá
-pathInnerDark.setAttribute("stroke-width", "2.2");
-pathInnerDark.setAttribute("opacity", "0.85");
-svgBadge.appendChild(pathInnerDark);
+        // Jemnější emboss – teplejší světlo
+        const filter = document.createElementNS(SVG_NS, "filter");
+        filter.setAttribute("id", "gold-emboss");
+        filter.setAttribute("x", "-20%");
+        filter.setAttribute("y", "-20%");
+        filter.setAttribute("width", "140%");
+        filter.setAttribute("height", "140%");
 
-// 4) Čtvrtý obrys – jemný highlight (velmi tenký)
-const pathHighlight = document.createElementNS("http://www.w3.org/2000/svg", "path");
-pathHighlight.setAttribute("d", outlinePathD);
-pathHighlight.setAttribute("fill", "none");
-pathHighlight.setAttribute("stroke", "#fff8dc"); // skoro bílá
-pathHighlight.setAttribute("stroke-width", "0.8");
-pathHighlight.setAttribute("opacity", "0.6");
-svgBadge.appendChild(pathHighlight);
+        const lighting = document.createElementNS(SVG_NS, "feDiffuseLighting");
+        lighting.setAttribute("in", "SourceAlpha");
+        lighting.setAttribute("result", "light");
+        lighting.setAttribute("lighting-color", "#ffffff"); // teplý tón světla
+        lighting.setAttribute("surfaceScale", "2");
 
+        const pointLight = document.createElementNS(SVG_NS, "fePointLight");
+        pointLight.setAttribute("x", "-20");
+        pointLight.setAttribute("y", "-20");
+        pointLight.setAttribute("z", "50");
+        lighting.appendChild(pointLight);
+        filter.appendChild(lighting);
 
-      // --- SPODNÍ PATH PRO OHNUTÍ TEXTU ---
-      const bottomPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      bottomPath.setAttribute("d", "M0,108 C30,90 166,90 196,108");
+        const comp = document.createElementNS(SVG_NS, "feComposite");
+        comp.setAttribute("in", "SourceGraphic");
+        comp.setAttribute("in2", "light");
+        comp.setAttribute("operator", "arithmetic");
+        comp.setAttribute("k1", "1");
+        comp.setAttribute("k2", "0");
+        comp.setAttribute("k3", "0");
+        comp.setAttribute("k4", "0");
+        filter.appendChild(comp);
 
-      bottomPath.setAttribute("fill", "none");
-      bottomPath.setAttribute("stroke", "none");
-      svgBadge.appendChild(bottomPath);
+        defs.appendChild(filter);
 
-      // --- TEXT KONTEJNER ---
-      const textGroup = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      textGroup.setAttribute("text-anchor", "middle"); // horizontální centrování
-      textGroup.setAttribute("class", "badge-text");
-      svgBadge.appendChild(textGroup);
+        sprite.appendChild(defs);
+        document.body.prepend(sprite);
 
-      // >>> vložit svgBadge do DOM
-      // parent.appendChild(svgBadge);
+        // BADGE
+        const svgBadge = document.createElementNS(SVG_NS, "svg");
+        svgBadge.setAttribute("class", "badge-svg");
+        svgBadge.setAttribute("width", "38.5%");
+        svgBadge.setAttribute("height", "20%");
+        svgBadge.setAttribute("viewBox", "0 0 196 104");
+        svgBadge.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svgBadge.setAttribute("aria-hidden", "true");
 
-      requestAnimationFrame(() => {
-          const padX = 196 * 0.2; // 20 % padding horizontálně
-          const padY = 104 * 0.05; // 5 % padding vertikálně
+        // outline path (stejné pro všechny čtyři vrstvy)
+        const outlinePathD = "M184.22,11.11c10.23,10.22,10.01,29.1,9.95,43.35-.51,15.22-1.63,29.58-14.04,37.54-14.69,8.65-41.83,5.42-59.13,5.69-26.44.02-52.44,2.13-78.61,3.33-23.81,2.39-39.06.02-40.53-27.84C-1.6,8.41,9.9,5.52,70.92,2.6,94.42,1.36,117.82.19,141.78.83c14.24.32,32.07-.12,42.45,10.28Z";
 
-          const innerWidth = 196 - 2 * padX;
-          const innerHeight = 104 - 2 * padY;
+        function makePath(attrs) {
+          const p = document.createElementNS(SVG_NS, "path");
+          p.setAttribute("d", outlinePathD);
+          Object.entries(attrs).forEach(([k,v]) => p.setAttribute(k, v));
+          return p;
+        }
 
-          const words = it.category_nazov.split(" ");
+        svgBadge.appendChild(makePath({ fill: "none", stroke: "#e6cfa1", "stroke-width": "5", opacity: "0.9" }));
+        svgBadge.appendChild(makePath({ fill: "none", stroke: "#b58a44", "stroke-width": "3.5" }));
+        svgBadge.appendChild(makePath({ fill: "none", stroke: "#4a3518", "stroke-width": "2.2", opacity: "0.85" }));
+        svgBadge.appendChild(makePath({ fill: "none", stroke: "#fff8dc", "stroke-width": "0.8", opacity: "0.6" }));
 
-          // dočasný element pro měření délky slov
-          const tempText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          tempText.setAttribute("visibility", "hidden");
-          svgBadge.appendChild(tempText);
+        // bottom path for slight bend (použijeme pouze pro badge při výpočtu ohybu)
+        const bottomPath = document.createElementNS(SVG_NS, "path");
+        bottomPath.setAttribute("d", "M0,108 C30,90 166,90 196,108");
+        bottomPath.setAttribute("fill", "none");
+        bottomPath.setAttribute("stroke", "none");
+        svgBadge.appendChild(bottomPath);
 
-          // najdi maximální fontSize podle nejdelšího slova
-          let fontSize = Math.floor(innerHeight / words.length * 0.8);
-          let fits = false;
+        // text group (pro badge chceme konkrétní element, abychom do něj přidávali tspany)
+        const textGroup = document.createElementNS(SVG_NS, "text");
+        textGroup.setAttribute("text-anchor", "middle");
+        textGroup.setAttribute("class", "badge-text");
 
-          while (!fits && fontSize > 1) {
-              fits = true;
-              for (const word of words) {
-                  tempText.setAttribute("font-size", fontSize);
-                  tempText.textContent = word;
-                  if (tempText.getComputedTextLength() > innerWidth) {
-                      fits = false;
-                      break;
-                  }
-              }
-              if (!fits) fontSize -= 1;
+        // center + baseline pro badge (viewBox 0..196 -> střed = 98)
+        textGroup.setAttribute("x", "98");
+        textGroup.setAttribute("dominant-baseline", "middle");
+        textGroup.setAttribute("xml:space", "preserve");
+
+        svgBadge.appendChild(textGroup);
+
+        // --- TITLE a AUTHOR SVG (pouze vytvoříme tady, text vložíme univerzální funkcí níže)
+        const svgTitle = document.createElementNS(SVG_NS, "svg");
+        svgTitle.setAttribute("class", "title-svg");
+        svgTitle.setAttribute("viewBox", "0 0 196 104");
+        svgTitle.setAttribute("width", "40%");
+        svgTitle.setAttribute("height", "50%");
+
+        const svgAuthor = document.createElementNS(SVG_NS, "svg");
+        svgAuthor.setAttribute("class", "author-svg");
+        svgAuthor.setAttribute("viewBox", "0 0 196 104");
+        svgAuthor.setAttribute("width", "40%");
+        svgAuthor.setAttribute("height", "30%");
+
+        // --- accessibility: přidáme <title> pro čtečky obrazovky
+        function ensureSvgTitle(svgEl, text) {
+          svgEl.setAttribute('role', 'img');
+          let existing = svgEl.querySelector('title');
+          if (existing) {
+            existing.textContent = text || '';
+          } else {
+            const titleEl = document.createElementNS(SVG_NS, 'title');
+            titleEl.textContent = text || '';
+            svgEl.appendChild(titleEl);
+          }
+        }
+
+        // zavoláme pro oba SVG elementy
+        ensureSvgTitle(svgTitle, it.nazov || '');
+        ensureSvgTitle(svgAuthor, it.autor || '');
+
+        // --- UNIVERZÁLNÍ FUNKCE PRO VLOŽENÍ TEXTU DO SVG (zachovává chování z badge)
+        // async verze — protože čekáme případně na document.fonts.ready
+        async function fitTextToSvgAdvanced(svg, text, {
+          maxFont = 60,
+          minFont = 10,
+          padX = 0.10,
+          padY = 0.10,
+          lineHeight = 1.2,
+          className = "badge-text",
+          bendPath = null,
+          textGroupEl = null,
+          enforceMaxByInnerHeight = true
+        } = {}) {
+          const SVG_NS = "http://www.w3.org/2000/svg";
+
+          // počkej na webfonty (pokud browser podporuje) — zabrání to chybným měřením
+          if (document.fonts && document.fonts.status !== "loaded") {
+            try { await document.fonts.ready; } catch (_) { /* ignore */ }
           }
 
-          svgBadge.removeChild(tempText);
+          const vb = (svg.viewBox && svg.viewBox.baseVal) ? svg.viewBox.baseVal : { width: 196, height: 104 };
+          const vbw = vb.width || 196;
+          const vbh = vb.height || 104;
 
-          const textHeight = fontSize * 1.2 * words.length;
-          const startY = padY + (innerHeight - textHeight) / 2 + fontSize * 0.8; // vertikální střed
+          const padW = vbw * padX;
+          const padH = vbh * padY;
+          const innerWidth = vbw - 2 * padW;
+          const innerHeight = vbh - 2 * padH;
 
-          words.forEach((word, i) => {
-              const tspan = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
-              const progress = (i + 0.5) / words.length;
-              const point = bottomPath.getPointAtLength(bottomPath.getTotalLength() * progress);
+          const rawWords = (text || "").trim().split(/\s+/).filter(Boolean);
+          if (rawWords.length === 0) return;
 
-              tspan.setAttribute("x", 196 / 2); // střed SVG
-              tspan.setAttribute("y", startY + i * fontSize * 1.2 + (point.y - 104) * 0.2); // jemné ohnutí
-              tspan.setAttribute("font-size", fontSize);
-              tspan.textContent = word;
-              textGroup.appendChild(tspan);
+          let textEl = textGroupEl;
+          if (!textEl) {
+            textEl = document.createElementNS(SVG_NS, "text");
+            textEl.setAttribute("class", className);
+            textEl.setAttribute("text-anchor", "middle");
+            textEl.setAttribute("style", "font-family: inherit;");
+            textEl.setAttribute("x", String(vbw / 2));
+            textEl.setAttribute("dominant-baseline", "hanging");
+            textEl.setAttribute("xml:space", "preserve");
+            svg.appendChild(textEl);
+          } else {
+            while (textEl.firstChild) textEl.removeChild(textEl.firstChild);
+          }
+
+          const wasInDOM = document.body.contains(svg);
+          let prevStyles = null;
+          if (!wasInDOM) {
+            prevStyles = {
+              position: svg.style.position || "",
+              left: svg.style.left || "",
+              top: svg.style.top || "",
+              visibility: svg.style.visibility || ""
+            };
+            svg.style.position = "absolute";
+            svg.style.left = "-9999px";
+            svg.style.top = "-9999px";
+            svg.style.visibility = "hidden";
+            document.body.appendChild(svg);
+          }
+
+          // pomocný měřicí element — explicitně nastavíme stejný class a základní styly
+          const tempText = document.createElementNS(SVG_NS, "text");
+          tempText.setAttribute("visibility", "hidden");
+          tempText.setAttribute("class", className);
+          tempText.setAttribute("style", "font-family: inherit; white-space: pre; xml:space: preserve;");
+          svg.appendChild(tempText);
+
+          if (innerHeight <= 0) {
+            if (svg.contains(tempText)) svg.removeChild(tempText);
+            if (!textGroupEl && textEl && svg.contains(textEl)) svg.removeChild(textEl);
+            if (!wasInDOM && prevStyles) {
+              svg.style.position = prevStyles.position;
+              svg.style.left = prevStyles.left;
+              svg.style.top = prevStyles.top;
+              svg.style.visibility = prevStyles.visibility;
+              if (svg.parentNode === document.body) document.body.removeChild(svg);
+            }
+            return;
+          }
+
+          if (innerHeight < minFont) {
+            minFont = Math.max(1, Math.floor(innerHeight / lineHeight));
+          }
+
+          let totalLen = 0;
+          if (bendPath) {
+            try { if (typeof bendPath.getTotalLength === "function") totalLen = bendPath.getTotalLength(); } catch (e) { totalLen = 0; }
+          }
+
+          const _measureCache = new Map();
+          function px(n) { return `${n}px`; }
+
+          function measureWidth(txt, font) {
+            const key = `${font}:${txt}`;
+            if (_measureCache.has(key)) return _measureCache.get(key);
+
+            // explicitně nastavíme font-size s jednotkou px — to je důležité
+            tempText.setAttribute("font-size", px(font));
+            tempText.textContent = txt;
+            let len = 0;
+            try { len = tempText.getComputedTextLength(); } catch (e) { len = 0; }
+            _measureCache.set(key, len);
+            return len;
+          }
+
+          // wrapWords vrátí null pokud existuje slovo, které se nevejde při tomto fontu
+          function wrapWords(font) {
+            const lines = [];
+            let cur = "";
+            for (const w of rawWords) {
+              if (measureWidth(w, font) > innerWidth) return null; // slovo se nevejde
+              const test = cur ? (cur + " " + w) : w;
+              if (measureWidth(test, font) <= innerWidth) {
+                cur = test;
+              } else {
+                if (cur) lines.push(cur);
+                cur = w;
+              }
+            }
+            if (cur) lines.push(cur);
+            return lines;
+          }
+
+          let lo = minFont;
+          let hi = maxFont;
+          if (enforceMaxByInnerHeight) hi = Math.min(hi, Math.floor(innerHeight));
+          let bestFont = minFont;
+          let bestLines = null;
+
+          while (lo <= hi) {
+            const mid = Math.floor((lo + hi) / 2);
+            const candidate = wrapWords(mid);
+            // vertical fit: počet řádků * mid * lineHeight <= innerHeight
+            if (candidate && (candidate.length * mid * lineHeight <= innerHeight)) {
+              bestFont = mid;
+              bestLines = candidate;
+              lo = mid + 1;
+            } else {
+              hi = mid - 1;
+            }
+          }
+
+          let fontSize = bestFont;
+          let lines = bestLines;
+
+          if (!lines) {
+            fontSize = minFont;
+            lines = [];
+            let cur = "";
+            for (const w of rawWords) {
+              if (measureWidth(w, fontSize) <= innerWidth) {
+                const test = cur ? (cur + " " + w) : w;
+                if (measureWidth(test, fontSize) <= innerWidth) {
+                  cur = test;
+                } else {
+                  if (cur) lines.push(cur);
+                  cur = w;
+                }
+              } else {
+                if (cur) { lines.push(cur); cur = ""; }
+                lines.push(w); // dlouhé slovo jako vlastní řádek
+              }
+            }
+            if (cur) lines.push(cur);
+          }
+
+          if (svg.contains(tempText)) svg.removeChild(tempText);
+
+          // vertikalni pozice (jemné ladění)
+          const totalTextHeight = fontSize * lineHeight * lines.length;
+          const startY = padH + (innerHeight - totalTextHeight) / 2 + fontSize * 0.8;
+
+          // bend offset (pokud)
+          let bendOffset = 0;
+          try {
+            if (totalLen > 0) {
+              if (lines.length === 1) bendOffset = 0;
+              else {
+                const p = bendPath.getPointAtLength(totalLen * 0.5);
+                bendOffset = (p.y - vbh) * 0.18;
+              }
+            }
+          } catch (_) { bendOffset = 0; }
+
+          // vykresleni — pozor: only use textLength pokud jsme na minFont (user wanted that)
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const tspan = document.createElementNS(SVG_NS, "tspan");
+            tspan.setAttribute("x", String(vbw / 2));
+            tspan.setAttribute("y", String(startY + i * fontSize * lineHeight + bendOffset));
+            tspan.setAttribute("font-size", px(fontSize));
+            tspan.setAttribute("style", "font-family: inherit; white-space: pre; xml:space: preserve;");
+            tspan.textContent = line;
+            textEl.appendChild(tspan);
+
+            let w;
+            try { w = tspan.getComputedTextLength(); } catch (e) { w = 0; }
+
+            // APLIKUJ LENGTH ADJUST JEN KDYŽ JSME NA minFont (nebo jde o jedině extrémně dlouhé slovo)
+            const isLongSingleWord = (line === rawWords[0] && rawWords.length === 1) || (line.match(/^\S+$/) && measureWidth(line, minFont) > innerWidth);
+            if (w > innerWidth) {
+              if (fontSize <= minFont || isLongSingleWord) {
+                tspan.setAttribute("textLength", String(innerWidth));
+                tspan.setAttribute("lengthAdjust", "spacingAndGlyphs");
+              } else {
+                // neočekávané: měla by to zabránit — ale jako fallback snížíme font lokálně (mimo binární hledání)
+                // zde znovu směr: znejistíme a zmenšíme font dokud se nevleze (bez měnění ostatních řádků)
+                let localFont = fontSize;
+                while (localFont > minFont && (measureWidth(line, localFont) > innerWidth)) localFont--;
+                if (measureWidth(line, localFont) <= innerWidth) {
+                  tspan.setAttribute("font-size", px(localFont));
+                } else {
+                  // pokud ani minFont nestačí, použij textLength
+                  tspan.setAttribute("textLength", String(innerWidth));
+                  tspan.setAttribute("lengthAdjust", "spacingAndGlyphs");
+                }
+              }
+            }
+          }
+
+          if (!wasInDOM && prevStyles) {
+            svg.style.position = prevStyles.position;
+            svg.style.left = prevStyles.left;
+            svg.style.top = prevStyles.top;
+            svg.style.visibility = prevStyles.visibility;
+            if (svg.parentNode === document.body) document.body.removeChild(svg);
+          }
+        }
+
+        // Naplánujeme vložení textů — requestAnimationFrame zajistí, že DOM se stihne aktualizovat
+        requestAnimationFrame(() => {
+          // Badge: použijeme textGroup (který jsme vytvořili) a bottomPath pro ohyb
+          fitTextToSvgAdvanced(svgBadge, it.category_nazov || "", {
+            maxFont: 60,
+            minFont: 34,
+            padX: 0.15,
+            padY: 0.15,
+            lineHeight: 1.2,
+            className: "badge-text",
+            bendPath: bottomPath,
+            textGroupEl: textGroup
           });
-      });
 
-// --- pomocná funkce: fit + wrap na slova (nezávislé na px, funguje s %) ---
-const SVG_NS = "http://www.w3.org/2000/svg";
-function fitTextToSvg(svg, text, className, {
-  maxFont = 36,
-  minFont = 8,
-  padX = 0.05,   // 5 % horizontální padding
-  padY = 0.10,   // 10 % vertikální padding
-  lineHeight = 1.2
-} = {}) {
-  const vb = svg.viewBox.baseVal;
-  const maxWidth  = vb.width  * (1 - 2 * padX);
-  const maxHeight = vb.height * (1 - 2 * padY);
+          // Title a Author: bez bendPath, jiná velikost písma
+          fitTextToSvgAdvanced(svgTitle, it.nazov || "", {
+            maxFont: 142,
+            minFont: 80,
+            padX: 0.05,
+            padY: 0.08,
+            lineHeight: 1.2,
+            className: "book-title"
+          });
 
-  // <text> kontejner
-  const textEl = document.createElementNS(SVG_NS, "text");
-  textEl.setAttribute("class", className);
-  textEl.setAttribute("text-anchor", "middle");
-  textEl.setAttribute("x", vb.width / 2);
-  textEl.setAttribute("y", vb.height * padY);
-  textEl.setAttribute("dominant-baseline", "hanging");
-  textEl.setAttribute("xml:space", "preserve");
+          fitTextToSvgAdvanced(svgAuthor, it.autor || "", {
+            maxFont: 70,
+            minFont: 40,
+            padX: 0.05,
+            padY: 0.10,
+            lineHeight: 1.2,
+            className: "book-author"
+          });
+        });
 
-  const words = (text || "").trim().split(/\s+/).filter(Boolean);
-
-  // měřící element – DŮLEŽITÉ: stejná class jako výsledný text
-  const temp = document.createElementNS(SVG_NS, "text");
-  temp.setAttribute("class", className);
-  svg.appendChild(temp);
-
-  let fontSize = maxFont;
-  let lines = [];
-
-  while (fontSize >= minFont) {
-    temp.setAttribute("font-size", fontSize);
-    lines = [];
-    let current = "";
-
-    for (const w of words) {
-      const test = current ? current + " " + w : w;
-      temp.textContent = test;
-      if (temp.getComputedTextLength() > maxWidth) {
-        if (current) lines.push(current);
-        current = w; // začni novou řádku
-      } else {
-        current = test;
-      }
-    }
-    if (current) lines.push(current);
-
-    const totalH = lines.length * fontSize * lineHeight;
-    if (totalH <= maxHeight) break; // vejde se
-    fontSize--;
-  }
-
-  svg.removeChild(temp);
-
-  // vykreslení řádků
-  lines.forEach((line, i) => {
-    const tspan = document.createElementNS(SVG_NS, "tspan");
-    tspan.setAttribute("x", vb.width / 2);
-    tspan.setAttribute("dy", i === 0 ? fontSize : fontSize * lineHeight);
-    tspan.setAttribute("font-size", fontSize);
-    tspan.textContent = line;
-    textEl.appendChild(tspan);
-  });
-
-  svg.appendChild(textEl);
-}
-
-// --- TITLE ---
-const svgTitle = document.createElementNS(SVG_NS, "svg");
-svgTitle.setAttribute("class", "title-svg");
-svgTitle.setAttribute("viewBox", "0 0 196 104"); // nezávislé na px
-svgTitle.setAttribute("width", "40%");
-svgTitle.setAttribute("height", "45%");
-
-// --- AUTHOR ---
-const svgAuthor = document.createElementNS(SVG_NS, "svg");
-svgAuthor.setAttribute("class", "author-svg");
-svgAuthor.setAttribute("viewBox", "0 0 196 104");
-svgAuthor.setAttribute("width", "40%");
-svgAuthor.setAttribute("height", "auto");
-
-// počkej 1 frame, ať jsou SVG v DOM → pak měř a vlož text
-requestAnimationFrame(() => {
-  fitTextToSvg(svgTitle,  it.nazov || "", "book-title",  { maxFont: 42, minFont: 10, padX: 0.05, padY: 0.08, lineHeight: 1.2 });
-  fitTextToSvg(svgAuthor, it.autor  || "", "book-author", { maxFont: 26, minFont:  8, padX: 0.05, padY: 0.10, lineHeight: 1.2 });
-});
-
-
-        // Přidání do meta
+        // Přidání do meta a do DOM
         meta.appendChild(svgBadge);
         meta.appendChild(svgTitle);
         meta.appendChild(svgAuthor);
 
+        // inner musí existovat — ujisti se, že proměnná inner je definovaná ve vyšším scope
         inner.appendChild(meta);
       }
 
@@ -1105,14 +1321,15 @@ requestAnimationFrame(() => {
   // ---------- delegated click for details (one-time) ----------
   if (booksGrid) {
     booksGrid.addEventListener('click', e => {
-      const btn = e.target.closest('.open-detail');
-      if (!btn) return;
+      const card = e.target.closest('.book-card'); // hledá nejbližší obal knihy
+      if (!card) return;
+
       openModal({
-        title: btn.dataset.title,
-        author: btn.dataset.author,
-        desc: btn.dataset.desc,
-        cover: btn.dataset.cover,
-        pdf: btn.dataset.pdf
+        title: card.dataset.title,
+        author: card.dataset.author,
+        desc: card.dataset.desc,
+        cover: card.dataset.cover,
+        pdf: card.dataset.pdf
       });
     });
   }

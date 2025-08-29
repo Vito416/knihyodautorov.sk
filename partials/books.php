@@ -40,42 +40,47 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
     }
 
     try {
-        if ($q !== '') {
-            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                           a.meno AS autor, a.id AS author_id,
-                           c.nazov AS category_nazov, c.slug AS category_slug
-                    FROM books b
-                    LEFT JOIN authors a ON b.author_id = a.id
-                    LEFT JOIN categories c ON b.category_id = c.id
-                    WHERE COALESCE(b.is_active,1) = 1
-                      AND (
-                           COALESCE(b.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
-                        OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t
-                        OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t
-                      )
-                    ORDER BY b.id DESC
-                    LIMIT {$limit}";
-            $stmt = $pdo->prepare($sql);
-            $stmt->bindValue(':t', '%' . $q . '%', PDO::PARAM_STR);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } else {
-            $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                           a.meno AS autor, a.id AS author_id,
-                           c.nazov AS category_nazov, c.slug AS category_slug
-                    FROM books b
-                    LEFT JOIN authors a ON b.author_id = a.id
-                    LEFT JOIN categories c ON b.category_id = c.id
-                    WHERE COALESCE(b.is_active,1) = 1
-                    ORDER BY RAND()
-                    LIMIT :lim";
-            $stmt = $pdo->prepare($sql);
-            $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-            $stmt->execute();
-            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        }
+      if ($q !== '') {
+          $limit = (int)$limit;
+          $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+                        a.meno AS autor, a.id AS author_id,
+                        c.nazov AS category_nazov, c.slug AS category_slug
+                  FROM books b
+                  LEFT JOIN authors a ON b.author_id = a.id
+                  LEFT JOIN categories c ON b.category_id = c.id
+                  WHERE COALESCE(b.is_active,1) = 1
+                    AND (
+                        COALESCE(b.nazov,'')  COLLATE utf8mb4_unicode_ci LIKE :t1
+                      OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t2
+                      OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t3
+                    )
+                  ORDER BY b.id DESC
+                  LIMIT $limit"; // přímo integer
 
-        // uprava ciest (prispôsob si ak treba)
+          $stmt = $pdo->prepare($sql);
+          $stmt->bindValue(':t1', '%' . $q . '%', PDO::PARAM_STR);
+          $stmt->bindValue(':t2', '%' . $q . '%', PDO::PARAM_STR);
+          $stmt->bindValue(':t3', '%' . $q . '%', PDO::PARAM_STR);
+          $stmt->execute();
+          $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+      } else {
+          $limit = (int)$limit;
+          $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+                        a.meno AS autor, a.id AS author_id,
+                        c.nazov AS category_nazov, c.slug AS category_slug
+                  FROM books b
+                  LEFT JOIN authors a ON b.author_id = a.id
+                  LEFT JOIN categories c ON b.category_id = c.id
+                  WHERE COALESCE(b.is_active,1) = 1
+                  ORDER BY RAND()
+                  LIMIT $limit"; // přímo integer
+
+          $stmt = $pdo->prepare($sql);
+          $stmt->execute();
+          $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+      }
+
+        // uprava ciest
         $baseImg = '/books-img/';
         $basePdf = '/books-pdf/';
         $fallbackImg = '/assets/cover-fallback.png';
@@ -177,16 +182,19 @@ $fallbackImg = '/assets/cover-fallback.png';
 <!-- modal detail -->
 <div class="book-modal" id="bookModal" aria-hidden="true" role="dialog" aria-label="Detail knihy">
   <div class="modal-inner" role="document">
-    <button class="modal-close" aria-label="Zavrieť">✕</button>
     <div class="modal-grid">
-      <img id="modalCover" src="" alt="Obálka knihy">
+      <!-- Cover -->
+      <div class="modal-cover">
+        <img id="modalCover" src="" alt="Obálka knihy">
+      </div>
+
+      <!-- Info -->
       <div class="modal-info">
         <h3 id="modalTitle"></h3>
         <p class="muted" id="modalAuthor"></p>
         <p id="modalDesc"></p>
-        <div style="margin-top:12px">
-          <a id="modalDownload" class="btn btn-primary" href="#" target="_blank" rel="noopener">Stiahnuť</a>
-        </div>
+        <a id="modalDownload" class="btn btn-primary" href="#" target="_blank" rel="noopener">Stiahnuť</a>
+        <button class="modal-close" aria-label="Zavrieť">✕</button>
       </div>
     </div>
   </div>
