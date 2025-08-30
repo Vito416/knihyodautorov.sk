@@ -174,10 +174,16 @@
     align-items: center;
     text-align: center;
   }
+  .fauthor-bio {
+  margin: 5% 5% 0 5%;
+  max-width: 44ch;
+}
   .fauthor-photo-wrap {
-    width: 200px;
-    height: 260px;
-  }
+    margin-left: 5%;
+}
+  .fauthors-header {
+    padding: 20% 10% 10% 10%;
+}
 }
 @media (max-width:700px){
   .fauthors-grid { grid-template-columns: 1fr; gap: 18px; }

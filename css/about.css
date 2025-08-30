@@ -325,6 +325,10 @@
   .shelf-image {
     display:none;
   }
+
+  .about-title {
+    --rt-max-lines: 4;
+  }
 }
 
 /* reduced motion */

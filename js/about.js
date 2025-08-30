@@ -38,34 +38,3 @@
     }, 450);
   });
 })();
-
-document.addEventListener('DOMContentLoaded', () => {
-  const container = document.querySelector('.about-container');
-  if (!container) return;
-
-  const elements = container.querySelectorAll('[data-lines]');
-  if (!elements.length) return;
-
-  const originals = new Map();
-  elements.forEach(el => {
-    originals.set(el, parseInt(el.getAttribute('data-lines'), 10) || 0);
-  });
-
-  const mql = window.matchMedia('(max-width: 880px)');
-
-  function apply(e) {
-    const matches = e.matches;
-    elements.forEach(el => {
-      const orig = originals.get(el);
-      if (!orig) return;
-
-      el.setAttribute('data-lines', matches ? String(orig + 1) : String(orig));
-    });
-  }
-
-  // první spuštění
-  apply(mql);
-
-  // nasloucháme změnám viewportu
-  mql.addEventListener('change', apply);
-});

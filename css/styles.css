@@ -6,6 +6,24 @@
   --text-gold: rgb(255, 196, 114);
 }
 
+.section-title.rt--compact span,
+.section-title.rt--compact .span-fix {
+  font-size: 0.8em !important;
+  -webkit-text-stroke-width: 0.8px !important;
+  -webkit-text-stroke-color: rgba(87,55,15,0.85) !important;
+  text-shadow: none !important;
+  letter-spacing: 1px !important;
+}
+
+.section-title.rt--compact span::after {
+  display: none !important;
+  content: none !important;
+}
+
+.section-title.rt--compact {
+  opacity: 0.995;
+}
+
 .style-section {
   display: flex;
   justify-content: center;

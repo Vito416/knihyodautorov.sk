@@ -138,7 +138,7 @@ $fallbackImg = '/assets/cover-fallback.png';
     <div class="books-container">
       <div class="books-header">
         <div class="books-header-left">
-          <h1 class="section-title">Vybrané <span>knihy</span></h1>
+          <h1 class="section-title books-title">Vybrané <span>knihy</span></h1>
           <p class="section-subtitle">
             Nechte se inspirovat naším aktuálním výběrem každý den nový mix žánrů a autorů.
           </p>

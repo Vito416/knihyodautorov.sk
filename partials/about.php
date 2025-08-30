@@ -8,7 +8,7 @@
       <!-- LEVÝ SLOUPEC: Title, subtitle, inkwell+quill, highlight, shelf -->
       <div class="about-content">
         <div class="about-header">
-          <h2 id="about-title" class="section-title" data-lines="2">
+          <h2 class="section-title about-title">
             O nás <span>Knihy od autorov</span>
           </h2>
 
@@ -38,8 +38,8 @@
           <img src="/assets/about-epic.png" alt="Obraz" class="framed-image">
         </div>
 
-        <div class="babybox-highlight" aria-labelledby="babybox-title">
-          <h3 id="babybox-title" class="section-title" data-lines="1"><span>Podpora</span> babyboxov</h3>
+        <div class="babybox-highlight">
+          <h3 class="section-title"><span>Podpora</span> babyboxov</h3>
           <p class="section-subtitle">
             S hrdosťou podporujeme babyboxy — miesta, kde môžu byť zachránené
             životy novorodencov. Časť našich výnosov smeruje na ich údržbu a rozvoj.
