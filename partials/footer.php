@@ -1,6 +1,6 @@
 <link rel="stylesheet" href="/css/footer.css" />
 
-<footer class="footer-section paper-wrap" role="contentinfo" aria-label="Pätička stránky">
+<footer id="kontaktujtenas" class="footer-section paper-wrap" role="contentinfo" aria-label="Pätička stránky">
   <span class="paper-grain-overlay" aria-hidden="true"></span>
   <span class="paper-edge" aria-hidden="true"></span>
   <div class="footer-content">
@@ -34,32 +34,34 @@
 
     <ul class="footer-links-list section-subtitle dropcap" role="list" aria-label="Rýchle odkazy - zoznam">
       <li class="footer-link-item" role="listitem">
-        <a href="/" class="footer-link footer-home" title="Domov" aria-label="Domov">
+        <a href="https://knihyodautorov.sk/index.php" class="footer-link footer-home" title="Domov" aria-label="Domov">
         <span class="link-text">Domov</span>
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/samples" class="footer-link footer-samples" title="Ukážky kníh" aria-label="Ukážky kníh">
+        <a href="#booksPromo" class="footer-link footer-samples" title="Ukážky kníh" aria-label="Ukážky kníh">
           <span class="link-text">Ukážky kníh</span>
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/authors" class="footer-link footer-authors" title="Autori" aria-label="Autori">
+        <a href="#fauthorsSection" class="footer-link footer-authors" title="Autori" aria-label="Autori">
           <span class="link-text">Autori</span>
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/about" class="footer-link footer-about" title="O nás" aria-label="O nás">
+        <a href="#about-us" class="footer-link footer-about" title="O nás" aria-label="O nás">
           <span class="link-text">O nás</span>
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/shop" class="footer-link footer-eshop" title="E-shop" aria-label="E-shop">
+        <a href="/eshop.php" class="footer-link footer-eshop" title="E-shop" aria-label="E-shop">
           <span class="link-text">E-shop</span>
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/privacy.php" class="footer-link footer-gdpr" title="Ochrana osobných údajov" aria-label="Ochrana osobných údajov">
+        <a href="#kontaktujtenas" class="footer-link footer-gdpr" 
+          title="Ochrana osobných údajov" 
+          aria-label="Ochrana osobných údajov">
           <span class="link-text">GDPR</span>
         </a>
       </li>
@@ -123,7 +125,7 @@
       </div>
     </form>
     </div>
-    <!-- social icons -->
+    <!-- social icons
     <div class="social-row">
       <h2 class="section-title" data-lines="2"><span>Sledujte</span> nás online</h2>
       <div class="social-icons" aria-label="Sledujte nás">
@@ -132,7 +134,7 @@
         <a class="social-link INST" href="#" aria-label="Instagram"></a>
         <a class="social-link YT" href="#" aria-label="YouTube"></a>
     </div>
-  </div>
+  </div> -->
 </div>
 
    <!-- 4) KONTAKT + ODBER (firemné údaje nad kontaktom) s microdata + JSON-LD -->
@@ -204,4 +206,74 @@
     <span>babyboxom</span></p>
   </div>
   </div>
+
+<!-- Modal -->
+<div id="gdprModal" role="dialog" aria-label="Ochrana osobných údajov">
+  <section class="gdpr-section paper-wrap" role="document">
+    
+    <!-- Zavírací tlačítko -->
+    <button class="gdpr-close-btn" id="closeGdprBtn" aria-label="Zavřít GDPR modal">&times;</button>
+    
+    <!-- Dekorativní vrstvy -->
+    <span class="paper-grain-overlay"></span>
+    <span class="paper-edge"></span>
+
+    <!-- Obsah modalu -->
+    <div class="gdpr-content">
+      
+      <!-- Titulek a úvod -->
+      <div class="gdpr-title-subcontent">
+        <h2 class="section-title"><span>Ochrana osobných údajov</span></h2>
+        <p class="section-subtitle gdpr-full">
+          V súlade s <span>Nariadením (EÚ) 2016/679 (GDPR)</span> a zákonom č. 18/2018 Z.z. o ochrane osobných údajov vám poskytujeme tieto informácie o spracúvaní osobných údajov.
+        </p>
+      </div>
+
+      <!-- Podrobnosti -->
+      <div class="gdpr-subcontent">
+
+        <p class="section-subtitle">
+          <strong>Prevádzkovateľ:</strong>
+          Black Cat Academy s. r. o.<br>
+          Dolná ulica 1C, 013 13 Kunerad<br>
+          IČO: 55 396 461<br>
+          Kontakt: info@knihyodautorov.sk, +421 901 770 666<br>
+          <strong>Kategórie spracúvaných údajov:</strong>
+          meno, priezvisko, e-mail, telefónne číslo, adresa, údaje o objednávke.<br>
+          <strong>Prenos do tretích krajín:</strong>
+          Osobné údaje nie sú prenášané mimo EÚ/EHP.<br>
+          <strong>Dobrovoľnosť údajov:</strong>
+          Poskytnutie osobných údajov je dobrovoľné. V prípade neposkytnutia e-mailu však nie je možné zaslať newsletter; v prípade neposkytnutia údajov potrebných na zmluvu nie je možné vybaviť objednávku.<br>
+          <strong>Príjemcovia osobných údajov:</strong>
+          externá účtovná firma, poskytovateľ webhostingu, poskytovateľ e-mailovej služby pre newsletter. Údaje nie sú poskytované iným tretím stranám.<br>
+          <strong>Doba uchovávania:</strong>
+          po dobu nevyhnutnú na splnenie účelu spracúvania, resp. v súlade s právnymi predpismi (napr. účtovné doklady 10 rokov).<br>
+        </p>
+
+        <p class="section-subtitle">
+          <strong>Účely a právny základ spracúvania:</strong>
+          – vybavenie dopytov z kontaktného formulára (oprávnený záujem / súhlas)<br>
+          – zasielanie newslettera (súhlas)<br>
+          – plnenie zákonných povinností (účtovníctvo, daňové predpisy)<br>
+          – plnenie zmluvy pri objednávke<br>
+          <strong>Práva dotknutých osôb:</strong>
+          – právo na prístup k údajom<br>
+          – právo na opravu alebo vymazanie<br>
+          – právo na obmedzenie spracúvania<br>
+          – právo namietať spracúvanie<br>
+          – právo na prenositeľnosť údajov<br>
+          – právo odvolať súhlas kedykoľvek<br>
+          – právo podať sťažnosť na Úrad na ochranu osobných údajov SR<br>
+          <strong>Automatizované rozhodovanie a profilovanie:</strong>
+          Nerealizujeme automatizované rozhodovanie ani profilovanie.<br>
+          <strong>Úrad na ochranu osobných údajov SR:</strong>
+          Hraničná 12, 820 07 Bratislava 27<br>
+          www.dataprotection.gov.sk
+        </p>
+
+      </div>
+    </div>
+  </section>
+</div>
 </footer>
+<script src="/js/footer.js" defer></script>

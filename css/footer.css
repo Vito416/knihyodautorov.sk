@@ -43,7 +43,6 @@
 
 .footer-panel {
   min-width: 0;
-  max-height: 100%;
   max-width: 100%;
   overflow: visible;
   display: flex;
@@ -790,4 +789,135 @@
   html, body {
   overflow-x: hidden;
 }
+}
+
+/* ===== GDPR MODAL OVERLAY ===== */
+#gdprModal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  background: rgba(0,0,0,0.6);
+  z-index: 9999;
+
+  /* skryté jako výchozí stav */
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* aktivní stav */
+#gdprModal.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* modal box */
+#gdprModal .gdpr-section {
+  max-width: 900px;
+  max-height: 90vh;
+  overflow: hidden; /* zabrání přetékání */
+  border-radius: 12px;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+  padding: 30px;
+  position: relative;
+  animation: fadeIn 0.3s ease;
+}
+
+/* close button */
+.gdpr-close-btn {
+  position: absolute;
+  top: 2.5%;
+  right: 5%;
+  font-size: 3.5rem;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* animace */
+@keyframes fadeIn {
+  from {opacity:0; transform: translateY(-10px);}
+  to   {opacity:1; transform: translateY(0);}
+}
+
+/* obsah s gridem */
+.gdpr-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+  text-align: left;
+  max-width: 100%;
+  margin: 0 auto;
+
+  max-height: 80vh;       /* výška scrollovací oblasti */
+  overflow-y: auto;       /* vertikální scroll */
+  padding-right: 12px;    /* prostor pro scrollbar */
+  box-sizing: content-box;
+
+  scrollbar-width: thin;               
+  scrollbar-color: #c8a442 #000;       
+}
+
+/* Scrollbar pro Webkit */
+.gdpr-content::-webkit-scrollbar {
+  width: 12px;
+}
+.gdpr-content::-webkit-scrollbar-track {
+  background: #000;
+  border-radius: 6px;
+}
+.gdpr-content::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #c8a442, #e6c55f);
+  border-radius: 6px;
+}
+.gdpr-content::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #e6c55f, #c8a442);
+}
+
+/* doplňkové styly */
+.gdpr-title-subcontent {
+  grid-column: 1 / -1;
+  text-align: center;
+  margin-bottom: 20px;
+}
+.section-subtitle strong { display: block; padding:1%; }
+.gdpr-full { max-width: 100%; }
+.gdpr-subcontent { display: contents; }
+
+/* ===== Responsivní verze ===== */
+@media (max-width: 1024px) {
+  .gdpr-content {
+    grid-template-columns: 1fr;   /* tablet a níže už jen 1 sloupec */
+  }
+}
+
+@media (max-width: 768px) {
+  #gdprModal .gdpr-section {
+    padding: 20px;
+    max-height: 85vh;
+  }
+
+  .gdpr-close-btn {
+    font-size: 2.5rem;
+    top: 10px;
+    right: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  #gdprModal {
+    padding: 10px; /* modal nebude naražený na okraj */
+  }
+  #gdprModal .gdpr-section {
+    padding: 15px;
+    border-radius: 8px;
+  }
+  .gdpr-close-btn {
+    font-size: 2rem;
+  }
 }

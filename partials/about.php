@@ -1,6 +1,6 @@
 <link rel="stylesheet" href="/css/about.css" />
 
-<section class="style-section" aria-labelledby="about-title">
+<section id="about-us" class="style-section" aria-labelledby="about-title">
   <div class="paper-wrap">
     <span class="paper-grain-overlay" aria-hidden="true"></span>
     <span class="paper-edge" aria-hidden="true"></span>
