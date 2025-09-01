@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+  // --- Citáty ---
   const quotes = [
     'Kniha je sen, ktorý držíš v ruke.',
     'Slová majú moc meniť svet.',
@@ -33,80 +34,68 @@ document.addEventListener("DOMContentLoaded", () => {
   ];
 
   const quoteElement = document.querySelector(".changing-quote");
-  let current = 0;
-  let fadeDuration = 500; // ms
+  if (quoteElement) {
+    let current = 0;
+    const delay = 6000; // ms
+    const fade = 500;   // ms
 
-  setInterval(() => {
-    // Fade out
-    quoteElement.style.transition = `opacity ${fadeDuration}ms ease-in-out`;
-    quoteElement.style.opacity = 0;
+    function showNextQuote() {
+      quoteElement.classList.add("fade-out");
+      setTimeout(() => {
+        current = (current + 1) % quotes.length;
+        quoteElement.textContent = quotes[current];
+        quoteElement.classList.remove("fade-out");
+      }, fade);
+    }
 
-    setTimeout(() => {
-      // Zmena textu
-      current = (current + 1) % quotes.length;
-      quoteElement.textContent = quotes[current];
+    setInterval(showNextQuote, delay);
+  }
 
-      // Fade in
-      quoteElement.style.opacity = 1;
-    }, fadeDuration);
-  }, 6000);
+  // --- Video background fallback ---
+  const wrapper = document.querySelector(".video-background");
+  const video = document.getElementById("video-background");
+
+  if (wrapper && video) {
+    const MOBILE_MAX = 768;
+    const desktopSrc = "/assets/backgroundheroinfinity.mp4";
+    const mobileSrc = "/assets/backgroundmobile.mp4";
+    const desktopPoster = "/assets/hero-fallback.png";
+    const mobilePoster = "/assets/hero-mobile-fallback.png";
+
+    function setSource() {
+      const isMobile = window.innerWidth <= MOBILE_MAX;
+      video.src = isMobile ? mobileSrc : desktopSrc;
+      video.poster = isMobile ? mobilePoster : desktopPoster;
+    }
+
+    setSource(); // první nastavení
+    window.addEventListener("resize", setSource); // při změně velikosti
+
+    function enableFallback() {
+      wrapper.classList.add("video-failed");
+    }
+    function disableFallback() {
+      wrapper.classList.remove("video-failed");
+    }
+
+    video.muted = true;
+    video.play().then(disableFallback).catch(enableFallback);
+
+    ["error", "stalled", "suspend", "abort", "emptied"].forEach(evt =>
+      video.addEventListener(evt, enableFallback)
+    );
+
+    video.addEventListener("pause", () => {
+      if (video.currentTime > 0 && !video.ended) enableFallback();
+    });
+    video.addEventListener("play", disableFallback);
+
+    document.addEventListener("click", () => {
+      if (wrapper.classList.contains("video-failed")) {
+        disableFallback();
+        video.load();
+        video.play().catch(enableFallback);
+      }
+    }, { once: true });
+  }
 });
-
-// --- fallback pro video: pokud autoplay selže nebo nastane error, přidáme .video-failed
-(function(){
-  const vb = document.querySelector('.video-background');
-  const v = document.querySelector('#video-background');
-  if(!vb || !v) return;
-
-  // helper pro aktivaci fallbacku
-  function enableVideoFallback(){
-    vb.classList.add('video-failed');
-  }
-
-  // pokud video vyhodí chybu
-  v.addEventListener('error', enableVideoFallback);
-  v.addEventListener('stalled', enableVideoFallback);
-  v.addEventListener('suspend', enableVideoFallback);
-
-  // pokud autoplay bloknut (play() vrátí rejected promise)
-  // zajistíme, že video je muted (autoplay často povolen pouze muted)
-  v.muted = true;
-  const p = v.play();
-  if (p !== undefined) {
-    p.then(() => {
-      // úspěšně hraje — nic dělat nemusíme
-      vb.classList.remove('video-failed');
-    }).catch(() => {
-      // autoplay zablokován -> aktivovat fallback
-      enableVideoFallback();
-    });
-  }
-
-  // navíc, pokud se později video zastaví (např. prohlížeč přerušil), zapnout fallback
-  v.addEventListener('pause', function(){
-    // pokud je pause a nejedná se o loop end, aktivujeme fallback jen když není záměrné pauznutí
-    if (v.currentTime > 0 && !v.ended) enableVideoFallback();
-  });
-
-  // pokud se uživatel rozhodne video ručně spustit, odstranit fallback
-  v.addEventListener('play', function(){
-    vb.classList.remove('video-failed');
-  });
-})();
-
-// Pokus o opětovné spuštění videa po prvním kliknutí
-document.addEventListener('click', () => {
-  const vb = document.querySelector('.video-background');
-  const v = document.getElementById('video-background');
-  
-  if (vb && v && vb.classList.contains('video-failed')) {
-    vb.classList.remove('video-failed'); // zrušíme fallback
-    v.style.display = '';
-    v.currentTime = 0; // začít od začátku
-    v.load(); // načteme znovu zdroj
-    v.play().catch(() => {
-      // pokud se nepodaří, vrátíme fallback
-      vb.classList.add('video-failed');
-    });
-  }
-}, { once: true });

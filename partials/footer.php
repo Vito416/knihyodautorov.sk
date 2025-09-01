@@ -1,4 +1,94 @@
 <link rel="stylesheet" href="/css/footer.css" />
+<!-- Privacy Modal -->
+<div id="privacyModal" role="dialog" aria-labelledby="privacyTitle" aria-hidden="true" aria-modal="true">
+  <section class="privacy-section paper-wrap" role="document" tabindex="-1">
+
+    <!-- Zavírací tlačítko -->
+    <button class="privacy-close-btn" id="closePrivacyBtn" type="button" aria-label="Zavřít dialog Ochrana osobných údajov">&times;</button>
+
+    <!-- Obsah modalu -->
+    <div class="privacy-content">
+
+      <!-- Titulek a úvod -->
+      <div class="privacy-title-subcontent">
+        <h2 id="privacyTitle" class="section-title"><span>Ochrana osobných údajov</span></h2>
+        <p class="section-subtitle privacy-full">
+          V súlade s <strong>Nariadením (EÚ) 2016/679 (GDPR)</strong> a zákonom č. 18/2018 Z.z. o ochrane osobných údajov vám poskytujeme informácie o spracúvaní osobných údajov.
+        </p>
+      </div>
+
+      <!-- Podrobnosti -->
+      <div class="privacy-subcontent">
+
+        <address class="section-subtitle">
+          <strong>Prevádzkovateľ:</strong><br>
+          Black Cat Academy s. r. o.<br>
+          Dolná ulica 1C, 013 13 Kunerad<br>
+          IČO: 55 396 461<br>
+          Kontakt: <a href="mailto:info@knihyodautorov.sk">info@knihyodautorov.sk</a>, <a href="tel:+421901770666">+421 901 770 666</a>
+        </address>
+
+        <div class="section-subtitle">
+          <p><strong>Kategórie spracúvaných údajov:</strong><br>
+            meno, priezvisko, e-mail, telefónne číslo, adresa, údaje o objednávke.
+          </p>
+
+          <p><strong>Prenos do tretích krajín:</strong><br>
+            Osobné údaje nie sú prenášané mimo EÚ/EHP.
+          </p>
+
+          <p><strong>Dobrovoľnosť údajov:</strong><br>
+            Poskytnutie osobných údajov je dobrovoľné. Ak neposkytnete e-mail, nie je možné zasielať newsletter; ak neposkytnete údaje potrebné na zmluvu, nie je možné vybaviť objednávku.
+          </p>
+
+          <p><strong>Príjemcovia osobných údajov:</strong><br>
+            externá účtovná firma, poskytovateľ webhostingu, poskytovateľ e-mailovej služby (newsletter). Údaje nie sú poskytované iným tretím stranám.
+          </p>
+
+          <p><strong>Doba uchovávania:</strong><br>
+            po dobu nevyhnutnú na splnenie účelu spracúvania alebo v súlade s právnymi predpismi (napr. účtovné doklady 10 rokov).
+          </p>
+        </div>
+
+        <div class="section-subtitle">
+          <h3>Účely a právny základ spracúvania</h3>
+          <ul>
+            <li>Vybavenie dopytov z kontaktného formulára — oprávnený záujem / súhlas.</li>
+            <li>Zasielanie newslettera — súhlas.</li>
+            <li>Plnenie zákonných povinností (účtovníctvo, daňové predpisy).</li>
+            <li>Plnenie zmluvy pri objednávke.</li>
+          </ul>
+        </div>
+
+        <div class="section-subtitle">
+          <h3>Práva dotknutých osôb</h3>
+          <ul>
+            <li>Právo na prístup k údajom.</li>
+            <li>Právo na opravu alebo vymazanie.</li>
+            <li>Právo na obmedzenie spracúvania.</li>
+            <li>Právo namietať spracúvanie.</li>
+            <li>Právo na prenositeľnosť údajov.</li>
+            <li>Právo odvolať súhlas kedykoľvek.</li>
+            <li>Právo podať sťažnosť na Úrad na ochranu osobných údajov SR.</li>
+          </ul>
+        </div>
+
+        <div class="section-subtitle">
+          <p><strong>Automatizované rozhodovanie a profilovanie:</strong><br>
+            Nerealizujeme automatizované rozhodovanie ani profilovanie.
+          </p>
+
+          <p><strong>Úrad na ochranu osobných údajov SR:</strong><br>
+            Hraničná 12, 820 07 Bratislava 27<br>
+            <a href="https://www.dataprotection.gov.sk" target="_blank" rel="noopener">www.dataprotection.gov.sk</a>
+          </p>
+        </div>
+
+      </div> <!-- .privacy-subcontent -->
+
+    </div> <!-- .privacy-content -->
+  </section> <!-- .privacy-section -->
+</div> <!-- #privacyModal -->
 
 <footer id="kontaktujtenas" class="footer-section paper-wrap" role="contentinfo" aria-label="Pätička stránky">
   <span class="paper-grain-overlay" aria-hidden="true"></span>
@@ -59,11 +149,12 @@
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="#kontaktujtenas" class="footer-link footer-gdpr" 
-          title="Ochrana osobných údajov" 
-          aria-label="Ochrana osobných údajov">
-          <span class="link-text">GDPR</span>
-        </a>
+      <a href="#kontaktujtenas"
+        class="footer-link footer-privacy-modalbtn"
+        title="Ochrana osobných údajov"
+        aria-label="Ochrana osobných údajov">
+        <span class="link-text">GDPR</span>
+      </a>
       </li>
     </ul>
     </div>
@@ -206,74 +297,5 @@
     <span>babyboxom</span></p>
   </div>
   </div>
-
-<!-- Modal -->
-<div id="gdprModal" role="dialog" aria-label="Ochrana osobných údajov">
-  <section class="gdpr-section paper-wrap" role="document">
-    
-    <!-- Zavírací tlačítko -->
-    <button class="gdpr-close-btn" id="closeGdprBtn" aria-label="Zavřít GDPR modal">&times;</button>
-    
-    <!-- Dekorativní vrstvy -->
-    <span class="paper-grain-overlay"></span>
-    <span class="paper-edge"></span>
-
-    <!-- Obsah modalu -->
-    <div class="gdpr-content">
-      
-      <!-- Titulek a úvod -->
-      <div class="gdpr-title-subcontent">
-        <h2 class="section-title"><span>Ochrana osobných údajov</span></h2>
-        <p class="section-subtitle gdpr-full">
-          V súlade s <span>Nariadením (EÚ) 2016/679 (GDPR)</span> a zákonom č. 18/2018 Z.z. o ochrane osobných údajov vám poskytujeme tieto informácie o spracúvaní osobných údajov.
-        </p>
-      </div>
-
-      <!-- Podrobnosti -->
-      <div class="gdpr-subcontent">
-
-        <p class="section-subtitle">
-          <strong>Prevádzkovateľ:</strong>
-          Black Cat Academy s. r. o.<br>
-          Dolná ulica 1C, 013 13 Kunerad<br>
-          IČO: 55 396 461<br>
-          Kontakt: info@knihyodautorov.sk, +421 901 770 666<br>
-          <strong>Kategórie spracúvaných údajov:</strong>
-          meno, priezvisko, e-mail, telefónne číslo, adresa, údaje o objednávke.<br>
-          <strong>Prenos do tretích krajín:</strong>
-          Osobné údaje nie sú prenášané mimo EÚ/EHP.<br>
-          <strong>Dobrovoľnosť údajov:</strong>
-          Poskytnutie osobných údajov je dobrovoľné. V prípade neposkytnutia e-mailu však nie je možné zaslať newsletter; v prípade neposkytnutia údajov potrebných na zmluvu nie je možné vybaviť objednávku.<br>
-          <strong>Príjemcovia osobných údajov:</strong>
-          externá účtovná firma, poskytovateľ webhostingu, poskytovateľ e-mailovej služby pre newsletter. Údaje nie sú poskytované iným tretím stranám.<br>
-          <strong>Doba uchovávania:</strong>
-          po dobu nevyhnutnú na splnenie účelu spracúvania, resp. v súlade s právnymi predpismi (napr. účtovné doklady 10 rokov).<br>
-        </p>
-
-        <p class="section-subtitle">
-          <strong>Účely a právny základ spracúvania:</strong>
-          – vybavenie dopytov z kontaktného formulára (oprávnený záujem / súhlas)<br>
-          – zasielanie newslettera (súhlas)<br>
-          – plnenie zákonných povinností (účtovníctvo, daňové predpisy)<br>
-          – plnenie zmluvy pri objednávke<br>
-          <strong>Práva dotknutých osôb:</strong>
-          – právo na prístup k údajom<br>
-          – právo na opravu alebo vymazanie<br>
-          – právo na obmedzenie spracúvania<br>
-          – právo namietať spracúvanie<br>
-          – právo na prenositeľnosť údajov<br>
-          – právo odvolať súhlas kedykoľvek<br>
-          – právo podať sťažnosť na Úrad na ochranu osobných údajov SR<br>
-          <strong>Automatizované rozhodovanie a profilovanie:</strong>
-          Nerealizujeme automatizované rozhodovanie ani profilovanie.<br>
-          <strong>Úrad na ochranu osobných údajov SR:</strong>
-          Hraničná 12, 820 07 Bratislava 27<br>
-          www.dataprotection.gov.sk
-        </p>
-
-      </div>
-    </div>
-  </section>
-</div>
 </footer>
 <script src="/js/footer.js" defer></script>

@@ -3,10 +3,23 @@
 <section class="hero-section">
   <!-- Video pozadie -->
   <div class="video-background">
-  <video id="video-background" autoplay muted loop playsinline poster="/assets/hero-fallback.png">
-    <source src="/assets/backgroundheroinfinity.mp4" type="video/mp4" />
-    Váš prehliadač nepodporuje prehrávanie videa na pozadí.
-  </video>
+    <video id="video-background" autoplay muted loop playsinline poster="/assets/hero-fallback.png">
+      <!-- Video pro mobily -->
+      <source 
+        src="/assets/backgroundmobile.mp4" 
+        type="video/mp4" 
+        data-media="(max-width: 768px)" 
+        data-poster="/assets/hero-mobile-fallback.png" />
+
+      <!-- Video pro desktopy -->
+      <source 
+        src="/assets/backgroundheroinfinity.mp4" 
+        type="video/mp4" 
+        data-media="(min-width: 769px)" 
+        data-poster="/assets/hero-fallback.png" />
+
+      Váš prehliadač nepodporuje prehrávanie videa na pozadí.
+    </video>
   </div>
 
   <div class="hero-content">

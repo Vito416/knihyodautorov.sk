@@ -837,26 +837,25 @@ document.addEventListener('DOMContentLoaded', () => {
         meta.className = 'card-meta';
 
         // jednorázové globální <svg> pro defs
+      const EXISTING_SPRITE_ID = 'gold-defs-sprite';
+      if (!document.getElementById(EXISTING_SPRITE_ID)) {
         const sprite = document.createElementNS(SVG_NS, "svg");
+        sprite.setAttribute("id", EXISTING_SPRITE_ID);
         sprite.setAttribute("aria-hidden", "true");
         sprite.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
 
         const defs = document.createElementNS(SVG_NS, "defs");
 
-        // Zlatý gradient – tmavší a věrnější starému zlatu
         const gradient = document.createElementNS(SVG_NS, "linearGradient");
         gradient.setAttribute("id", "gold-gradient");
-        gradient.setAttribute("x1", "0%");
-        gradient.setAttribute("y1", "0%");
-        gradient.setAttribute("x2", "0%");
-        gradient.setAttribute("y2", "100%");
-
+        gradient.setAttribute("x1", "0%"); gradient.setAttribute("y1", "0%");
+        gradient.setAttribute("x2", "0%"); gradient.setAttribute("y2", "100%");
         [
-          { offset: "0%", color: "#ffffff" }, // čistě bílý lesk
-          { offset: "5%", color: "#fff9b0" }, // jemná světlá žlutá
-          { offset: "30%", color: "#ffe766" }, // jasná zlatá
-          { offset: "80%", color: "#ffd633" }, // živá zlatá
-          { offset: "100%", color: "#fff9b0" } // zpět do světlé žluté
+          { offset: "0%", color: "#ffffff" },
+          { offset: "5%", color: "#fff9b0" },
+          { offset: "30%", color: "#ffe766" },
+          { offset: "80%", color: "#ffd633" },
+          { offset: "100%", color: "#fff9b0" }
         ].forEach(s => {
           const stop = document.createElementNS(SVG_NS, "stop");
           stop.setAttribute("offset", s.offset);
@@ -865,7 +864,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         defs.appendChild(gradient);
 
-        // Jemnější emboss – teplejší světlo
         const filter = document.createElementNS(SVG_NS, "filter");
         filter.setAttribute("id", "gold-emboss");
         filter.setAttribute("x", "-20%");
@@ -876,13 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const lighting = document.createElementNS(SVG_NS, "feDiffuseLighting");
         lighting.setAttribute("in", "SourceAlpha");
         lighting.setAttribute("result", "light");
-        lighting.setAttribute("lighting-color", "#ffffff"); // teplý tón světla
+        lighting.setAttribute("lighting-color", "#ffffff");
         lighting.setAttribute("surfaceScale", "2");
 
         const pointLight = document.createElementNS(SVG_NS, "fePointLight");
-        pointLight.setAttribute("x", "-20");
-        pointLight.setAttribute("y", "-20");
-        pointLight.setAttribute("z", "50");
+        pointLight.setAttribute("x", "-20"); pointLight.setAttribute("y", "-20"); pointLight.setAttribute("z", "50");
         lighting.appendChild(pointLight);
         filter.appendChild(lighting);
 
@@ -890,16 +886,13 @@ document.addEventListener('DOMContentLoaded', () => {
         comp.setAttribute("in", "SourceGraphic");
         comp.setAttribute("in2", "light");
         comp.setAttribute("operator", "arithmetic");
-        comp.setAttribute("k1", "1");
-        comp.setAttribute("k2", "0");
-        comp.setAttribute("k3", "0");
-        comp.setAttribute("k4", "0");
+        comp.setAttribute("k1", "1"); comp.setAttribute("k2", "0"); comp.setAttribute("k3", "0"); comp.setAttribute("k4", "0");
         filter.appendChild(comp);
 
         defs.appendChild(filter);
-
         sprite.appendChild(defs);
         document.body.prepend(sprite);
+      }
 
         // BADGE
         const svgBadge = document.createElementNS(SVG_NS, "svg");

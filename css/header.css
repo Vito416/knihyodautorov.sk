@@ -1,13 +1,3 @@
-/* header.css - final patch
-   - pravé zarovnání navigace (vpravo v rámci containeru)
-   - obnovené jemné animace (logo float, hovery)
-   - top progress bar
-   - mobilní menu: správné top, max-height, overflow-x hidden
-   - zamykání scrollu při otevřeném menu bez posunutí layoutu
-   - respekt k prefers-reduced-motion
-*/
-
-/* základ */
 *,
 *::before,
 *::after { box-sizing: border-box; }
@@ -108,13 +98,6 @@ html, body {
   user-select: none;
 }
 
-/* jemný float animace loga */
-@keyframes floatLogo {
-  0%,100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-.logo img { animation: floatLogo 6s ease-in-out infinite; transform-origin:center; }
-
 /* hover effect (jen na zařízeních s hover) */
 @media (hover: hover) and (pointer: fine){
   .logo img:hover { transform: scale(1.06); }
@@ -167,9 +150,34 @@ html, body {
   background-color: #ffd79b;
   transition: width 220ms ease;
 }
-.main-nav a:hover { color: #ffd79b; transform: translateY(-1px); text-shadow: 0 0 4px rgba(255,215,155,0.45); }
-.main-nav a:hover::after { width: 100%; }
-.main-nav a:hover i { transform: scale(1.12); }
+.main-nav a {
+  position: relative;
+  padding-bottom: 2px;
+  transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+.main-nav a:hover {
+  color: var(--accent-2);
+  background-color: rgba(255, 215, 155, 0.1);
+}
+
+.main-nav a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: var(--accent-2);
+  transform: scaleX(0);
+  transform-origin: bottom right;
+  transition: transform 0.3s ease;
+}
+
+.main-nav a:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
 
 /* HAMBURGER (vpravo) */
 .hamburger{
@@ -198,32 +206,39 @@ html, body {
   .logo img { max-height:44px; max-width:160px; }
 
   /* main-nav bude fixed pod headerem; parametr top nastaví JS */
-  .main-nav{
+  .main-nav {
     margin-left: 0;
-    display: none; /* default skryté - otevře se třídou .open */
-    position: fixed;
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: 0; /* výchozí top pro bezpečné zobrazení */
     left: 0;
     right: 0;
     width: 100%;
+    max-width: 100vw; /* místo 100% */
     box-sizing: border-box;
     background: linear-gradient(180deg, rgba(42,29,20,0.98), rgba(35,25,18,0.98));
-    padding-inline: clamp(0.8rem, 4vw, 1.2rem); /* padding uvnitř */
+    padding-inline: clamp(0.8rem, 4vw, 1.2rem);
     padding-block: 0.8rem;
-    flex-direction: column;
     z-index: 1320;
     overflow-y: auto;
-    overflow-x: hidden; /* velmi důležité */
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     transform-origin: top center;
     opacity: 0;
-    transform: translateY(-6px);
+    pointer-events: none;
     transition: opacity 260ms ease, transform 260ms ease;
-    border-top: 1px solid rgba(255,255,255,0.03);
-    max-width: 100vw;
+    border-top: none;
     word-break: break-word;
+    backface-visibility: hidden; /* GPU rendering */
+    will-change: opacity, transform;
   }
 
-  .main-nav.open { display:flex; opacity:1; transform: translateY(0); }
+  .main-nav.open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-1px);
+  }
 
   .main-nav ul{
     flex-direction: column;

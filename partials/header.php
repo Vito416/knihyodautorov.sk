@@ -3,16 +3,17 @@
 <head>
   <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
   <link rel="shortcut icon" href="/assets/favicon.ico" type="image/x-icon">
+  <link rel="canonical" href="https://knihyodautorov.sk/">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Ponorte sa do sveta PDF kníh priamo od slovenských autorov.">
-  <title>knihyodautorov.sk</title>
+  <title>Knihy od autorov – PDF a vzorky kníh</title>
 
-  <!-- Fonty & Ikony -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Playfair+Display&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-  <!-- CSS -->
+  <link rel="stylesheet" href="/fonts/fontawesome-free-7.0.0-web/css/all.min.css" />
   <link rel="stylesheet" href="/css/styles.css" />
   <link rel="stylesheet" href="/css/header.css" />
 
@@ -23,14 +24,14 @@
 <header class="site-header">
   <div class="container header-container">
     <div class="logo">
-      <a href="https://knihyodautorov.sk/index.php">
+      <a href="#">
         <img src="/assets/logoobdelnikbezpozadi.png" alt="Knihy od autorov - domov">
       </a>
     </div>
 
     <nav class="main-nav" aria-label="Hlavná navigácia">
   <ul>
-    <li><a href="https://knihyodautorov.sk/index.php"><i class="fas fa-home"></i> Domov</a></li>
+    <li><a href="#"><i class="fas fa-home"></i> Domov</a></li>
     <li><a href="#booksPromo"><i class="fas fa-book-open"></i> Vzorky kníh</a></li>
     <li><a href="#fauthorsSection"><i class="fas fa-pen-nib"></i> Autori</a></li>
     <li><a href="#about-us"><i class="fas fa-info-circle"></i> O nás</a></li>
