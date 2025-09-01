@@ -51,51 +51,72 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(showNextQuote, delay);
   }
 
-  // --- Video background fallback ---
-  const wrapper = document.querySelector(".video-background");
-  const video = document.getElementById("video-background");
+// --- Video background fallback (minimální změna pro funkční replay) ---
+const wrapper = document.querySelector(".video-background");
+const video = document.getElementById("video-background");
 
-  if (wrapper && video) {
-    const MOBILE_MAX = 768;
-    const desktopSrc = "/assets/backgroundheroinfinity.mp4";
-    const mobileSrc = "/assets/backgroundmobile.mp4";
-    const desktopPoster = "/assets/hero-fallback.png";
-    const mobilePoster = "/assets/hero-mobile-fallback.png";
+if (wrapper && video) {
+  const MOBILE_MAX = 768;
+  const desktopSrc = "/assets/backgroundheroinfinity.mp4";
+  const mobileSrc = "/assets/backgroundmobile.mp4";
+  const desktopPoster = "/assets/hero-fallback.png";
+  const mobilePoster = "/assets/hero-mobile-fallback.png";
 
-    function setSource() {
-      const isMobile = window.innerWidth <= MOBILE_MAX;
-      video.src = isMobile ? mobileSrc : desktopSrc;
-      video.poster = isMobile ? mobilePoster : desktopPoster;
-    }
-
-    setSource(); // první nastavení
-    window.addEventListener("resize", setSource); // při změně velikosti
-
-    function enableFallback() {
-      wrapper.classList.add("video-failed");
-    }
-    function disableFallback() {
-      wrapper.classList.remove("video-failed");
-    }
-
-    video.muted = true;
-    video.play().then(disableFallback).catch(enableFallback);
-
-    ["error", "stalled", "suspend", "abort", "emptied"].forEach(evt =>
-      video.addEventListener(evt, enableFallback)
-    );
-
-    video.addEventListener("pause", () => {
-      if (video.currentTime > 0 && !video.ended) enableFallback();
-    });
-    video.addEventListener("play", disableFallback);
-
-    document.addEventListener("click", () => {
-      if (wrapper.classList.contains("video-failed")) {
-        disableFallback();
-        video.load();
-        video.play().catch(enableFallback);
-      }
-    }, { once: true });
+  function setSource() {
+    const isMobile = window.innerWidth <= MOBILE_MAX;
+    video.src = isMobile ? mobileSrc : desktopSrc;
+    video.poster = isMobile ? mobilePoster : desktopPoster;
   }
+
+  setSource();
+  window.addEventListener("resize", setSource);
+
+  function enableFallback() { wrapper.classList.add("video-failed"); }
+  function disableFallback() { wrapper.classList.remove("video-failed"); }
+
+  video.muted = true;
+
+  // Robustní play: pokud forceReload=true, natvrdo smaže src a znovu jej nastaví
+  function tryPlay(forceReload = false) {
+    if (forceReload) {
+      try { video.pause(); } catch (e) {}
+      video.removeAttribute("src"); // vyčistit předchozí "failed" stav
+      video.load();
+      setSource(); // znovu nastavíme správný src podle velikosti
+    }
+    video.load();
+    video.play()
+      .then(() => {
+        disableFallback();
+      })
+      .catch((err) => {
+        console.warn("Video play failed:", err);
+        enableFallback();
+      });
+  }
+
+  // první pokus o přehrání
+  tryPlay();
+
+  // eventy zůstanou stejné jako předtím
+  ["error", "stalled", "suspend", "abort", "emptied"].forEach(evt =>
+    video.addEventListener(evt, enableFallback)
+  );
+
+  video.addEventListener("pause", () => {
+    if (video.currentTime > 0 && !video.ended) enableFallback();
+  });
+  video.addEventListener("play", disableFallback);
+
+  // když video skončí, zkusíme ho znovu natvrdo přehrát
+  video.addEventListener("ended", () => {
+    tryPlay(true);
+  });
+
+  // kliknutí zkusí vždy force reload + play (odstraněno once: true)
+  document.addEventListener("click", () => {
+    tryPlay(true);
+  });
+}
+
 });
