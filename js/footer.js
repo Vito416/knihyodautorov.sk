@@ -165,3 +165,65 @@
   }
 
 })();
+
+(function () {
+  'use strict';
+
+  const forms = document.querySelectorAll('.contact-form');
+
+  forms.forEach(form => {
+    const RECAPTCHA_PUBLIC_KEY = form.dataset.sitekey;
+    if (!RECAPTCHA_PUBLIC_KEY) {
+      console.error('reCAPTCHA public key není nastavený!');
+      return;
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const feedbackEl = document.getElementById('contact-feedback');
+      if (!submitBtn || !feedbackEl) return;
+
+      const btnText = submitBtn.querySelector('.btn-text');
+      const spinner = submitBtn.querySelector('.btn-spinner');
+
+      // aktivace spinneru
+      if (btnText) btnText.style.display = 'none';
+      if (spinner) spinner.style.display = 'inline-block';
+      submitBtn.disabled = true;
+      feedbackEl.textContent = '';
+
+      grecaptcha.ready(() => {
+        grecaptcha.execute(RECAPTCHA_PUBLIC_KEY, { action: 'contact' }).then(token => {
+          // doplnění tokenu
+          form.querySelector('input[name="g-recaptcha-response"]').value = token;
+
+          const formData = new FormData(form);
+          fetch(form.action, { method: 'POST', body: formData })
+            .then(resp => {
+              if (!resp.ok) throw new Error('Network response not OK');
+              return resp.json(); // parse JSON
+            })
+            .then(data => {
+              if (data.success) {
+                feedbackEl.textContent = data.message;
+                form.reset();
+              } else {
+                feedbackEl.textContent = data.error || 'Chyba při odesílání.';
+              }
+            })
+            .catch(err => {
+              console.error(err);
+              feedbackEl.textContent = 'Chyba při odesílání, zkuste znovu.';
+            })
+            .finally(() => {
+              if (btnText) btnText.style.display = 'inline';
+              if (spinner) spinner.style.display = 'none';
+              submitBtn.disabled = false;
+            });
+        });
+      });
+    });
+  });
+})();

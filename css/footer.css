@@ -828,10 +828,11 @@
   position: relative;
   border-radius: var(--modal-radius);
   padding: calc(var(--modal-padding));
-  width: 96%;                   /* preferuj % pro responzivitu */
+  width: 96%;
+  height: 100%;                   /* preferuj % pro responzivitu */
   max-width: var(--modal-max-width);
   max-height: 85%;              /* výška vůči viewportu */
-  overflow-y: auto;
+
   box-sizing: border-box;
   outline: none;
 }
@@ -848,15 +849,37 @@
 /* close button */
 .privacy-close-btn {
   position: absolute;
-  top: 1.2%;
-  right: 1.2%;
-  font-size: 1.8rem;
+  top: 5%;
+  right: 5%;
+  font-size: 3.8rem;
   line-height: 1;
   cursor: pointer;
   border: none;
   background: none;
   z-index: calc(var(--modal-z) + 1);
   padding: 0.2rem;
+
+  color: #c8a442; /* zlatavá barva znaku */
+  text-shadow: 
+    /* základní kříž */
+    -2px -2px 0 #2a1a0a,
+     2px -2px 0 #2a1a0a,
+    -2px  2px 0 #2a1a0a,
+     2px  2px 0 #2a1a0a,
+    -2px  0   0 #2a1a0a,
+     2px  0   0 #2a1a0a,
+     0   -2px 0 #2a1a0a,
+     0    2px 0 #2a1a0a,
+
+    /* mezikroky pro vyplnění rohů */
+    -1px -2px 0 #2a1a0a,
+     1px -2px 0 #2a1a0a,
+    -1px  2px 0 #2a1a0a,
+     1px  2px 0 #2a1a0a,
+    -2px -1px 0 #2a1a0a,
+    -2px  1px 0 #2a1a0a,
+     2px -1px 0 #2a1a0a,
+     2px  1px 0 #2a1a0a;
 }
 
 /* focus styling pro přístupnost */
@@ -869,35 +892,47 @@
 .privacy-content {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem;
   text-align: left;
   width: 100%;
+  height: 100%;
+  max-height: 98%;
   box-sizing: border-box;
-
-  max-height: 80%;
   overflow-y: auto;
   padding-right: 0.5rem; /* prostor pro scroll */
-}
-
-/* scrollbar — jednoduché, kompatibilní */
-.privacy-content {
+  /* Firefox */
   scrollbar-width: thin;
-  scrollbar-color: rgba(0,0,0,0.35) rgba(0,0,0,0.05);
+  scrollbar-color: #d4af37 #1c1c1c; /* palec / track */
+  padding-right: 1rem;                  /* posune scrollbar víc dovnitř */
 }
-.privacy-content::-webkit-scrollbar { width: 10px; }
-.privacy-content::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.35);
+/* Webkit / Chrome / Safari */
+.privacy-content::-webkit-scrollbar {
+  width: 8px;
+  background: #1c1c1c; /* tmavý track */
   border-radius: 6px;
 }
+
+.privacy-content::-webkit-scrollbar-thumb {
+  background: #d4af37;        /* zlatý palec */
+  border-radius: 6px;
+  border: 2px solid #1c1c1c; /* okraj, aby palec "zapadl" */
+}
+
+.privacy-content::-webkit-scrollbar-thumb:hover {
+  background: #b8992e;        /* tmavší zlatá při hover */
+}
+
 .privacy-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: #1c1c1c;        /* tmavý track */
+  border-radius: 6px;
 }
 
 /* hlavička / titulek přes celý řádek */
 .privacy-title-subcontent {
   grid-column: 1 / -1;
   text-align: center;
-  margin-bottom: 1rem;
+  padding-top:1.25%;
+  max-width: 85%;
+  margin: 0 auto 0 auto;
 }
 
 /* drobné bloky textu */
@@ -928,19 +963,22 @@
     max-height: 88%;
     overflow-y: auto;
   }
+  .privacy-title-subcontent .section-title span{
+    --rt-max-lines: 3;
+    word-break: keep-all;      /* nedělí slova */
+    overflow-wrap: normal;     /* pouze zalom mezi slovy */
+  }
 
   .privacy-content {
     display: block;
-    gap: 0.75rem;
-  }
-
-  .privacy-title-subcontent {
-    margin-bottom: 0.75rem;
+    gap: 1.75rem;
+    text-align: center;
+    padding: 10% 2.5% 5% 2.5%;
   }
 
   .privacy-close-btn {
-    font-size: 1.4rem;
-    top: 1%;
-    right: 2%;
+    font-size: 2.4rem;
+    top: 2.5%;
+    right: 7.5%;
   }
 }
