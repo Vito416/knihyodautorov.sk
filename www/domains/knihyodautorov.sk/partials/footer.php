@@ -160,7 +160,7 @@
     </div>
     <div class="footer-contact section-subtitle">
       <?php
-      $recaptchaConfig = include __DIR__ . '/../db/config/configrecaptcha.php';
+      $recaptchaConfig = include __DIR__ . '/../../../../db/config/configrecaptcha.php';
       $siteKey = $recaptchaConfig['site_key'] ?? ''; 
       ?>
       <form class="contact-form" action="/../partials/send.php" method="post" novalidate data-sitekey="<?= htmlspecialchars($siteKey) ?>">

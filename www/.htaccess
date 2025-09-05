@@ -1,0 +1,26 @@
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteRule .* https://%{SERVER_NAME} [R=301]
+Header set Content-Security-Policy "upgrade-insecure-requests"
+
+# --- pravidla pro aliasy (domains) ---
+RewriteCond %{REQUEST_URI} !^domains/
+RewriteCond %{REQUEST_URI} !^/domains/
+RewriteCond %{HTTP_HOST} ^(www\.)?(.*)$
+RewriteCond %{DOCUMENT_ROOT}/domains/%2 -d
+RewriteRule (.*) domains/%2/$1 [DPI]
+
+# --- pravidla pro subdomény (subdom) ---
+RewriteCond %{REQUEST_URI} !^subdom/
+RewriteCond %{REQUEST_URI} !^/subdom/
+RewriteCond %{HTTP_HOST} ^(www\.)?(.*)\.([^\.]*)\.([^\.]*)$
+RewriteCond %{DOCUMENT_ROOT}/subdom/%2 -d
+RewriteRule (.*) subdom/%2/$1 [DPI]
+
+# --- správné přesměrování při chybějícím / pro aliasy ---
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^domains/[^/]+/(.+[^/])$ /$1/ [R]
+
+# --- správné přesměrování při chybějícím / pro subdomény ---
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^subdom/[^/]+/(.+[^/])$ /$1/ [R]

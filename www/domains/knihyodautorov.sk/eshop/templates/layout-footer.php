@@ -1,0 +1,1 @@
+<footer><p>&copy; <?=date('Y')?> Knihy od autorov</p></footer>

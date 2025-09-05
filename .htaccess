@@ -1,0 +1,6 @@
+# Protect libs and storage
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^libs/ - [F,L]
+    RewriteRule ^storage/ - [F,L]
+</IfModule>

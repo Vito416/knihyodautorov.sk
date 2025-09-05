@@ -2,10 +2,10 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require_once __DIR__ . '/../libs/autoload.php';
+require_once __DIR__ . '/../../../../libs/autoload.php';
 
-$recaptchaConfig = include __DIR__ . '/../db/config/configrecaptcha.php';
-$smtpConfig      = include __DIR__ . '/../db/config/configsmtp.php';
+$recaptchaConfig = include __DIR__ . '/../../../../db/config/configrecaptcha.php';
+$smtpConfig      = include __DIR__ . '/../../../../db/config/configsmtp.php';
 
 $secretKey = $recaptchaConfig['secret_key'] ?? '';
 $minScore  = $recaptchaConfig['min_score'] ?? 0.4;

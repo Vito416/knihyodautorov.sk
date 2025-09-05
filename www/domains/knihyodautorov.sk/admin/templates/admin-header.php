@@ -1,0 +1,1 @@
+<header><nav><a href="/admin/">Dashboard</a> | <a href="/eshop/">Prejsť do obchodu</a></nav></header>
