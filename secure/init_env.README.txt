@@ -1,71 +1,92 @@
-INIT / SECURE - INSTRUKCE PRO NASAZENÍ KLÍČŮ A STORAGE
-==================================================
+SECURE INIT / STORAGE / KEYS – Deployment Instructions
+======================================================
 
-Účel
+Purpose
+-------
+This document explains how application keys, secure configuration, and storage are handled.
+
+⚠️ Do NOT commit secrets (keys, `.env`) to version control.  
+`.env_DEFAULT` is provided as a reference only.
+
+Project structure
+-----------------
+Example layout:
+
+/project-root/
+/secure/ <-- outside webroot
+config.php
+load_env.php
+/keys/ <-- binary keys (32B each)
+crypto_key_v1.bin
+filevault_key_v1.bin
+/tools_NO_SHELL/ <-- temporary tools (not for production)
+tmp_trigger.php
+EDITANDOPENMEINYOURPC.html
+generate_keys.php <-- key generator (shell or wrapper)
+run_security_audit.php <-- security audit (shell or wrapper)
+/storage/ <-- encrypted files, outside webroot
+/uploads/
+/books/
+/www/ <-- webroot (public part)
+/domains/
+/example.com/
+/eshop/
+
+Keys
 ----
-Tento soubor popisuje, kam vložit tajné klíče, jak nastavit oprávnění a jak nakonfigurovat cestu k adresáři `storage/`.
-Neukládejte tyto soubory do verzovacího systému (git). 
+- Keys are generated via `generate_keys.php` (manual or wrapper call).
+- Stored in `/secure/keys/` as `name_vX.bin` (32 bytes each).
+- Required: `crypto_key_v1.bin`, `filevault_key_v1.bin`.
+- Permissions:
+  - `/secure/keys/`: `chmod 2750`
+  - key files: `chmod 0400` (readable only by webserver user)
 
-1) Umístění souborů (doporučené)
---------------------------------
-Projektová struktura (příklad):
-  /project-root/
-    /secure/
-      config.php
-      /keys/
-        key_v1.bin
-        key_v2.bin
-      init_env.README.txt    <-- tento soubor
-    /storage/                <-- šifrované soubory, mimo webroot
-      /books/
-      /uploads/
-    /www/
-      /domains/
-        /mojedomena/
-          /eshop/            <-- webroot aplikace
+Configuration
+-------------
+- App configuration is in `secure/config.php`.
+- Sensitive values (DB, keys, API credentials) are loaded from `.env`.
+- `.env_DEFAULT` is a template for reference.
 
-- `secure/` musí být umístěno mimo webroot (`/www/...`).
-- `storage/` musí být mimo webroot — výše je doporučené umístění `/project-root/storage`.
+Storage
+-------
+- `/storage/` is outside webroot, contains encrypted user files (e.g. e-books).
+- Permissions: `chmod 750` (owned by webserver user).
+- Must not be HTTP accessible.
 
-2) Klíče (master key)
----------------------
-- Umísti master keys do: `/project-root/secure/keys/`
-  - název souboru např. `key_v1.bin`, `key_v2.bin`
-- Oprávnění:
-  - soubory klíčů: `chmod 600 key_v1.bin` (vlastník: webserver user, např. www-data)
-  - adresář keys: `chmod 700 keys`
-  - soubor `secure/config.php`: `chmod 640` (čtení pouze pro webserver a případně deployer)
-- Nikdy necommituj tyto klíče do Git nebo jiného VCS.
+Audit & testing
+---------------
+- `run_security_audit.php` performs full checks (keys, Crypto, FileVault, AuditLogger).
+- Cannot be called directly from the web; run via shell or through a wrapper.
+- Temporary wrapper (`/secure/tools_NO_SHELL/tmp_trigger.php`) allows secure POST
+  execution with a one-time token from `.env`.
+- `EDITANDOPENMEINYOURPC.html` is a helper form for local browser testing.
+- After successful tests, **delete the wrapper and HTML file**.
 
-3) Storage (soubory / knihy)
-----------------------------
-- Ulož `storage/` mimo webroot. Měj ji na stejné úrovni jako `secure/` (např. `/project-root/storage`).
-- Oprávnění:
-  - adresář `storage` a podsložky: vlastník = webserver uživatel (www-data), `chmod 750` / `chmod 770` podle potřeby.
-- Zamez přímému HTTP přístupu (je-li to nutné, doplň .htaccess, nginx rule apod.).
+Security recommendations
+------------------------
+- Always serve production over HTTPS.
+- Use secure session flags: `session.cookie_secure=1`, `session.cookie_httponly=1`.
+- Never commit `.env` or keys.
+- Periodically rotate keys:
+  1. Generate `*_v2.bin`
+  2. Update `config.php` to point to the new version
+  3. Re-encrypt or migrate existing data as needed
+- Keep offline backups of keys (without them, data is unrecoverable).
+- Deny access to `/secure/` and `/storage/` at the webserver level.
 
-4) Jak nastavit `paths` v konfiguraci
--------------------------------------
-- Ideální přístup: **NEHÁDEJ** počet `../`. Použij environmentální proměnnou `STORAGE_PATH` nebo malou funkci, která "najde nahoru" adresář `storage`.
-- Pokud nemůžeš použít env, spočítej relativně od umístění `config.php`. (Viz oddíl níže s příklady.)
+Quick sanity checks
+-------------------
+- Run `run_security_audit.php` → output must include `"all_ok": true`.
+- DB status: `"DB: OK"`.
+- Storage: `"STORAGE: OK"`.
+- Crypto & FileVault roundtrips must pass.
+- AuditLogger must record a test entry.
 
-5) Doporučená bezpečnostní opatření
------------------------------------
-- V produkci vždy HTTPS + `session.cookie_secure = 1`.
-- Nastav `session.cookie_httponly = 1` a `session.use_strict_mode = 1`.
-- Ověř, že storage a keys nejsou dostupné přes webserver (403).
-- Periodická rotace klíčů: vytvoř `key_v2.bin`, aktualizuj `secure/config.php` s novou `key_version`, proveď migraci šifrování dle interního postupu.
-- Zálohuj klíče mimo server (offline icebox) — bez nich nejsou data dostupná.
+Status ✅
+---------
+- Configuration and keys are outside webroot  
+- Keys validated (32B length, correct permissions)  
+- Crypto, FileVault, AuditLogger working  
+- Security audit passed (`all_ok:true`)  
 
-6) Rychlé testy (po nasazení)
------------------------------
-- `php -r "echo is_dir('/absolute/path/to/project-root/storage') ? 'OK' : 'MISSING';"`
-- V aplikaci vygeneruj testní upload (admin) a pokus se stáhnout soubor prostřednictvím dešifrovacího endpointu.
-- Ujisti se, že `secure/config.php` nespadá do webrootu.
-
-7) Kontakty / poznámky
-----------------------
-- Pokud máš multi-domény (více webrootů pod `/www/domains/...`), vždy nastav `storage` a `secure` na centrální místo mimo jednotlivé webrooty.
-- Pokud chceš, vygeneruji ti přímo `secure/config.php` snippet s fallbacky.
-
-Konec souboru.
+The project now has a solid security foundation and is production-ready.

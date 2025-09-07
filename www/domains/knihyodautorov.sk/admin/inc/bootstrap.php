@@ -1,6 +1,22 @@
 // File: www/admin/inc/bootstrap.php
 <?php
 declare(strict_types=1);
+
+// secure/config.php je includnuto už dříve -> $config existuje
+require_once __DIR__ . '/../../../../../secure/config.php'; // adjust path
+require_once __DIR__ . '/../../../../../libs/KeyManager.php';
+require_once __DIR__ . '/../../../../../libs/Crypto.php';
+
+// Initialize Crypto with key from KeyManager (prefer $_ENV, otherwise key file)
+try {
+    // v dev můžeš povolit generování, v prod false
+    $b64 = KeyManager::getBase64Key('APP_CRYPTO_KEY', $config['paths']['keys'] . '/crypto_key.bin', ($config['app_env'] ?? '') === 'dev');
+    Crypto::init_from_base64($b64);
+} catch (Throwable $e) {
+    // fatal - crypto must be initialized for app to run
+    error_log('[bootstrap] Crypto initialization failed: ' . $e->getMessage());
+    throw $e;
+}
 // Admin bootstrap: initialize session, DB and enforce admin-only access
 // Path: www/admin/inc/bootstrap.php
 

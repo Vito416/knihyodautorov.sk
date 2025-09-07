@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Trigger test</title></head>
+<body>
+  <h1>Trigger Secure Actions</h1>
+  <form method="post" action="https://knihyodautorov.sk/tmp_trigger.php">
+    <input type="hidden" name="token" value="MUSTBESAMEASINENVUNCOMMENTANDFILL!"/>
+    <label>Action:
+      <select name="action">
+        <option value="generate_keys">Generate Keys</option>
+        <option value="run_audit">Run Audit</option>
+      </select>
+    </label>
+    <button type="submit">Run</button>
+  </form>
+</body>
+</html>

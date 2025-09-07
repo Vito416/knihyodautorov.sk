@@ -2,3 +2,4 @@
 db/config/config.php
 db/config/configsmtp.php
 db/config/configrecaptcha.php
+.env

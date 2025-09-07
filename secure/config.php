@@ -1,47 +1,149 @@
 <?php
 // secure/config.php
-// MUST be placed outside webroot and not accessible publicly.
-return [
-    // PDO DSN like 'mysql:host=localhost;dbname=eshop;charset=utf8mb4'
+declare(strict_types=1);
+require_once __DIR__ . '/load_env.php';
+require_once __DIR__ . '/../libs/KeyManager.php';
+
+/**
+ * Minimal secure config — production-ready.
+ * DO NOT store raw keys here.
+ */
+
+$config = [
     'db' => [
-        'dsn' => 'mysql:host=127.0.0.1;dbname=knihy;charset=utf8mb4',
-        'user' => 'dbuser',
-        'pass' => 'dbpass',
+        'dsn' => 'mysql:host=' . ($_ENV['DB_HOST'] ?? '') . ';dbname=' . ($_ENV['DB_NAME'] ?? '') . ';charset=utf8mb4',
+        'user' => $_ENV['DB_USER'] ?? '',
+        'pass' => $_ENV['DB_PASS'] ?? '',
         'options' => [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ],
     ],
-    // Application paths (adjust)
+
     'paths' => [
-        'storage' => __DIR__ . '/../../../storage', // outside webroot
-        'uploads' => __DIR__ . '/../../../storage/uploads',
+        'storage' => __DIR__ . '/../storage',
+        'uploads' => __DIR__ . '/../storage/uploads',
+        'keys' => __DIR__ . '/keys',
     ],
-    // Crypto key for symmetric encryption (AES-256-GCM). Use 32 bytes base64.
-    // Generate once: base64_encode(random_bytes(32)) and store safely.
-    'crypto_key' => 'REPLACE_WITH_BASE64_32_BYTES',
-    // OAuth Google
+
     'google' => [
-        'client_id' => 'GOOGLE_CLIENT_ID',
-        'client_secret' => 'GOOGLE_CLIENT_SECRET',
-        'redirect_uri' => 'https://yourdomain.com/eshop/oauth_google_callback.php',
+        'client_id' => $_ENV['GOOGLE_CLIENT_ID'] ?? '',
+        'client_secret' => $_ENV['GOOGLE_CLIENT_SECRET'] ?? '',
+        'redirect_uri' => $_ENV['GOOGLE_REDIRECT_URI'] ?? '',
     ],
-    // GoPay (placeholders)
+
     'gopay' => [
-        'merchant_id' => 'GOPAY_MERCHANT_ID',
-        'client_id' => 'GOPAY_CLIENT_ID',
-        'client_secret' => 'GOPAY_CLIENT_SECRET',
-        'return_url' => 'https://yourdomain.com/eshop/thank_you.php',
-        'notify_url' => 'https://yourdomain.com/eshop/webhook_payment.php',
+        'merchant_id' => $_ENV['GOPAY_MERCHANT_ID'] ?? '',
+        'client_id' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
+        'client_secret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
+        'return_url' => $_ENV['GOPAY_RETURN_URL'] ?? '',
+        'notify_url' => $_ENV['GOPAY_NOTIFY_URL'] ?? '',
     ],
-    // SMTP for sending mails (reset password etc.)
+
     'smtp' => [
-        'host' => 'smtp.example.com',
-        'port' => 587,
-        'user' => 'smtp-user',
-        'pass' => 'smtp-pass',
-        'from_email' => 'noreply@yourdomain.com',
-        'from_name' => 'Knihy od autorov',
+        'host' => $_ENV['SMTP_HOST'] ?? '',
+        'port' => (int)($_ENV['SMTP_PORT'] ?? 0),
+        'user' => $_ENV['SMTP_USER'] ?? '',
+        'pass' => $_ENV['SMTP_PASS'] ?? '',
+        'from_email' => $_ENV['SMTP_FROM_EMAIL'] ?? '',
+        'from_name' => $_ENV['SMTP_FROM_NAME'] ?? '',
     ],
+
+    'table_names' => [],
 ];
+
+// helper functions (resolve_path, warn_if_within_document_root) — reuse earlier implementations
+// include resolve_path and warn_if_within_document_root from your prior file (unchanged).
+// For brevity assume they exist above or require once.
+
+function resolve_path(string $path): string
+{
+    // je-li již absolutní (linux/unix) nebo windows drive letter
+    if ($path === '') {
+        return $path;
+    }
+
+    $isAbsolute = ($path[0] === '/' || preg_match('#^[A-Za-z]:\\\\#', $path) === 1);
+    if ($isAbsolute) {
+        // normalize .. and . segments
+        $parts = preg_split('#[\\/\\\\]+#', $path);
+    } else {
+        $base = realpath(__DIR__ . '/..') ?: (__DIR__ . '/..'); // fallback pokud realpath selže
+        $combined = rtrim($base, '/\\') . '/' . $path;
+        $parts = preg_split('#[\\/\\\\]+#', $combined);
+    }
+
+    $stack = [];
+    foreach ($parts as $part) {
+        if ($part === '' || $part === '.') {
+            continue;
+        }
+        if ($part === '..') {
+            array_pop($stack);
+            continue;
+        }
+        $stack[] = $part;
+    }
+
+    $normalized = DIRECTORY_SEPARATOR . implode(DIRECTORY_SEPARATOR, $stack);
+    // Pokud původní path měl drive letter (windows), zachovej ho
+    if (preg_match('#^[A-Za-z]:#', $path) === 1) {
+        $normalized = ltrim($normalized, DIRECTORY_SEPARATOR); // remove leading slash
+    }
+
+    return $normalized;
+}
+
+function warn_if_within_document_root(string $resolvedPath): void
+{
+    if (!isset($_SERVER['DOCUMENT_ROOT']) || $_SERVER['DOCUMENT_ROOT'] === '') {
+        return;
+    }
+
+    $docRoot = realpath($_SERVER['DOCUMENT_ROOT']) ?: rtrim($_SERVER['DOCUMENT_ROOT'], "/\\");
+    // normalizovat oba
+    $rp = realpath($resolvedPath) ?: $resolvedPath;
+
+    // porovnej prefix
+    if (strpos($rp, $docRoot) === 0) {
+        trigger_error(sprintf('Security warning: configured path "%s" appears to be inside DOCUMENT_ROOT ("%s"). Prefer storing files outside webroot.', $resolvedPath, $docRoot), E_USER_WARNING);
+    }
+}
+
+try {
+    // resolve and canonicalize paths (storage/uploads/keys)
+    foreach (['storage','uploads','keys'] as $p) {
+        if (empty($config['paths'][$p])) throw new RuntimeException(sprintf('paths[%s] must be set', $p));
+        $resolved = resolve_path($config['paths'][$p]);
+        $real = realpath($resolved);
+        if ($real !== false) $resolved = $real;
+        $config['paths'][$p] = $resolved;
+        warn_if_within_document_root($resolved);
+    }
+} catch (RuntimeException $e) {
+    throw $e;
+}
+
+// Self-test limited to dev (using $_ENV not getenv)
+$appEnv = strtolower((string)($_ENV['APP_ENV'] ?? ''));
+if ($appEnv === 'dev') {
+    $dbStatus = 'FAILED';
+    try {
+        $dsn = $config['db']['dsn'] ?? '';
+        $user = $config['db']['user'] ?? '';
+        $pass = $config['db']['pass'] ?? '';
+        $options = ($config['db']['options'] ?? []) + [PDO::ATTR_TIMEOUT => 3];
+        $pdo = new PDO($dsn, $user, $pass, $options);
+        $stmt = $pdo->query('SELECT 1');
+        if ($stmt !== false) $dbStatus = 'OK';
+    } catch (Throwable $e) {
+        $dbStatus = 'FAILED';
+    }
+    $storageStatus = is_dir($config['paths']['storage']) ? 'OK' : 'FAILED';
+    echo PHP_EOL . "CONFIG SELF-TEST (APP_ENV=dev):" . PHP_EOL;
+    echo "DB: " . $dbStatus . PHP_EOL;
+    echo "STORAGE: " . $storageStatus . PHP_EOL;
+}
+
+return $config;
