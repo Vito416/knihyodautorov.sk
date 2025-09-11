@@ -1,6 +1,6 @@
 <?php
 // Pripojenie k databáze cez PDO a existujúceho konfiguračného súboru
-require_once __DIR__ . '/db/config/config.php';
+require_once __DIR__ . '/../../../db/config/config.php';
 
 try {
     // Ak konfiguračný súbor nespecifikuje spojenie, vytvoríme PDO manuálne (predpokladáme premenné z configu).
@@ -43,7 +43,7 @@ if (isset($_POST['create_db'])) {
         email VARCHAR(255) NOT NULL UNIQUE,
         heslo_hash VARCHAR(255) NOT NULL,
         heslo_algo VARCHAR(50) DEFAULT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        is_active BOOLEAN NOT NULL DEFAULT FALSE,
         is_locked BOOLEAN NOT NULL DEFAULT FALSE,
         locked_until DATETIME NULL,
         failed_logins INT NOT NULL DEFAULT 0,
@@ -59,7 +59,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka user_profiles
     $sql = "CREATE TABLE IF NOT EXISTS user_profiles (
         user_id INT PRIMARY KEY,
-        full_name VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255) NOT NULL DEFAULT '',
         phone_enc VARBINARY(255) NULL,
         address_enc VARBINARY(255) NULL,
         company_name_enc VARBINARY(255) NULL,
@@ -527,7 +527,29 @@ if (isset($_POST['create_db'])) {
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "webhook_outbox");
 
-    // Tabuľka notifications
+    // Tabuľka email_verifications (required pre register/verify/resend)
+    $sql = "CREATE TABLE IF NOT EXISTS email_verifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        token_hash CHAR(64) NOT NULL,           -- sha256 hex (alebo HMAC hex neskôr)
+        key_version INT NOT NULL DEFAULT 0,
+        expires_at DATETIME NOT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        used_at DATETIME NULL,
+        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
+        UNIQUE (user_id, token_hash),
+        INDEX (expires_at)
+    ) ENGINE=InnoDB;";
+    createTable($pdo, $sql, "email_verifications");
+
+    // Index pre rýchle čistenie expirovaných tokenov
+    try {
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_ev_expires ON email_verifications (expires_at)");
+    } catch (PDOException $e) {
+        error_log('Index creation (email_verifications) : ' . $e->getMessage());
+    }
+
+    // Tabuľka notifications (rozšírená pre retry/worker)
     $sql = "CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
@@ -535,12 +557,26 @@ if (isset($_POST['create_db'])) {
         template VARCHAR(100) NOT NULL,
         payload JSON NULL,
         status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+        retries INT NOT NULL DEFAULT 0,
+        max_retries INT NOT NULL DEFAULT 6,
+        next_attempt_at DATETIME NULL,
         scheduled_at DATETIME NULL,
         sent_at DATETIME NULL,
         error TEXT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "notifications");
+
+    // Index pre rýchly výber pending notifikácií (worker)
+    try {
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_notifications_pending ON notifications (status, next_attempt_at, scheduled_at, created_at)");
+    } catch (PDOException $e) {
+        // MySQL staršie verzie nemajú IF NOT EXISTS pre CREATE INDEX — ticho ignoruj chybu o duplicite
+        // Ale aspoň skontrolujeme, či to nepadlo kriticky:
+        error_log('Index creation (notifications) : ' . $e->getMessage());
+    }
 
     // Tabuľka system_jobs
     $sql = "CREATE TABLE IF NOT EXISTS system_jobs (
@@ -570,9 +606,15 @@ if (isset($_POST['insert_demo'])) {
     // Admin účet s náhodným heslom
     $adminEmail = 'admin@example.com';
     $adminPassword = bin2hex(random_bytes(4)); // náhodné heslo
-    $adminHash = password_hash($adminPassword, PASSWORD_BCRYPT);
-    executeQuery($pdo, "INSERT INTO pouzivatelia (email, heslo_hash, actor_type, is_active, created_at, updated_at)
-        VALUES ('$adminEmail', '$adminHash', 'admin', TRUE, NOW(), NOW())", "Admin účet");
+    $options = [
+    'memory_cost' => 1<<17,  // 128 MB
+    'time_cost' => 4,        // 4 průchody
+    'threads' => 2            // paralelní vlákna
+    ];
+    $adminHash = password_hash($adminPassword, PASSWORD_ARGON2ID, $options);
+    $stmt = $pdo->prepare("INSERT INTO pouzivatelia (email, heslo_hash, actor_type, is_active, created_at, updated_at)
+        VALUES (:email, :hash, 'admin', TRUE, NOW(), NOW())");
+    $stmt->execute([':email' => $adminEmail, ':hash' => $adminHash]);
     echo "<p>Admin heslo: $adminPassword</p>";
 
     // Priradenie roly Správca adminovi

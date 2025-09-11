@@ -125,25 +125,4 @@ try {
     throw $e;
 }
 
-// Self-test limited to dev (using $_ENV not getenv)
-$appEnv = strtolower((string)($_ENV['APP_ENV'] ?? ''));
-if ($appEnv === 'dev') {
-    $dbStatus = 'FAILED';
-    try {
-        $dsn = $config['db']['dsn'] ?? '';
-        $user = $config['db']['user'] ?? '';
-        $pass = $config['db']['pass'] ?? '';
-        $options = ($config['db']['options'] ?? []) + [PDO::ATTR_TIMEOUT => 3];
-        $pdo = new PDO($dsn, $user, $pass, $options);
-        $stmt = $pdo->query('SELECT 1');
-        if ($stmt !== false) $dbStatus = 'OK';
-    } catch (Throwable $e) {
-        $dbStatus = 'FAILED';
-    }
-    $storageStatus = is_dir($config['paths']['storage']) ? 'OK' : 'FAILED';
-    echo PHP_EOL . "CONFIG SELF-TEST (APP_ENV=dev):" . PHP_EOL;
-    echo "DB: " . $dbStatus . PHP_EOL;
-    echo "STORAGE: " . $storageStatus . PHP_EOL;
-}
-
 return $config;

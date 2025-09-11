@@ -4,122 +4,209 @@ declare(strict_types=1);
 /**
  * libs/AuditLogger.php
  *
- * Loguje auditní záznamy šifrovaně. Preferuje samostatný AUDIT_KEY (verzovaný v keys dir).
- * Pokud AUDIT_KEY není dostupný, použije Crypto::encrypt (master key).
+ * Robust audit logger with DB primary and file fallback storage.
+ * - Prefers $_ENV values for paths (non-environment dependent setups supported via $GLOBALS['config'])
+ * - Atomic file writes with tempfile  rename and append-with-lock fallback
+ * - Safe file permissions
  *
- * Uloží do DB pokud je PDO poskytnuto, jinak do souboru storage/audit/audit.log (encrypted entries).
- *
- * NEVER prints keys or plaintext payloads.
+ * API:
+ *   AuditLogger::log(?PDO $pdo, $actorId, string $action, string $payloadEnc, string $keyVersion = '', array $meta = []): bool
  */
 
 final class AuditLogger
 {
     /**
-     * Loguje událost.
-     * @param PDO|null $pdo  - pokud provided, uloží do DB
-     * @param int|null $actorId
+     * Public API: attempt to write audit entry to DB, fallback to file.
+     * Returns true on success (DB or file), false on failure.
+     *
+     * @param PDO|null $pdo
+     * @param mixed $actorId anything that can be stringified (or null)
      * @param string $action
-     * @param array $details
-     * @param string|null $keyVersion - volitelně verze klíče použitá pro obsah
+     * @param string $payloadEnc JSON or encoded payload string
+     * @param string $keyVersion
+     * @param array $meta
      * @return bool
      */
-    public static function log(?PDO $pdo, ?int $actorId, string $action, array $details, ?string $keyVersion = null): bool
+    public static function log(?PDO $pdo, $actorId, string $action, string $payloadEnc, string $keyVersion = '', array $meta = []): bool
     {
-        // prepare payload
-        $payloadArr = [
-            'ts' => gmdate('Y-m-d\TH:i:s\Z'),
-            'actor_id' => $actorId,
-            'action' => $action,
-            'details' => $details,
-        ];
-        $payload = json_encode($payloadArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        if ($payload === false) return false;
+        $now = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
 
-        // try audit-specific key first (KeyManager)
-        $enc = null;
-        $enc_method = null;
-        try {
-            if (class_exists('KeyManager')) {
-                $keysDir = $GLOBALS['config']['paths']['keys'] ?? (__DIR__ . '/../secure/keys');
-                // getRawKeyBytes returns ['raw' => ..., 'version'=> 'vN']
-                $info = null;
-                try {
-                    $info = KeyManager::getRawKeyBytes('AUDIT_KEY', $keysDir, 'audit_key', false);
-                } catch (Throwable $e) {
-                    $info = null;
-                }
-
-                if (is_array($info) && isset($info['raw']) && is_string($info['raw'])) {
-                    // use sodium AEAD to encrypt payload, return compact_base64 (nonce|tag|cipher) base64
-                    $rawKey = $info['raw'];
-                    $nonce = random_bytes(SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES);
-                    $combined = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt($payload, '', $nonce, $rawKey);
-                    if ($combined === false) throw new RuntimeException('audit encrypt failed');
-                    $tagSize = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_ABYTES;
-                    $tag = substr($combined, -$tagSize);
-                    $cipher = substr($combined, 0, -$tagSize);
-                    // compact: nonce|tag|cipher then base64
-                    $enc = base64_encode($nonce . $tag . $cipher);
-                    $enc_method = 'audit_key';
-                    // zero rawKey from memory best-effort
-                    KeyManager::memzero($rawKey);
-                }
-            }
-        } catch (Throwable $e) {
-            error_log('[AuditLogger] audit-key encryption failed: ' . $e->getMessage());
-            $enc = null;
-        }
-
-        // fallback: use Crypto (must be initialized)
-        if ($enc === null) {
-            try {
-                if (!class_exists('Crypto')) throw new RuntimeException('Crypto class unavailable');
-                $enc = Crypto::encrypt($payload, 'compact_base64');
-                $enc_method = 'master_crypto';
-            } catch (Throwable $e) {
-                error_log('[AuditLogger] fallback Crypto encrypt failed: ' . $e->getMessage());
-                return false;
-            }
-        }
-
-        $now = gmdate('Y-m-d H:i:s');
-
-        // Try DB insert first
+        // Try DB first (best-effort)
         if ($pdo instanceof PDO) {
             try {
-                $stmt = $pdo->prepare('INSERT INTO audit_log (event_time, actor_id, action, payload_enc, key_version, meta) VALUES (:t,:actor,:action,:payload,:kv,:meta)');
-                $meta = json_encode(['stored_via'=>'db','enc_method'=>$enc_method], JSON_UNESCAPED_SLASHES);
-                $stmt->execute([
-                    ':t' => $now,
-                    ':actor' => $actorId,
-                    ':action' => $action,
-                    ':payload' => $enc,
-                    ':kv' => $keyVersion,
-                    ':meta' => $meta
-                ]);
-                return true;
+                $sql = 'INSERT INTO audit_log (event_time, actor_id, action, payload_enc, key_version, meta)
+                        VALUES (:t, :actor, :action, :payload, :kv, :meta)';
+                $stmt = $pdo->prepare($sql);
+                $params = [
+                    't' => $now,
+                    'actor' => (string)($actorId ?? ''),
+                    'action' => $action,
+                    'payload' => $payloadEnc,
+                    'kv' => $keyVersion,
+                    'meta' => json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ];
+                $ok = $stmt->execute($params);
+                if ($ok) return true;
+                // else fallthrough to file fallback
+                error_log('[AuditLogger] DB execute returned false; falling back to file');
             } catch (Throwable $e) {
-                error_log('[AuditLogger] DB insert failed: ' . $e->getMessage());
-                // fallthrough to file fallback
+                error_log('[AuditLogger] DB write failed: ' . $e->getMessage());
+                // continue to file fallback
             }
         }
 
         // File fallback
         try {
-            $storage = $GLOBALS['config']['paths']['storage'] ?? (__DIR__ . '/../secure/storage');
-            $auditDir = rtrim($storage, '/\\') . '/audit';
-            if (!is_dir($auditDir)) @mkdir($auditDir, 0750, true);
-            $entry = json_encode(['ts'=>$now,'actor'=>$actorId,'action'=>$action,'payload'=>$enc,'key_version'=>$keyVersion,'enc_method'=>$enc_method], JSON_UNESCAPED_SLASHES);
-            if ($entry !== false) {
-                $f = $auditDir . '/audit.log';
-                file_put_contents($f, $entry . PHP_EOL, FILE_APPEND | LOCK_EX);
-                @chmod($f, 0600);
-                return true;
-            }
+            return self::fileFallback($now, (string)($actorId ?? ''), $action, $payloadEnc, $keyVersion, $meta);
         } catch (Throwable $e) {
+            // Never let audit failure kill the app
             error_log('[AuditLogger] file fallback failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Resolve audit directory (priority: $_ENV -> $GLOBALS['config'] -> storage/audit default)
+     * @return string
+     */
+    private static function resolveAuditDir(): string
+    {
+        if (!empty($_ENV['AUDIT_PATH'])) {
+            return rtrim($_ENV['AUDIT_PATH'], DIRECTORY_SEPARATOR);
+        }
+        if (isset($GLOBALS['config']) && is_array($GLOBALS['config']) && !empty($GLOBALS['config']['paths']['audit'])) {
+            return rtrim($GLOBALS['config']['paths']['audit'], DIRECTORY_SEPARATOR);
+        }
+        // fallback to storage path
+        if (!empty($_ENV['STORAGE_PATH'])) {
+            return rtrim($_ENV['STORAGE_PATH'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'audit';
+        }
+        if (isset($GLOBALS['config']) && is_array($GLOBALS['config']) && !empty($GLOBALS['config']['paths']['storage'])) {
+            return rtrim($GLOBALS['config']['paths']['storage'], DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'audit';
+        }
+        // last resort relative path
+        return __DIR__ . '/../storage/audit';
+    }
+
+    /**
+     * Write audit entry to file in an atomic, locked manner.
+     *
+     * @param string $timestamp
+     * @param string $actorId
+     * @param string $action
+     * @param string $payloadEnc
+     * @param string $keyVersion
+     * @param array $meta
+     * @return bool
+     * @throws RuntimeException
+     */
+    private static function fileFallback(string $timestamp, string $actorId, string $action, string $payloadEnc, string $keyVersion, array $meta): bool
+    {
+        $auditDir = self::resolveAuditDir();
+        // ensure dir exists
+        if (!is_dir($auditDir)) {
+            if (!@mkdir($auditDir, 0700, true) && !is_dir($auditDir)) {
+                throw new RuntimeException('AuditLogger: failed to create audit dir: ' . $auditDir);
+            }
+            @chmod($auditDir, 0700);
         }
 
-        return false;
+        $entry = [
+            'ts' => $timestamp,
+            'actor' => $actorId,
+            'action' => $action,
+            'payload' => $payloadEnc,
+            'kv' => $keyVersion,
+            'meta' => $meta,
+            'host' => function_exists('gethostname') ? gethostname() : php_uname('n'),
+        ];
+        $line = json_encode($entry, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if ($line === false) {
+            throw new RuntimeException('AuditLogger: json_encode failed');
+        }
+        $line .= PHP_EOL;
+
+        // create a tempfile in same dir
+        $tmp = tempnam($auditDir, 'audit_');
+        if ($tmp === false) {
+            throw new RuntimeException('AuditLogger: temp file creation failed in ' . $auditDir);
+        }
+
+        $fp = @fopen($tmp, 'cb');
+        if ($fp === false) {
+            @unlink($tmp);
+            throw new RuntimeException('AuditLogger: cannot open temp file for write: ' . $tmp);
+        }
+
+        try {
+            if (!flock($fp, LOCK_EX)) {
+                throw new RuntimeException('AuditLogger: flock failed on ' . $tmp);
+            }
+            $bytes = fwrite($fp, $line);
+            if ($bytes === false || $bytes < strlen($line)) {
+                throw new RuntimeException('AuditLogger: incomplete write to temp file');
+            }
+            fflush($fp);
+            // permissions will be set on the filename after closing for portability
+        } finally {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            @chmod($tmp, 0600); // portable: chmod by filename, works across platforms
+        }
+
+        $final = $auditDir . DIRECTORY_SEPARATOR . 'audit.log';
+
+        // If final doesn't exist, try rename (atomic create)
+        if (!file_exists($final)) {
+            if (!@rename($tmp, $final)) {
+                // rename failed -> try append fallback
+                $ok = self::appendFile($final, $line);
+                @unlink($tmp);
+                if (!$ok) {
+                    throw new RuntimeException('AuditLogger: rename to final failed and append fallback failed');
+                }
+                @chmod($final, 0600);
+                return true;
+            }
+            @chmod($final, 0600);
+            return true;
+        }
+
+        // final exists -> append safely
+        $ok = self::appendFile($final, file_get_contents($tmp));
+        @unlink($tmp);
+        if ($ok) {
+            @chmod($final, 0600);
+            return true;
+        }
+        throw new RuntimeException('AuditLogger: append to final failed');
+    }
+
+    /**
+     * Append a line to a file with locking. Creates file if not exists.
+     * @param string $file
+     * @param string $line
+     * @return bool
+     */
+    private static function appendFile(string $file, string $line): bool
+    {
+        $fp = @fopen($file, 'cb');
+        if ($fp === false) return false;
+        $ok = false;
+        try {
+            if (!flock($fp, LOCK_EX)) return false;
+            if (fseek($fp, 0, SEEK_END) === 0) {
+                $bytes = fwrite($fp, $line);
+                if ($bytes !== false && $bytes >= strlen($line)) {
+                    fflush($fp);
+                    $ok = true;
+                }
+            }
+        } finally {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            @chmod($file, 0600);
+        }
+        return $ok;
     }
 }

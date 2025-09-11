@@ -39,6 +39,7 @@ try {
     $toCreate = [
         ['env'=>'APP_CRYPTO_KEY', 'basename'=>'crypto_key', 'required'=>true],
         ['env'=>'FILEVAULT_KEY', 'basename'=>'filevault_key', 'required'=>true],
+        ['env'=>'PASSWORD_PEPPER', 'basename'=>'password_pepper', 'required'=>true],
         // optional: audit key - uncomment if you want to generate automatically
         // ['env'=>'AUDIT_KEY', 'basename'=>'audit_key', 'required'=>false],
     ];
