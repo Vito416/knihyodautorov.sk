@@ -15,8 +15,8 @@ if (!defined('APP_NAME')) {
     define('APP_NAME', $_ENV['APP_NAME'] ?? 'KnihyOdAutorov');
 }
 if (!defined('APP_URL')) {
-    // Nastavte v prostředí přes APP_URL, např. https://example.com
-    define('APP_URL', $_ENV['APP_URL'] ?? 'https://example.com');
+    // Nastavte v prostředí přes APP_URL, např. https://example.com/eshop/
+    define('APP_URL', $_ENV['APP_URL'] ?? 'https://example.com/eshop/');
 }
 
 /**
@@ -53,7 +53,7 @@ function loadPepper(): ?string
                 }
             } catch (Throwable $e) {
                 // nevadí, zkusíme env fallback níže
-                error_log('[KeyManager] getRawKeyBytes failed: ' . $e->getMessage());
+                Logger::systemError($e);
             }
         }
 
@@ -62,10 +62,10 @@ function loadPepper(): ?string
         if ($b64 !== '') {
             $raw = base64_decode($b64, true);
             if ($raw !== false) return $raw;
-            error_log('[register] PASSWORD_PEPPER env is set but invalid base64');
+            Logger::systemError(new RuntimeException('PASSWORD_PEPPER env invalid base64'));
         }
     } catch (Throwable $e) {
-        error_log('[register] loadPepper unexpected error: ' . $e->getMessage());
+        Logger::systemError($e);
     }
     return null;
 }
@@ -86,17 +86,6 @@ function password_preprocess_for_hash(string $password, ?string $pepper)
     return hash_hmac('sha256', $password, $pepper, true);
 }
 
-/**
- * Pomocná validace IP
- */
-function client_ip(): ?string
-{
-    $ip = $_SERVER['REMOTE_ADDR'] ?? null;
-    if ($ip === null) return null;
-    // basic validation
-    return filter_var($ip, FILTER_VALIDATE_IP) ?: null;
-}
-
 /* ====== začátek logiky registrace ====== */
 
 $err = '';
@@ -109,19 +98,8 @@ if (!isset($db) || !($db instanceof PDO)) {
     $err = 'Registrácia momentálne nie je dostupná. Prosím skúste neskôr.';
 }
 
+// pepper bude načítaný povinne pri generovaní overovacieho tokenu cez KeyManager (fail-fast)
 $pepper = null;
-try {
-    $pepper = loadPepper();
-    if ($pepper === null) {
-        error_log('[register] No pepper loaded from KeyManager or ENV; proceeding without pepper (NOT recommended in production)');
-    } else {
-        // Best practice: neukládejte pepper do logu
-        error_log('[register] pepper loaded (version ok)');
-    }
-} catch (Throwable $e) {
-    error_log('[register] loadPepper error: ' . $e->getMessage());
-    $pepper = null;
-}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === '') {
     $email = (string)($_POST['email'] ?? '');
@@ -129,28 +107,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === '') {
     $csrf = (string)($_POST['csrf_token'] ?? '');
 
     if (!Auth::validateCsrfToken($csrf)) {
-        error_log('Register: CSRF token invalid for ' . ($email ?: '[no email]'));
+        Logger::register('register_failure', null, ['reason'=>'csrf_invalid', 'email'=>$email]);
         $err = 'Neplatný formulár (CSRF). Skúste stránku obnoviť a opakovať.';
     } else {
         $email = strtolower(trim($email));
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Logger::register('register_failure', null, ['reason'=>'invalid_email', 'email'=>$email]);
             $err = 'Neplatný email.';
         } elseif (mb_strlen($password) < 12) {
+            Logger::register('register_failure', null, ['reason'=>'short_password', 'email'=>$email]);
             $err = 'Heslo musí mať aspoň 12 znakov.';
         } else {
             try {
-                // Defensive check for mass registrations from same IP (simple)
-                $ip = client_ip();
-                if ($ip) {
-                    $sth = $db->prepare('SELECT COUNT(*) FROM pouzivatelia WHERE created_at >= (NOW() - INTERVAL 1 HOUR) AND last_login_ip = ?');
-                    $sth->execute([$ip]);
-                    $cnt = (int)$sth->fetchColumn();
-                    if ($cnt >= 20) {
-                        $err = 'Príliš veľa registrácií z tejto IP. Skúste to neskôr.';
-                    }
-                }
+                    // --- kontrola limitu registrací podle IP ---
+                    $sth = $db->prepare(
+                        'SELECT COUNT(*) AS cnt_short, 
+                                SUM(CASE WHEN created_at >= (NOW() - INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS cnt_day 
+                        FROM register_events 
+                        WHERE ip = ? AND created_at >= (NOW() - INTERVAL 2 HOUR)'
+                    );
+                    $sth->execute([Logger::getClientIp()]);
+                    $row = $sth->fetch(PDO::FETCH_ASSOC);
 
+                    if (($row['cnt_short'] ?? 0) >= 5) {
+                        Logger::register('register_failure', null, ['reason'=>'ip_limit_short', 'email'=>$email]);
+                        $err = 'Príliš veľa registrácií z tejto IP za posledné 2 hodiny.';
+                    } elseif (($row['cnt_day'] ?? 0) >= 20) {
+                        Logger::register('register_failure', null, ['reason'=>'ip_limit_day', 'email'=>$email]);
+                        $err = 'Príliš veľa registrácií z tejto IP za posledných 24 hodín.';
+                    }
                 if ($err === '') {
                     // Preprocess password with pepper (HMAC) BEFORE hashing.
                     $pwdForHash = password_preprocess_for_hash($password, $pepper);
@@ -170,13 +156,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === '') {
                     $chk->execute([$email]);
                     if ($chk->fetchColumn()) {
                         $db->rollBack();
+                        Logger::register('register_failure', null, ['reason'=>'email_exists', 'email'=>$email]);
                         $err = 'Účet s týmto e-mailom už existuje.';
                     } else {
                         // insert user as inactive
-                        $ins = $db->prepare('INSERT INTO pouzivatelia (email, heslo_hash, heslo_algo, is_active, actor_type, last_login_ip, created_at, updated_at)
-                                             VALUES (?, ?, ?, 0, ?, ?, NOW(), NOW())');
+                        $ins = $db->prepare('INSERT INTO pouzivatelia (email, heslo_hash, heslo_algo, is_active, actor_type, created_at, updated_at)
+                                             VALUES (?, ?, ?, 0, ?, NOW(), NOW())');
                         $actorType = 'zakaznik';
-                        $ins->execute([$email, $hash, $pwAlgo, $actorType, $ip]);
+                        $ins->execute([$email, $hash, $pwAlgo, $actorType]);
                         $newUserId = (int)$db->lastInsertId();
 
                         // ensure role "Zákazník"
@@ -207,91 +194,154 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === '') {
                             $pcreate = $db->prepare('INSERT INTO user_profiles (user_id, full_name, updated_at) VALUES (?, ?, NOW())');
                             $pcreate->execute([$newUserId, '']);
                         }
+                    // ---------------------------
+                    // generate verification token & create DB records (HMAC + encrypted payload)
+                    // ---------------------------
 
-                        // generate verification token (raw token sent via email)
-                        $tokenRaw = bin2hex(random_bytes(32));
-
-                        // Use HMAC-SHA256 with pepper for token hash if pepper exists; else use plain sha256
-                        if ($pepper !== null) {
-                            // pepper is binary; use hash_hmac -> hex string
-                            $tokenHash = hash_hmac('sha256', $tokenRaw, $pepper);
-                        } else {
-                            $tokenHash = hash('sha256', $tokenRaw);
+                    // REQUIRE: load pepper (mandatory) from versioned key file in KEYS_DIR
+                    try {
+                        if (!class_exists('KeyManager')) {
+                            throw new RuntimeException('KeyManager class not available; cannot load PASSWORD_PEPPER.');
                         }
+                        // getRawKeyBytes will throw if key file missing/invalid
+                        $pepperInfo = KeyManager::getRawKeyBytes('PASSWORD_PEPPER', KEYS_DIR, 'password_pepper', false);
+                        $pepperRaw = $pepperInfo['raw']; // binary
+                        $pepperVersionStr = $pepperInfo['version'] ?? 'v1';
+                        $pepperVersion = (int) filter_var($pepperVersionStr, FILTER_SANITIZE_NUMBER_INT);
+                        if ($pepperVersion <= 0) throw new RuntimeException('Invalid pepper version: ' . $pepperVersionStr);
+                        } catch (Throwable $e) {
+                            if ($db->inTransaction()) $db->rollBack();
+                            error_log('[register] Required PASSWORD_PEPPER missing or invalid: ' . $e->getMessage());
 
-                        $expiresAt = (new DateTime('+7 days'))->format('Y-m-d H:i:s');
+                            $_SESSION['error'] = 'Registrácia momentálne nie je dostupná. Prosím skúste neskôr alebo kontaktujte podporu.';
+                            header('Location: login.php');
+                            exit;
+                        }
+                    // raw token (hex) used only for immediate send in this request
+                    $tokenRaw = bin2hex(random_bytes(32));
+                    $expiresAt = (new DateTime('+7 days'))->format('Y-m-d H:i:s');
 
-                        $tins = $db->prepare('INSERT INTO email_verifications (user_id, token_hash, expires_at, key_version, created_at) VALUES (?, ?, ?, ?, NOW())');
-                        // if we have version info from KeyManager we could store it; for now store 0 or v1
-                        $keyVersion = ($pepper !== null && isset($info['version'])) ? $info['version'] : 'v0';
-                        $tins->execute([$newUserId, $tokenHash, $expiresAt, $keyVersion]);
+                    // HMAC token hash using pepper (store hex) — record mandatory pepper version
+                    $tokenHash = hash_hmac('sha256', $tokenRaw, $pepperRaw);
 
-                        // prepare notification payload
-                        $base = rtrim(defined('APP_URL') ? APP_URL : 'https://example.com', '/');
-                        $verifyUrl = $base . '/verify_email.php?uid=' . $newUserId . '&token=' . $tokenRaw;
-                        $payloadArr = [
-                            'to' => $email,
-                            'subject' => sprintf('%s: potvrďte svoj e-mail', defined('APP_NAME') ? APP_NAME : 'Naša služba'),
-                            'template' => 'verify_email',
-                            'vars' => [
-                                'verify_url' => $verifyUrl,
-                                'expires_at' => $expiresAt,
-                                'site' => defined('APP_NAME') ? APP_NAME : null
-                            ]
-                        ];
-                        $payload = json_encode($payloadArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    // insert email_verifications with explicit key_version
+                    $tins = $db->prepare('INSERT INTO email_verifications (user_id, token_hash, expires_at, key_version, created_at) VALUES (?, ?, ?, ?, NOW())');
+                    $tins->execute([$newUserId, $tokenHash, $expiresAt, $pepperVersion]);
 
-                        // insert notification (pending)
-                        $nins = $db->prepare('INSERT INTO notifications (user_id, channel, template, payload, status, scheduled_at, created_at, retries, max_retries)
-                                              VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 0, ?)');
-                        $maxRetries = 6;
-                        $nins->execute([$newUserId, 'email', 'verify_email', $payload, 'pending', $maxRetries]);
-                        $notifId = (int)$db->lastInsertId();
+                    // ---------------------------
+                    // encrypt the raw token for notifications payload using APP crypto key
+                    // ---------------------------
+                    try {
+                        // ensure libsodium
+                        if (method_exists('KeyManager','requireSodium')) KeyManager::requireSodium();
 
-                        $db->commit();
+                        $cryptoInfo = KeyManager::getRawKeyBytes('APP_CRYPTO_KEY', KEYS_DIR, 'crypto_key', false);
+                        $cryptoKey = $cryptoInfo['raw']; // binary
+                        $cryptoVersion = $cryptoInfo['version'] ?? 'v1';
 
-                        // Best-effort immediate send: only via PHPMailer (no fallback to mail())
-                        try {
-                            if (
-                                class_exists('\PHPMailer\PHPMailer\PHPMailer')
-                                && !empty($config['smtp']['host'])
-                                && !empty($config['smtp']['from_email'])
-                            ) {
-                                $smtp = $config['smtp'];
-                                $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
-                                $mail->isSMTP();
-                                $mail->Host = $smtp['host'];
-                                $mail->SMTPAuth = !empty($smtp['user']);
-                                if (!empty($smtp['user'])) {
-                                    $mail->Username = $smtp['user'];
-                                    $mail->Password = $smtp['pass'];
-                                }
-                                if (!empty($smtp['port'])) $mail->Port = (int)$smtp['port'];
-                                if (!empty($smtp['secure'])) $mail->SMTPSecure = $smtp['secure'];
-                                $mail->Timeout = isset($config['smtp']['timeout']) ? (int)$config['smtp']['timeout'] : 10;
-                                $mail->SMTPAutoTLS = true;
+                        $nonce = random_bytes(SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES);
+                        $cipher = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt($tokenRaw, '', $nonce, $cryptoKey);
+                        $encTokenB64 = base64_encode($nonce . $cipher);
+                        } catch (Throwable $e) {
+                            if ($db->inTransaction()) $db->rollBack();
+                            error_log('[register] APP_CRYPTO_KEY load/encrypt error: ' . $e->getMessage());
 
-                                $fromEmail = $smtp['from_email'];
-                                $fromName  = $smtp['from_name'] ?? (defined('APP_NAME') ? APP_NAME : null);
-                                $mail->setFrom($fromEmail, $fromName);
-                                $mail->addAddress($payloadArr['to']);
-                                $mail->Subject = $payloadArr['subject'];
-                                $mail->Body = "Dobrý deň,\n\nKliknite na tento odkaz pre overenie e-mailu:\n\n" .
-                                            $payloadArr['vars']['verify_url'] . "\n\nOdkaz platí do: " .
-                                            $payloadArr['vars']['expires_at'] . "\n\nS pozdravom";
-                                $mail->isHTML(false);
+                            $_SESSION['error'] = 'Registrácia momentálne nie je dostupná. Prosím skúste neskôr alebo kontaktujte podporu.';
+                            header('Location: login.php');
+                            exit;
+                        }
+                    // build subject ensuring UTF-8 validity (fix for garbled subject)
+                    $subject = sprintf('%s: potvrďte svoj e-mail', defined('APP_NAME') ? APP_NAME : 'Naša služba');
+                    // ensure $subject is valid UTF-8 (convert if needed)
+                    if (!mb_check_encoding($subject, 'UTF-8')) {
+                        $subject = mb_convert_encoding($subject, 'UTF-8', 'auto');
+                    }
 
-                                $mail->send();
+                    // prepare notification payload WITHOUT raw token (encrypted instead)
+                    $payloadArr = [
+                        'to' => $email,
+                        'subject' => $subject,
+                        'template' => 'verify_email',
+                        'vars' => [
+                            'encrypted_token' => $encTokenB64,
+                            'crypto_key_version' => $cryptoVersion,
+                            'expires_at' => $expiresAt,
+                            'site' => defined('APP_NAME') ? APP_NAME : null
+                        ]
+                    ];
+                    $payload = json_encode($payloadArr, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-                                // mark notification as sent
-                                $db->prepare("UPDATE notifications SET status = 'sent', sent_at = NOW(), error = NULL WHERE id = ?")
-                                    ->execute([$notifId]);
+                    // insert notification (pending) — worker will decrypt when sending
+                    $nins = $db->prepare('INSERT INTO notifications (user_id, channel, template, payload, status, scheduled_at, created_at, retries, max_retries)
+                                        VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 0, ?)');
+                    $maxRetries = 6;
+                    $nins->execute([$newUserId, 'email', 'verify_email', $payload, 'pending', $maxRetries]);
+                    $notifId = (int)$db->lastInsertId();
+
+                    $db->commit();
+                    Logger::register('register_success', $newUserId, ['email'=>$email,]);
+                    // Best-effort immediate send via PHPMailer (do not include raw token in DB)
+                    // Build verify URL for immediate send (we still have $tokenRaw locally)
+                    $base = rtrim(defined('APP_URL') ? APP_URL : 'https://example.com', '/');
+                    $verifyUrl = $base . '/verify_email.php?uid=' . $newUserId . '&token=' . $tokenRaw;
+
+                    try {
+                        if (
+                            class_exists('\PHPMailer\PHPMailer\PHPMailer')
+                            && !empty($config['smtp']['host'])
+                            && !empty($config['smtp']['from_email'])
+                        ) {
+                            $smtp = $config['smtp'];
+                            $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
+                            $mail->isSMTP();
+                            $mail->Host = $smtp['host'];
+                            $mail->SMTPAuth = !empty($smtp['user']);
+                            if (!empty($smtp['user'])) {
+                                $mail->Username = $smtp['user'];
+                                $mail->Password = $smtp['pass'];
                             }
-                        } catch (\Exception $e) {
-                            error_log('[register immediate_send] ' . $e->getMessage());
-                        }
+                            if (!empty($smtp['port'])) $mail->Port = (int)$smtp['port'];
+                            if (!empty($smtp['secure'])) $mail->SMTPSecure = $smtp['secure'];
+                            $mail->Timeout = isset($config['smtp']['timeout']) ? (int)$config['smtp']['timeout'] : 10;
+                            $mail->SMTPAutoTLS = true;
 
-                        header('Location: register_success.php');
+                            // --- ensure UTF-8 encoding for subject and body ---
+                            $mail->CharSet = 'UTF-8';
+                            $mail->Encoding = 'base64';
+
+                            $fromEmail = $smtp['from_email'];
+                            $fromName  = $smtp['from_name'] ?? (defined('APP_NAME') ? APP_NAME : null);
+                            $mail->setFrom($fromEmail, $fromName);
+
+                            // use explicit $email and $subject
+                            $mail->addAddress($email);
+                            $mail->Subject = $subject;
+
+                            $expiryDisplay = $payloadArr['vars']['expires_at'] ?? $expiresAt;
+
+                            $mail->Body = "Dobrý deň,\n\nKliknite na tento odkaz pre overenie e-mailu:\n\n" .
+                                        $verifyUrl . "\n\nOdkaz platí do: " .
+                                        $expiryDisplay . "\n\nS pozdravom";
+                            $mail->isHTML(false);
+
+                            $mail->send();
+
+                            // mark notification as sent
+                            $db->prepare("UPDATE notifications SET status = 'sent', sent_at = NOW(), error = NULL WHERE id = ?")
+                                ->execute([$notifId]);
+                        }
+                    } catch (\Exception $e) {
+                        // best-effort: leave notification pending, record error+schedule retry
+                        Logger::systemError($e, $newUserId ?? null);
+                        try {
+                            $errMsg = substr($e->getMessage(), 0, 1000);
+                            $db->prepare("UPDATE notifications SET error = ?, retries = retries + 1, next_attempt_at = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?")
+                                ->execute([$errMsg, $notifId]);
+                        } catch (\Throwable $inner) {
+                            Logger::systemError($inner, $newUserId ?? null);
+                        }
+                    }
+                        header('Location: login.php?registered=1');
                         exit;
                     }
                 }
@@ -302,12 +352,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $err === '') {
                 if ($sqlState === '23000' || $mysqlErrNo === 1062) {
                     $err = 'Účet s týmto e-mailom už existuje.';
                 } else {
-                    error_log('[register] PDOException: ' . $ex->getMessage());
+                    Logger::systemError($ex);
                     $err = 'Registrácia zlyhala. Skúste to prosím neskôr.';
                 }
             } catch (Throwable $ex) {
                 if ($db->inTransaction()) $db->rollBack();
-                error_log('[register] Exception: ' . $ex->getMessage());
+                Logger::systemError($ex);
                 $err = 'Registrácia sa nepodarila. Skúste to prosím neskôr.';
             }
         }

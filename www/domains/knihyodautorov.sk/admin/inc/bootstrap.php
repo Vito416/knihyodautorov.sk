@@ -31,6 +31,13 @@ if (file_exists($autoloadPath)) {
 if (!defined('KEYS_DIR')) {
     define('KEYS_DIR', $config['paths']['keys']);
 }
+if (!defined('APP_NAME')) {
+    define('APP_NAME', $_ENV['APP_NAME'] ?? 'KnihyOdAutorov');
+}
+if (!defined('APP_URL')) {
+    // Nastavte v prostředí přes APP_URL, např. https://example.com/eshop/
+    define('APP_URL', $_ENV['APP_URL'] ?? 'https://example.com/eshop/');
+}
 // ----------------------------
 // Shared login URL + redirect helper for admin area
 // ----------------------------
@@ -256,10 +263,11 @@ if (empty($_SESSION['user_id'])) {
 }
 
 try {
-    $stmt = $db->prepare('SELECT id, is_admin FROM pouzivatelia WHERE id = ? LIMIT 1');
+    $stmt = $db->prepare('SELECT id, actor_type FROM pouzivatelia WHERE id = ? LIMIT 1');
     $stmt->execute([$_SESSION['user_id']]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$user || ((int)($user['is_admin'] ?? 0) !== 1)) {
+
+    if (!$user || ($user['actor_type'] !== 'admin')) {
         $adminRedirectToLogin('/admin/');
     }
 } catch (Throwable $e) {

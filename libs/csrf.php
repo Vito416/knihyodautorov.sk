@@ -1,65 +1,147 @@
 <?php
-class CSRF {
-    private const TOKEN_TTL = 60 * 60; // 1 hour
-    private const MAX_TOKENS = 16;
+declare(strict_types=1);
 
-    private static function ensureSession(): void {
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            throw new RuntimeException('Session not active — call bootstrap first.');
+final class CSRF
+{
+    private const DEFAULT_TTL = 3600; // 1 hour
+    private const DEFAULT_MAX_TOKENS = 16;
+
+    /** @var array|null Reference to session array (nullable until init) */
+    private static ?array $session = null;
+    private static int $ttl = self::DEFAULT_TTL;
+    private static int $maxTokens = self::DEFAULT_MAX_TOKENS;
+
+    /**
+     * Inject reference to session array for testability / explicit init.
+     * If $sessionRef is null, will attempt to use global $_SESSION (requires session_start()).
+     *
+     * Call this AFTER session_start() in production bootstrap.
+     *
+     * @param array|null $sessionRef  Reference to the session array (usually $_SESSION)
+     */
+    public static function init(?array &$sessionRef = null, ?int $ttl = null, ?int $maxTokens = null): void
+    {
+        if ($sessionRef === null) {
+            if (session_status() !== PHP_SESSION_ACTIVE) {
+                throw new RuntimeException('Session not active — call bootstrap (session_start) first.');
+            }
+            $sessionRef = &$_SESSION;
         }
-        if (!isset($_SESSION['csrf_tokens']) || !is_array($_SESSION['csrf_tokens'])) {
-            $_SESSION['csrf_tokens'] = [];
+
+        // assign property as a reference to provided session array
+        self::$session = &$sessionRef;
+
+        if ($ttl !== null) {
+            self::$ttl = $ttl;
+        }
+        if ($maxTokens !== null) {
+            self::$maxTokens = $maxTokens;
+        }
+
+        if (!isset(self::$session['csrf_tokens']) || !is_array(self::$session['csrf_tokens'])) {
+            self::$session['csrf_tokens'] = [];
         }
     }
 
-    /**
-     * Vrátí jednorázový token ve formátu id:value
-     * - id slouží jako klíč v session poli
-     * - value je náhodná hodnota porovnaná pomocí hash_equals
-     */
-    public static function token(): string {
-        self::ensureSession();
+    private static function ensureInitialized(): void
+    {
+        if (self::$session === null) {
+            // attempt auto-init from real session if started
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                $ref = &$_SESSION;
+                self::init($ref);
+                return;
+            }
+            throw new RuntimeException('CSRF not initialized. Call CSRF::init() after session_start().');
+        }
+    }
 
-        // cleanup expired tokens (best-effort)
+    public static function token(): string
+    {
+        self::ensureInitialized();
+
         $now = time();
-        foreach ($_SESSION['csrf_tokens'] as $k => $meta) {
+        // cleanup expired tokens
+        foreach (self::$session['csrf_tokens'] as $k => $meta) {
             if (!isset($meta['exp']) || $meta['exp'] < $now) {
-                unset($_SESSION['csrf_tokens'][$k]);
+                unset(self::$session['csrf_tokens'][$k]);
             }
         }
 
-        // limit stored tokens to avoid DoS in session growth
-        while (count($_SESSION['csrf_tokens']) >= self::MAX_TOKENS) {
-            // remove the oldest
-            uasort($_SESSION['csrf_tokens'], function($a,$b){ return ($a['exp'] <=> $b['exp']); });
-            $firstKey = array_key_first($_SESSION['csrf_tokens']);
-            unset($_SESSION['csrf_tokens'][$firstKey]);
+        // ensure max tokens - remove oldest by smallest exp
+        while (count(self::$session['csrf_tokens']) >= self::$maxTokens) {
+            $oldestKey = null;
+            $oldestExp = PHP_INT_MAX;
+            foreach (self::$session['csrf_tokens'] as $k => $meta) {
+                $exp = $meta['exp'] ?? 0;
+                if ($exp < $oldestExp) {
+                    $oldestExp = $exp;
+                    $oldestKey = $k;
+                }
+            }
+            if ($oldestKey !== null) {
+                unset(self::$session['csrf_tokens'][$oldestKey]);
+            } else {
+                break;
+            }
         }
 
-        $id = bin2hex(random_bytes(8)); // 16 hex chars
-        $val = bin2hex(random_bytes(32)); // value to validate
-        $_SESSION['csrf_tokens'][$id] = ['v' => $val, 'exp' => $now + self::TOKEN_TTL];
+        $id = bin2hex(random_bytes(16)); // 32 hex chars
+        $val = bin2hex(random_bytes(32)); // 64 hex chars
+        self::$session['csrf_tokens'][$id] = ['v' => $val, 'exp' => $now + self::$ttl];
 
         return $id . ':' . $val;
     }
 
-    /**
-     * Validate and *consume* a token (one-time). Returns bool.
-     */
-    public static function validate($token): bool {
-        self::ensureSession();
+    public static function validate(?string $token): bool
+    {
+        self::ensureInitialized();
 
-        if (!is_string($token) || strpos($token, ':') === false) return false;
-        list($id, $val) = explode(':', $token, 2);
-        if (!isset($_SESSION['csrf_tokens'][$id])) return false;
+        if (!is_string($token) || strpos($token, ':') === false) {
+            return false;
+        }
+        [$id, $val] = explode(':', $token, 2);
+        if (!isset(self::$session['csrf_tokens'][$id])) {
+            return false;
+        }
 
-        $stored = $_SESSION['csrf_tokens'][$id];
-        // consume immediately (one-time)
-        unset($_SESSION['csrf_tokens'][$id]);
+        $stored = self::$session['csrf_tokens'][$id];
+        // consume immediately
+        unset(self::$session['csrf_tokens'][$id]);
 
-        if (!isset($stored['v'])) return false;
-        if (!hash_equals($stored['v'], (string)$val)) return false;
-        if (!isset($stored['exp']) || $stored['exp'] < time()) return false;
+        if (!isset($stored['v']) || !hash_equals($stored['v'], (string)$val)) {
+            return false;
+        }
+        if (!isset($stored['exp']) || $stored['exp'] < time()) {
+            return false;
+        }
         return true;
+    }
+
+    /**
+     * Returns a safe hidden input HTML string (escaped).
+     */
+    public static function hiddenInput(string $name = 'csrf'): string
+    {
+        $token = self::token();
+        return '<input type="hidden" name="' .
+            htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'utf-8') .
+            '" value="' .
+            htmlspecialchars($token, ENT_QUOTES | ENT_SUBSTITUTE, 'utf-8') .
+            '">';
+    }
+
+    /**
+     * Cleanup expired tokens (call at bootstrap if needed).
+     */
+    public static function cleanup(): void
+    {
+        self::ensureInitialized();
+        $now = time();
+        foreach (self::$session['csrf_tokens'] as $k => $meta) {
+            if (!isset($meta['exp']) || $meta['exp'] < $now) {
+                unset(self::$session['csrf_tokens'][$k]);
+            }
+        }
     }
 }

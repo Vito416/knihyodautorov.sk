@@ -44,9 +44,6 @@ if (isset($_POST['create_db'])) {
         heslo_hash VARCHAR(255) NOT NULL,
         heslo_algo VARCHAR(50) DEFAULT NULL,
         is_active BOOLEAN NOT NULL DEFAULT FALSE,
-        is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-        locked_until DATETIME NULL,
-        failed_logins INT NOT NULL DEFAULT 0,
         must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
         last_login_at DATETIME NULL,
         last_login_ip VARCHAR(45) NULL,
@@ -146,31 +143,120 @@ if (isset($_POST['create_db'])) {
     createTable($pdo, $sql, "two_factor");
 
     // Tabuľka sessions
-    $sql = "CREATE TABLE IF NOT EXISTS sessions (
-        id CHAR(36) PRIMARY KEY,
-        user_id INT NOT NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        expires_at DATETIME NOT NULL,
-        ip VARCHAR(45) NULL,
-        user_agent VARCHAR(255) NULL,
-        revoked BOOLEAN NOT NULL DEFAULT FALSE,
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
-    createTable($pdo, $sql, "sessions");
+    $sql = "CREATE TABLE IF NOT EXISTS session_audit (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(128) NOT NULL,
+        event VARCHAR(64) NOT NULL,
+        user_id BIGINT NULL,
+        ip_hash VARCHAR(128) NULL,
+        ip_hash_key VARCHAR(64) NULL,       -- verze klíče / key-id (optional)
+        ua VARCHAR(255) NULL,
+        meta_json JSON NULL,
+        outcome VARCHAR(32) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        -- Indexy
+        INDEX idx_session_id (session_id),
+        INDEX idx_user_id (user_id),
+        INDEX idx_created_at (created_at),
+        INDEX idx_event (event),
+        INDEX idx_ip_hash (ip_hash),
+        INDEX idx_ip_hash_key (ip_hash_key),
+        CONSTRAINT fk_session_audit_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "session_audit");
 
     // Tabuľka auth_events
     $sql = "CREATE TABLE IF NOT EXISTS auth_events (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NULL,
         type ENUM('login_success','login_failure','logout','password_reset','lockout') NOT NULL,
-        ip VARCHAR(45) NULL,
+        ip_hash VARCHAR(128) NULL,
+        ip_hash_key VARCHAR(64) NULL,
         user_agent VARCHAR(255) NULL,
         occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         meta JSON NULL,
+        meta_email VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(meta, '$.email'))) PERSISTENT,
+        INDEX idx_meta_email (meta_email),
+        INDEX idx_ver_user (user_id),
+        INDEX idx_ver_time (occurred_at),
+        INDEX idx_ver_type_time (type, occurred_at),
+        INDEX idx_ip_hash (ip_hash),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "auth_events");
+
+    // Tabuľka register_events
+    $sql = "CREATE TABLE IF NOT EXISTS register_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        type ENUM('register_success','register_failure') NOT NULL,
+        ip_hash VARCHAR(128) NULL,
+        ip_hash_key VARCHAR(64) NULL,
+        user_agent VARCHAR(255) NULL,
+        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        meta JSON NULL,
+        INDEX idx_reg_user (user_id),
+        INDEX idx_reg_time (occurred_at),
+        INDEX idx_reg_type_time (type, occurred_at),
+        INDEX idx_reg_ip (ip_hash),
+        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;";
+    createTable($pdo, $sql, "register_events");
+
+    // Tabuľka verify_events
+    $sql = "CREATE TABLE IF NOT EXISTS verify_events (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        type ENUM('verify_success','verify_failure') NOT NULL,
+        ip_hash VARCHAR(128) NULL,
+        ip_hash_key VARCHAR(64) NULL,
+        user_agent VARCHAR(255) NULL,
+        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        meta JSON NULL,
+        INDEX idx_ver_user (user_id),
+        INDEX idx_ver_time (occurred_at),
+        INDEX idx_ver_type_time (type, occurred_at),
+        INDEX idx_ver_ip (ip_hash),
+        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;";
+    createTable($pdo, $sql, "verify_events");
+
+    // Tabuľka system_error (odporúčané: binárne IP pre IPv4/IPv6)
+    $sql = "CREATE TABLE IF NOT EXISTS system_error (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        level ENUM('notice','warning','error','critical') NOT NULL,
+        message TEXT NOT NULL,
+        exception_class VARCHAR(255) NULL,
+        file VARCHAR(1024) NULL,
+        line INT UNSIGNED NULL,
+        stack_trace MEDIUMTEXT NULL,
+        token VARCHAR(255) NULL,
+        context JSON NULL,
+        fingerprint VARCHAR(64) NULL,
+        occurrences INT UNSIGNED NOT NULL DEFAULT 1,
+        user_id INT NULL,
+        ip_hash VARCHAR(128) NULL,
+        ip_hash_key VARCHAR(64) NULL,
+        ip_text VARCHAR(45) NULL, -- optional, human-readable IP
+        user_agent VARCHAR(255) NULL,
+        url VARCHAR(2048) NULL,
+        method VARCHAR(10) NULL,
+        http_status SMALLINT UNSIGNED NULL,
+        resolved TINYINT(1) NOT NULL DEFAULT 0,
+        resolved_by INT NULL,
+        resolved_at DATETIME NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_err_level (level),
+        INDEX idx_err_time (created_at),
+        INDEX idx_err_user (user_id),
+        INDEX idx_err_fp (fingerprint),
+        INDEX idx_err_ip (ip_hash),
+        INDEX idx_err_resolved (resolved),
+        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
+        FOREIGN KEY (resolved_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB;";
+    createTable($pdo, $sql, "system_error");
 
     // Tabuľka user_consents
     $sql = "CREATE TABLE IF NOT EXISTS user_consents (
@@ -549,14 +635,20 @@ if (isset($_POST['create_db'])) {
         error_log('Index creation (email_verifications) : ' . $e->getMessage());
     }
 
-    // Tabuľka notifications (rozšírená pre retry/worker)
-    $sql = "CREATE TABLE IF NOT EXISTS notifications (
+    // ----------------------------
+    // Notifications: safe in-place upgrade (add missing columns/indexes)
+    // ----------------------------
+    $table = 'notifications';
+
+    // create table skeleton if not exists (minimal) — keeps existing if present
+    $createIfMissing = "
+    CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
         channel ENUM('email','push') NOT NULL,
         template VARCHAR(100) NOT NULL,
         payload JSON NULL,
-        status ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+        status ENUM('pending','processing','sent','failed') NOT NULL DEFAULT 'pending',
         retries INT NOT NULL DEFAULT 0,
         max_retries INT NOT NULL DEFAULT 6,
         next_attempt_at DATETIME NULL,
@@ -565,17 +657,68 @@ if (isset($_POST['create_db'])) {
         error TEXT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
-    createTable($pdo, $sql, "notifications");
+        CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET=utf8mb4
+    COLLATE=utf8mb4_unicode_ci
+    ROW_FORMAT=DYNAMIC;
+    ";
+    createTable($pdo, $createIfMissing, "notifications");
 
-    // Index pre rýchly výber pending notifikácií (worker)
+    // Helper to check column existence
+    function column_exists(PDO $pdo, string $table, string $column): bool {
+        $q = $pdo->prepare("SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = :c LIMIT 1");
+        $q->execute([':t' => $table, ':c' => $column]);
+        return (bool)$q->fetch();
+    }
+
+    // Add missing columns (non-destructive)
+    $adds = [
+        "ADD COLUMN IF NOT EXISTS last_attempt_at DATETIME NULL",
+        "ADD COLUMN IF NOT EXISTS locked_until DATETIME NULL",
+        "ADD COLUMN IF NOT EXISTS locked_by VARCHAR(100) NULL",
+        "ADD COLUMN IF NOT EXISTS priority INT NOT NULL DEFAULT 0"
+    ];
+
+    foreach ($adds as $alterPart) {
+        // MySQL does not support ADD COLUMN IF NOT EXISTS on some versions; check and alter when needed
+        // Extract column name from string (simple parse)
+        if (preg_match('/ADD COLUMN IF NOT EXISTS\s+([a-zA-Z0-9_]+)/', $alterPart, $m)) {
+            $col = $m[1];
+            if (!column_exists($pdo, $table, $col)) {
+                try {
+                    $pdo->exec("ALTER TABLE {$table} " . str_replace('IF NOT EXISTS ', '', $alterPart));
+                } catch (PDOException $e) {
+                    error_log('[initdb] alter notifications add column ' . $col . ' failed: ' . $e->getMessage());
+                }
+            }
+        } else {
+            // fallback attempt
+            try {
+                $pdo->exec("ALTER TABLE {$table} " . $alterPart);
+            } catch (PDOException $e) {
+                error_log('[initdb] alter notifications failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    // Ensure composite index exists (safe check)
     try {
-        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_notifications_pending ON notifications (status, next_attempt_at, scheduled_at, created_at)");
+        $indexName = 'idx_notifications_ready';
+        $check = $pdo->prepare("
+            SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND INDEX_NAME = :idx LIMIT 1
+        ");
+        $check->execute([':t' => $table, ':idx' => $indexName]);
+        if (!$check->fetch()) {
+            $pdo->exec("CREATE INDEX {$indexName} ON {$table} (status, next_attempt_at, scheduled_at, priority, created_at)");
+        }
     } catch (PDOException $e) {
-        // MySQL staršie verzie nemajú IF NOT EXISTS pre CREATE INDEX — ticho ignoruj chybu o duplicite
-        // Ale aspoň skontrolujeme, či to nepadlo kriticky:
-        error_log('Index creation (notifications) : ' . $e->getMessage());
+        try {
+            $pdo->exec("CREATE INDEX idx_notifications_ready ON {$table} (status, next_attempt_at, scheduled_at, priority, created_at)");
+        } catch (PDOException $ex) {
+            error_log('Index creation (notifications) : ' . $ex->getMessage());
+        }
     }
 
     // Tabuľka system_jobs
@@ -612,16 +755,18 @@ if (isset($_POST['insert_demo'])) {
     'threads' => 2            // paralelní vlákna
     ];
     $adminHash = password_hash($adminPassword, PASSWORD_ARGON2ID, $options);
-    $stmt = $pdo->prepare("INSERT INTO pouzivatelia (email, heslo_hash, actor_type, is_active, created_at, updated_at)
-        VALUES (:email, :hash, 'admin', TRUE, NOW(), NOW())");
-    $stmt->execute([':email' => $adminEmail, ':hash' => $adminHash]);
+    $pwInfo = password_get_info($adminHash);
+    $pwAlgo = $pwInfo['algoName'] ?? null;
+    $stmt = $pdo->prepare("INSERT INTO pouzivatelia (email, heslo_hash, heslo_algo, actor_type, is_active, must_change_password, created_at, updated_at)
+        VALUES (:email, :hash, :algo, 'admin', TRUE, TRUE, NOW(), NOW())");
+    $stmt->execute([':email' => $adminEmail, ':hash' => $adminHash, ':algo' => $pwAlgo]);
     echo "<p>Admin heslo: $adminPassword</p>";
 
     // Priradenie roly Správca adminovi
     $adminId = $pdo->lastInsertId();
-    $roleSpravca = $pdo->query("SELECT id FROM roles WHERE nazov = 'Správca'")->fetchColumn();
+    $roleSpravca = $pdo->query("SELECT id FROM roles WHERE nazov = 'Majiteľ'")->fetchColumn();
     if ($roleSpravca) {
-        executeQuery($pdo, "INSERT INTO user_roles (user_id, role_id) VALUES ($adminId, $roleSpravca)", "Priradenie roly Správca adminovi");
+        executeQuery($pdo, "INSERT INTO user_roles (user_id, role_id) VALUES ($adminId, $roleSpravca)", "Priradenie roly Majiteľ adminovi");
     }
 
     // Ukážkový autor

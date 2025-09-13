@@ -59,6 +59,13 @@ if (file_exists($autoloadPath)) {
 if (!defined('KEYS_DIR')) {
     define('KEYS_DIR', $config['paths']['keys']);
 }
+if (!defined('APP_NAME')) {
+    define('APP_NAME', $_ENV['APP_NAME'] ?? 'KnihyOdAutorov');
+}
+if (!defined('APP_URL')) {
+    // Nastavte v prostředí přes APP_URL, např. https://example.com/eshop/
+    define('APP_URL', $_ENV['APP_URL'] ?? 'https://example.com/eshop/');
+}
 // ---------------------------
 // Crypto initialization (using KeyManager)
 // ---------------------------
