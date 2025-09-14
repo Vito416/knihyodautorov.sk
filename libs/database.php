@@ -1,10 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use PDO;
-use PDOException;
-use RuntimeException;
-
 class DatabaseException extends RuntimeException {}
 
 final class Database
@@ -29,10 +25,9 @@ final class Database
      *   'dsn' => 'mysql:host=...;dbname=...;charset=utf8mb4',
      *   'user' => 'dbuser',
      *   'pass' => 'secret',
-     *   'options' => [PDO::ATTR_TIMEOUT => 5, ...] // NEPŘEPISUJ bezpečnostní defaulty
+     *   'options' => [PDO::ATTR_TIMEOUT => 5, ...],
+     *   'init_commands' => [ "SET time_zone = '+00:00'", "SET sql_mode = 'STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION'" ]
      * ]
-     *
-     * Tato metoda se musí volat dříve než Database::getInstance() / getPdo().
      */
     public static function init(array $config): void
     {
@@ -44,33 +39,47 @@ final class Database
         $user = $config['user'] ?? null;
         $pass = $config['pass'] ?? null;
         $givenOptions = $config['options'] ?? [];
+        $initCommands = $config['init_commands'] ?? [];
 
         if (!$dsn) {
             throw new DatabaseException('Missing DSN in database configuration.');
         }
 
-        // Bezpečnostní defaulty, které NEPŮJDOU přepsat
+        // Bezpečnostní defaulty, které nelze přepsat
         $enforcedDefaults = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_EMULATE_PREPARES => false,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-            // PDO::ATTR_PERSISTENT => false, // implicitně false unless user sets; lze vynutit pokud chceš
+            PDO::ATTR_STRINGIFY_FETCHES => false,
         ];
 
-        // Poskládáme options tak, aby uživatel nemohl přepsat 'enforcedDefaults'
         $options = $givenOptions;
         foreach ($enforcedDefaults as $k => $v) {
-            $options[$k] = $v; // vynutíme bezpečnostní hodnoty
+            $options[$k] = $v;
         }
 
         try {
             $pdo = new PDO($dsn, $user, $pass, $options);
-            // Volitelné: explicitní nastavení časové zóny / init příkazy apod.:
-            // $pdo->exec("SET time_zone = '+00:00'");
+
+            // Run optional initialization commands (best-effort)
+            if (!empty($initCommands) && is_array($initCommands)) {
+                foreach ($initCommands as $cmd) {
+                    if (!is_string($cmd)) continue;
+                    try { $pdo->exec($cmd); } catch (PDOException $_) { /* ignore init failures */ }
+                }
+            }
+
+            // Basic connectivity check
+            try {
+                $pdo->query('SELECT 1');
+            } catch (PDOException $e) {
+                // If the simple query fails, still create instance but note possible connectivity issues.
+                error_log('[Database] connectivity check failed: ' . $e->getMessage());
+            }
+
         } catch (PDOException $e) {
-            // Loguj interně - do produkčního logu (nevracej citlivé údaje klientovi)
+            // Minimal, non-sensitive log. Make sure log storage is secured in production.
             error_log('[Database] connection failed: ' . $e->getMessage());
-            // Zahoď upravenou/generic výjimku bez přihlašovacích údajů
             throw new DatabaseException('Failed to connect to database');
         }
 
@@ -79,7 +88,6 @@ final class Database
 
     /**
      * Vrátí singleton instanci Database.
-     * Pokud init nebylo voláno, vyhodí DatabaseException.
      */
     public static function getInstance(): self
     {
@@ -95,7 +103,6 @@ final class Database
     public function getPdo(): PDO
     {
         if ($this->pdo === null) {
-            // bezpečnostní ochrana — nechcem lazy connect
             throw new DatabaseException('Database not initialized properly (PDO missing).');
         }
         return $this->pdo;
@@ -110,6 +117,52 @@ final class Database
     }
 
     /* ----------------- Helper metody ----------------- */
+
+    /**
+     * Prepare and execute statement with safe explicit binding.
+     * Returns PDOStatement on success or throws DatabaseException.
+     */
+    public function prepareAndRun(string $sql, array $params = []): \PDOStatement
+    {
+        try {
+            $pdo = $this->getPdo();
+            $stmt = $pdo->prepare($sql);
+            if ($stmt === false) {
+                throw new DatabaseException('Failed to prepare statement.');
+            }
+
+            // explicit binding to better handle binary / null / int / bool types
+            foreach ($params as $key => $value) {
+                // normalize key name (:name or name)
+                $paramName = (strpos((string)$key, ':') === 0) ? $key : ':' . $key;
+
+                if ($value === null) {
+                    $stmt->bindValue($paramName, null, PDO::PARAM_NULL);
+                } elseif (is_int($value)) {
+                    $stmt->bindValue($paramName, $value, PDO::PARAM_INT);
+                } elseif (is_bool($value)) {
+                    $stmt->bindValue($paramName, $value ? 1 : 0, PDO::PARAM_INT);
+                } elseif (is_string($value)) {
+                    // binary detection: contains null byte? treat as LOB
+                    if (strpos($value, "\0") !== false && defined('PDO::PARAM_LOB')) {
+                        $stmt->bindValue($paramName, $value, PDO::PARAM_LOB);
+                    } else {
+                        $stmt->bindValue($paramName, $value, PDO::PARAM_STR);
+                    }
+                } else {
+                    // fallback to string casting
+                    $stmt->bindValue($paramName, (string)$value, PDO::PARAM_STR);
+                }
+            }
+
+            $stmt->execute();
+            return $stmt;
+        } catch (PDOException $e) {
+            // Log sanitized SQL preview (no parameter values)
+            error_log('[Database] SQL error: ' . $e->getMessage() . ' -- SQL: ' . $this->sanitizeSqlPreview($sql));
+            throw new DatabaseException('Database query failed');
+        }
+    }
 
     public function fetch(string $sql, array $params = []): ?array
     {
@@ -133,50 +186,23 @@ final class Database
         return $stmt->rowCount();
     }
 
-    /**
-     * Prepare and execute statement. Exceptions bubbled as DatabaseException.
-     */
-    public function prepareAndRun(string $sql, array $params = []): \PDOStatement
-    {
-        try {
-            $pdo = $this->getPdo();
-            $stmt = $pdo->prepare($sql);
-            if ($stmt === false) {
-                throw new DatabaseException('Failed to prepare statement.');
-            }
-            $stmt->execute($params);
-            return $stmt;
-        } catch (PDOException $e) {
-            error_log('[Database] SQL error: ' . $e->getMessage() . ' -- SQL: ' . $this->sanitizeSqlPreview($sql));
-            throw new DatabaseException('Database query failed');
-        }
-    }
-
+    /* transactions */
     public function beginTransaction(): bool
     {
-        try {
-            return $this->getPdo()->beginTransaction();
-        } catch (PDOException $e) {
-            throw new DatabaseException('Failed to begin transaction');
-        }
+        try { return $this->getPdo()->beginTransaction(); }
+        catch (PDOException $e) { throw new DatabaseException('Failed to begin transaction'); }
     }
 
     public function commit(): bool
     {
-        try {
-            return $this->getPdo()->commit();
-        } catch (PDOException $e) {
-            throw new DatabaseException('Failed to commit transaction');
-        }
+        try { return $this->getPdo()->commit(); }
+        catch (PDOException $e) { throw new DatabaseException('Failed to commit transaction'); }
     }
 
     public function rollback(): bool
     {
-        try {
-            return $this->getPdo()->rollBack();
-        } catch (PDOException $e) {
-            throw new DatabaseException('Failed to rollback transaction');
-        }
+        try { return $this->getPdo()->rollBack(); }
+        catch (PDOException $e) { throw new DatabaseException('Failed to rollback transaction'); }
     }
 
     public function lastInsertId(?string $name = null): string
@@ -187,12 +213,27 @@ final class Database
     /* sanitizace SQL preview pro log (neukládat parametry s citlivými údaji) */
     private function sanitizeSqlPreview(string $sql): string
     {
-        // jen krátké preview bez parametrů
         $max = 300;
         return strlen($sql) > $max ? substr($sql, 0, $max) . '...' : $sql;
     }
 
     /* ----------------- ochrana singletonu ----------------- */
     private function __clone() {}
-    private function __wakeup() {}
+    public function __wakeup(): void
+    {
+        throw new DatabaseException('Cannot unserialize singleton');
+    }
+
+    /**
+     * Optional helper: quick health check (best-effort).
+     */
+    public function ping(): bool
+    {
+        try {
+            $this->getPdo()->query('SELECT 1');
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
 }

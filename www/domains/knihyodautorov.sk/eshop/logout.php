@@ -1,48 +1,43 @@
 <?php
+declare(strict_types=1);
+
 require __DIR__ . '/inc/bootstrap.php';
 
-// Bezpečný fallback pre $db (ak bootstrap náhodou nedefinoval)
+// Bezpečný fallback pro $db (pokud bootstrap nedefinoval)
 $dbConn = (isset($db) && $db instanceof PDO) ? $db : null;
 
 $err = '';
 $returnTo = $_GET['return_to'] ?? $_POST['return_to'] ?? null;
 
 /**
- * Jednoduchý safe validator pre return_to (nezávislý od login.php).
- * - zakáže schémy (http://), CR/LF, double-slash, dot-traversal, musí začínať '/'
+ * Jednoduchý safe validator pro return_to
  */
 function is_safe_return_to(?string $url): bool {
-    if ($url === null || $url === '') return false;
+    if (!$url) return false;
     if (strpos($url, "\n") !== false || strpos($url, "\r") !== false) return false;
 
     $decoded = rawurldecode($url);
-    // disallow absolute urls with scheme
     if (preg_match('#^[a-zA-Z0-9+\-.]+://#', $decoded)) return false;
 
     $path = parse_url($decoded, PHP_URL_PATH);
-    if ($path === null) return false;
-    if ($path === '' || $path[0] !== '/') return false;
-    if (strpos($path, '//') !== false) return false;
-    if (strpos($path, '..') !== false) return false;
-
-    return true;
+    return $path !== null && $path !== '' && $path[0] === '/' && strpos($path, '//') === false && strpos($path, '..') === false;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $csrf = (string)($_POST['csrf_token'] ?? '');
 
-    if (!Auth::validateCsrfToken($csrf)) {
-        // CSRF invalid — zobrazíme chybu používateľovi (neodhaľujeme veľa detailov)
-        $err = 'Neplatný formulár (CSRF). Ak problém pretrváva, obnovte stránku a skúste to znova.';
+    if (!CSRF::validate($csrf)) {
+        $err = 'Neplatný formulár (CSRF). Obnovte stránku a skúste to znovu.';
     } else {
-        // Provedeme logout (Auth::logout sa postará o cookie + session destroy + revokáciu v DB ak db je predané)
-        Auth::logout($dbConn);
+        // --- moderní logout ---
+        $userId = $_SESSION['user_id'] ?? null;
+        SessionManager::destroySession($dbConn);
+        Logger::session('session_destroyed', $userId);
 
-        // bezpečné presmerovanie (preferujeme return_to ak je validné)
+        // bezpečný redirect
         $loc = '/';
         if ($returnTo && is_safe_return_to($returnTo)) {
-            // rawurldecode preto, aby sme nezachovali percent-encoding v url
-            $loc = rawurldecode($returnTo);
+            $loc = $returnTo;
         }
 
         header('Location: ' . $loc, true, 302);
@@ -50,8 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Priprav CSRF token pre formulár
-$csrfToken = Auth::ensureCsrfToken();
+// CSRF token pro formulář
+$csrfToken = CSRF::token();
 ?>
 <!doctype html>
 <html lang="sk">
@@ -78,9 +73,8 @@ $csrfToken = Auth::ensureCsrfToken();
       <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnTo, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
     <?php endif; ?>
     <button type="submit">Áno — odhlásiť ma</button>
-    <a href="<?= htmlspecialchars( (is_safe_return_to($returnTo) ? rawurldecode($returnTo) : '/'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" class="button">Zostať / zrušiť</a>
+    <a href="<?= htmlspecialchars((is_safe_return_to($returnTo) ? $returnTo : '/'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" class="button">Zostať / zrušiť</a>
   </form>
-
 </main>
 <?php include __DIR__.'/templates/layout-footer.php'; ?>
 </body>

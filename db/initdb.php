@@ -39,23 +39,30 @@ if (isset($_POST['create_db'])) {
 
     // Tabuľka pouzivatelia
     $sql = "CREATE TABLE IF NOT EXISTS pouzivatelia (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         email VARCHAR(255) NOT NULL UNIQUE,
         heslo_hash VARCHAR(255) NOT NULL,
         heslo_algo VARCHAR(50) DEFAULT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT FALSE,
-        must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
-        last_login_at DATETIME NULL,
-        last_login_ip VARCHAR(45) NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        actor_type ENUM('zakaznik','admin') NOT NULL DEFAULT 'zakaznik'
-    ) ENGINE=InnoDB;";
+        is_active TINYINT(1) NOT NULL DEFAULT 0,
+        must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+        last_login_at DATETIME(6) NULL,
+        last_login_ip_hash VARBINARY(32) NULL,
+        last_login_ip_key VARCHAR(64) NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        actor_type ENUM('zakaznik','admin') NOT NULL DEFAULT 'zakaznik',
+        INDEX idx_last_login_at (last_login_at),
+        INDEX idx_is_active (is_active),
+        INDEX idx_actor_type (actor_type),
+        INDEX idx_last_login_ip_hash (last_login_ip_hash)
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "pouzivatelia");
 
     // Tabuľka user_profiles
     $sql = "CREATE TABLE IF NOT EXISTS user_profiles (
-        user_id INT PRIMARY KEY,
+        user_id BIGINT UNSIGNED PRIMARY KEY,
         full_name VARCHAR(255) NOT NULL DEFAULT '',
         phone_enc VARBINARY(255) NULL,
         address_enc VARBINARY(255) NULL,
@@ -76,7 +83,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka user_identities
     $sql = "CREATE TABLE IF NOT EXISTS user_identities (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         provider VARCHAR(100) NOT NULL,
         provider_user_id VARCHAR(255) NOT NULL,
         email_verified BOOLEAN NOT NULL DEFAULT FALSE,
@@ -110,7 +117,7 @@ if (isset($_POST['create_db'])) {
 
     // Tabuľka user_roles
     $sql = "CREATE TABLE IF NOT EXISTS user_roles (
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         role_id INT NOT NULL,
         assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (user_id, role_id),
@@ -131,7 +138,7 @@ if (isset($_POST['create_db'])) {
 
     // Tabuľka two_factor
     $sql = "CREATE TABLE IF NOT EXISTS two_factor (
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         method VARCHAR(50) NOT NULL,
         secret VARBINARY(255) NULL,
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
@@ -142,19 +149,21 @@ if (isset($_POST['create_db'])) {
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "two_factor");
 
-    // Tabuľka sessions
+    // Tabuľka session_audit
     $sql = "CREATE TABLE IF NOT EXISTS session_audit (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        session_id VARCHAR(128) NOT NULL,
+        session_token VARBINARY(32) NULL,      -- referenční token_hash (binary) nebo NULL
+        session_id VARCHAR(128) NULL,          -- optional PHP session_id() if tracked
         event VARCHAR(64) NOT NULL,
-        user_id BIGINT NULL,
-        ip_hash VARCHAR(128) NULL,
-        ip_hash_key VARCHAR(64) NULL,       -- verze klíče / key-id (optional)
-        ua VARCHAR(255) NULL,
+        user_id BIGINT UNSIGNED NULL,
+        ip_hash VARBINARY(32) NULL,
+        ip_hash_key VARCHAR(64) NULL,
+        ua VARCHAR(512) NULL,
         meta_json JSON NULL,
         outcome VARCHAR(32) NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         -- Indexy
+        INDEX idx_session_token (session_token),
         INDEX idx_session_id (session_id),
         INDEX idx_user_id (user_id),
         INDEX idx_created_at (created_at),
@@ -162,68 +171,99 @@ if (isset($_POST['create_db'])) {
         INDEX idx_ip_hash (ip_hash),
         INDEX idx_ip_hash_key (ip_hash_key),
         CONSTRAINT fk_session_audit_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        ) ENGINE=InnoDB
+        DEFAULT CHARSET = utf8mb4
+        COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "session_audit");
+
+    // Tabuľka sessions
+    $sql = "CREATE TABLE IF NOT EXISTS sessions (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        token_hash VARBINARY(32) NOT NULL,     -- sha256 raw binary (recommended)
+        user_id BIGINT UNSIGNED NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        last_seen_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        expires_at DATETIME(6) NULL,
+        revoked TINYINT(1) NOT NULL DEFAULT 0,
+        ip_hash VARBINARY(32) NULL,            -- binary sha256 of IP/salt
+        ip_hash_key VARCHAR(64) NULL,
+        user_agent VARCHAR(512) NULL,
+        -- Indexy
+        UNIQUE KEY uq_token_hash (token_hash),
+        INDEX idx_user_id (user_id),
+        INDEX idx_expires_at (expires_at),
+        INDEX idx_last_seen (last_seen_at),
+        CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB
+        DEFAULT CHARSET = utf8mb4
+        COLLATE = utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "sessions");
 
     // Tabuľka auth_events
     $sql = "CREATE TABLE IF NOT EXISTS auth_events (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NULL,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
         type ENUM('login_success','login_failure','logout','password_reset','lockout') NOT NULL,
-        ip_hash VARCHAR(128) NULL,
+        ip_hash VARBINARY(32) NULL,
         ip_hash_key VARCHAR(64) NULL,
         user_agent VARCHAR(255) NULL,
-        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        occurred_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         meta JSON NULL,
-        meta_email VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(meta, '$.email'))) PERSISTENT,
+        meta_email VARCHAR(255) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(meta, '$.email'))) STORED,
         INDEX idx_meta_email (meta_email),
         INDEX idx_ver_user (user_id),
         INDEX idx_ver_time (occurred_at),
         INDEX idx_ver_type_time (type, occurred_at),
         INDEX idx_ip_hash (ip_hash),
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+        CONSTRAINT fk_auth_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB
+        DEFAULT CHARSET = utf8mb4
+        COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "auth_events");
 
     // Tabuľka register_events
     $sql = "CREATE TABLE IF NOT EXISTS register_events (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NULL,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
         type ENUM('register_success','register_failure') NOT NULL,
-        ip_hash VARCHAR(128) NULL,
+        ip_hash VARBINARY(32) NULL,
         ip_hash_key VARCHAR(64) NULL,
-        user_agent VARCHAR(255) NULL,
-        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        user_agent VARCHAR(512) NULL,
+        occurred_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         meta JSON NULL,
         INDEX idx_reg_user (user_id),
         INDEX idx_reg_time (occurred_at),
         INDEX idx_reg_type_time (type, occurred_at),
         INDEX idx_reg_ip (ip_hash),
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+        CONSTRAINT fk_register_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "register_events");
 
     // Tabuľka verify_events
     $sql = "CREATE TABLE IF NOT EXISTS verify_events (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NULL,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
         type ENUM('verify_success','verify_failure') NOT NULL,
-        ip_hash VARCHAR(128) NULL,
+        ip_hash VARBINARY(32) NULL,
         ip_hash_key VARCHAR(64) NULL,
-        user_agent VARCHAR(255) NULL,
-        occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        user_agent VARCHAR(512) NULL,
+        occurred_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         meta JSON NULL,
         INDEX idx_ver_user (user_id),
         INDEX idx_ver_time (occurred_at),
         INDEX idx_ver_type_time (type, occurred_at),
         INDEX idx_ver_ip (ip_hash),
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+        CONSTRAINT fk_verify_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "verify_events");
 
     // Tabuľka system_error (odporúčané: binárne IP pre IPv4/IPv6)
     $sql = "CREATE TABLE IF NOT EXISTS system_error (
-        id INT AUTO_INCREMENT PRIMARY KEY,
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         level ENUM('notice','warning','error','critical') NOT NULL,
         message TEXT NOT NULL,
         exception_class VARCHAR(255) NULL,
@@ -232,36 +272,39 @@ if (isset($_POST['create_db'])) {
         stack_trace MEDIUMTEXT NULL,
         token VARCHAR(255) NULL,
         context JSON NULL,
-        fingerprint VARCHAR(64) NULL,
+        fingerprint VARCHAR(64) NULL,           -- hash() vrací hex(64) v Loggeru
         occurrences INT UNSIGNED NOT NULL DEFAULT 1,
-        user_id INT NULL,
-        ip_hash VARCHAR(128) NULL,
+        user_id BIGINT UNSIGNED NULL,
+        ip_hash VARBINARY(32) NULL,
         ip_hash_key VARCHAR(64) NULL,
-        ip_text VARCHAR(45) NULL, -- optional, human-readable IP
-        user_agent VARCHAR(255) NULL,
+        ip_text VARCHAR(45) NULL,
+        user_agent VARCHAR(512) NULL,
         url VARCHAR(2048) NULL,
         method VARCHAR(10) NULL,
         http_status SMALLINT UNSIGNED NULL,
         resolved TINYINT(1) NOT NULL DEFAULT 0,
-        resolved_by INT NULL,
-        resolved_at DATETIME NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_by BIGINT UNSIGNED NULL,
+        resolved_at DATETIME(6) NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        last_seen DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         INDEX idx_err_level (level),
         INDEX idx_err_time (created_at),
         INDEX idx_err_user (user_id),
-        INDEX idx_err_fp (fingerprint),
         INDEX idx_err_ip (ip_hash),
         INDEX idx_err_resolved (resolved),
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
-        FOREIGN KEY (resolved_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+        UNIQUE KEY uq_err_fp (fingerprint),
+        CONSTRAINT fk_err_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
+        CONSTRAINT fk_err_resolved_by FOREIGN KEY (resolved_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;
+    ";
     createTable($pdo, $sql, "system_error");
 
     // Tabuľka user_consents
     $sql = "CREATE TABLE IF NOT EXISTS user_consents (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         consent_type VARCHAR(50) NOT NULL,
         version VARCHAR(50) NOT NULL,
         granted BOOLEAN NOT NULL,
@@ -352,7 +395,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka carts
     $sql = "CREATE TABLE IF NOT EXISTS carts (
         id CHAR(36) PRIMARY KEY,
-        user_id INT NULL,
+        user_id BIGINT UNSIGNED NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
@@ -375,7 +418,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka orders
     $sql = "CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NULL,
+        user_id BIGINT UNSIGNED NULL,
         status ENUM('pending','paid','failed','cancelled','refunded','completed') NOT NULL DEFAULT 'pending',
         bill_full_name VARCHAR(255) NULL,
         bill_company VARCHAR(255) NULL,
@@ -528,7 +571,7 @@ if (isset($_POST['create_db'])) {
     $sql = "CREATE TABLE IF NOT EXISTS coupon_redemptions (
         id INT AUTO_INCREMENT PRIMARY KEY,
         coupon_id INT NOT NULL,
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         order_id INT NOT NULL,
         redeemed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         amount_applied DECIMAL(10,2) NOT NULL,
@@ -578,7 +621,7 @@ if (isset($_POST['create_db'])) {
         description TEXT NULL,
         protected BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_by INT NULL,
+        updated_by BIGINT UNSIGNED NULL,
         FOREIGN KEY (updated_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "app_settings");
@@ -588,7 +631,7 @@ if (isset($_POST['create_db'])) {
         id INT AUTO_INCREMENT PRIMARY KEY,
         table_name VARCHAR(100) NOT NULL,
         record_id INT NOT NULL,
-        changed_by INT NULL,
+        changed_by BIGINT UNSIGNED NULL,
         change_type ENUM('INSERT','UPDATE','DELETE') NOT NULL,
         old_value JSON NULL,
         new_value JSON NULL,
@@ -616,7 +659,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka email_verifications (required pre register/verify/resend)
     $sql = "CREATE TABLE IF NOT EXISTS email_verifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         token_hash CHAR(64) NOT NULL,           -- sha256 hex (alebo HMAC hex neskôr)
         key_version INT NOT NULL DEFAULT 0,
         expires_at DATETIME NOT NULL,
@@ -644,7 +687,7 @@ if (isset($_POST['create_db'])) {
     $createIfMissing = "
     CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
+        user_id BIGINT UNSIGNED NOT NULL,
         channel ENUM('email','push') NOT NULL,
         template VARCHAR(100) NOT NULL,
         payload JSON NULL,
@@ -748,7 +791,7 @@ if (isset($_POST['insert_demo'])) {
 
     // Admin účet s náhodným heslom
     $adminEmail = 'admin@example.com';
-    $adminPassword = bin2hex(random_bytes(4)); // náhodné heslo
+    $adminPassword = bin2hex(random_bytes(6)); // náhodné heslo
     $options = [
     'memory_cost' => 1<<17,  // 128 MB
     'time_cost' => 4,        // 4 průchody
