@@ -16,10 +16,6 @@ declare(strict_types=1);
  *   FileVault::deleteFile(string $path): bool
  */
 
-require_once __DIR__ . '/KeyManager.php';
-require_once __DIR__ . '/AuditLogger.php';
-require_once __DIR__ . '/Crypto.php';
-
 final class FileVault
 {
     private const VERSION = 1;

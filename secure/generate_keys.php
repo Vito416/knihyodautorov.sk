@@ -37,12 +37,14 @@ $created = [];
 try {
     // for each desired key basename: if none found -> generate (via KeyManager public API)
     $toCreate = [
-        ['env'=>'APP_CRYPTO_KEY', 'basename'=>'crypto_key', 'required'=>true],
-        ['env'=>'FILEVAULT_KEY', 'basename'=>'filevault_key', 'required'=>true],
-        ['env'=>'PASSWORD_PEPPER', 'basename'=>'password_pepper', 'required'=>true],
-        ['env'=>'APP_SALT', 'basename'=>'app_salt', 'required'=>true],
-        // optional: audit key - uncomment if you want to generate automatically
-        // ['env'=>'AUDIT_KEY', 'basename'=>'audit_key', 'required'=>false],
+        ['env'=>'APP_CRYPTO_KEY',    'basename'=>'crypto_key',     'required'=>true],
+        ['env'=>'FILEVAULT_KEY',     'basename'=>'filevault_key',  'required'=>true],
+        ['env'=>'PASSWORD_PEPPER',   'basename'=>'password_pepper','required'=>true],
+        ['env'=>'APP_SALT',          'basename'=>'app_salt',       'required'=>true],
+        ['env'=>'SESSION_KEY',       'basename'=>'session_key',    'required'=>true],
+        ['env'=>'IP_HASH_KEY',       'basename'=>'ip_hash_key',    'required'=>true],
+        ['env'=>'CSRF_KEY',          'basename'=>'csrf_key',       'required'=>true],
+        ['env'=>'JWT_KEY',           'basename'=>'jwt_key',        'required'=>true],
     ];
 
     foreach ($toCreate as $spec) {

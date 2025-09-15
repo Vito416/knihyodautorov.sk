@@ -1,11 +1,54 @@
 <?php
 declare(strict_types=1);
+// Custom exception for KeyManager errors
+class KeyManagerException extends \RuntimeException {}
 
 final class KeyManager
 {
     private const DEFAULT_PER_REQUEST_CACHE_TTL = 300; // seconds, but here just per-request static cache
 
     private static array $cache = []; // simple per-request cache ['key_<env>_<basename>[_vN]'=> ['raw'=>..., 'version'=>...]]
+    
+    /**
+     * Return array of all available raw keys (for a basename), newest last.
+     * Example return: [binary1, binary2, ...]
+     *
+     * @param string $envName ENV fallback name (ignored if keysDir+basename used)
+     * @param string|null $keysDir directory with keys
+     * @param string $basename basename of key files
+     * @param int|null $expectedByteLen override expected key length
+     * @return array<int,string> raw key bytes
+     */
+    public static function getAllRawKeys(string $envName, ?string $keysDir, string $basename, ?int $expectedByteLen = null): array
+    {
+        $wantedLen = $expectedByteLen ?? self::keyByteLen();
+        $keys = [];
+
+        if ($keysDir !== null && $basename !== '') {
+            $versions = self::listKeyVersions($keysDir, $basename);
+            foreach ($versions as $ver => $path) {
+                $raw = @file_get_contents($path);
+                if ($raw === false || strlen($raw) !== $wantedLen) {
+                    throw new KeyManagerException('Key file invalid length: ' . $path);
+                }
+                $keys[] = $raw;
+            }
+        }
+
+        // fallback to ENV only if no key files found
+        if (empty($keys)) {
+            $envVal = $_ENV[$envName] ?? '';
+            if ($envVal !== '') {
+                $raw = base64_decode($envVal, true);
+                if ($raw === false || strlen($raw) !== $wantedLen) {
+                    throw new KeyManagerException(sprintf('ENV %s invalid base64 or wrong length', $envName));
+                }
+                $keys[] = $raw;
+            }
+        }
+
+        return $keys;
+    }
 
     public static function requireSodium(): void
     {
@@ -79,17 +122,17 @@ final class KeyManager
      * @return string base64-encoded key
      * @throws RuntimeException
      */
-    public static function getBase64Key(string $envName, ?string $keysDir = null, string $basename = '', bool $generateIfMissing = false): string
+    public static function getBase64Key(string $envName, ?string $keysDir = null, string $basename = '', bool $generateIfMissing = false, ?int $expectedByteLen = null): string
     {
         self::requireSodium();
-        $wantedLen = self::keyByteLen();
+        $wantedLen = $expectedByteLen ?? self::keyByteLen();
 
         if ($keysDir !== null && $basename !== '') {
             $info = self::locateLatestKeyFile($keysDir, $basename);
             if ($info !== null) {
                 $raw = @file_get_contents($info['path']);
                 if ($raw === false || strlen($raw) !== $wantedLen) {
-                    throw new RuntimeException('Key file exists but invalid length: ' . $info['path']);
+                    throw new KeyManagerException('Key file exists but invalid length: ' . $info['path']);
                 }
                 return base64_encode($raw);
             }
@@ -99,14 +142,14 @@ final class KeyManager
         if ($envVal !== '') {
             $raw = base64_decode($envVal, true);
             if ($raw === false || strlen($raw) !== $wantedLen) {
-                throw new RuntimeException(sprintf('ENV %s set but invalid base64 or wrong length', $envName));
+                throw new KeyManagerException(sprintf('ENV %s set but invalid base64 or wrong length (expected %d bytes)', $envName, $wantedLen));
             }
             return $envVal;
         }
 
         if ($generateIfMissing) {
             if ($keysDir === null || $basename === '') {
-                throw new RuntimeException('generateIfMissing requires keysDir and basename');
+                throw new KeyManagerException('generateIfMissing requires keysDir and basename');
             }
             $raw = random_bytes($wantedLen);
             $info = self::locateLatestKeyFile($keysDir, $basename);
@@ -119,7 +162,7 @@ final class KeyManager
             return base64_encode($raw);
         }
 
-        throw new RuntimeException(sprintf('Key not configured: %s (no key file, no env)', $envName));
+        throw new KeyManagerException(sprintf('Key not configured: %s (no key file, no env)', $envName));
     }
 
     /**
@@ -127,20 +170,23 @@ final class KeyManager
      *
      * @return array{raw:string,version:string}
      */
-    public static function getRawKeyBytes(string $envName, ?string $keysDir = null, string $basename = '', bool $generateIfMissing = false, ?string $version = null): array
+    public static function getRawKeyBytes(string $envName, ?string $keysDir = null, string $basename = '', bool $generateIfMissing = false, ?int $expectedByteLen = null, ?string $version = null): array
     {
         if ($version !== null && $keysDir !== null && $basename !== '') {
-            return self::getRawKeyBytesByVersion($envName, $keysDir, $basename, $version);
+            return self::getRawKeyBytesByVersion($envName, $keysDir, $basename, $version, $expectedByteLen);
         }
-        $cacheKey = 'key_' . $envName . '_' . ($basename ?: 'env') . '_' . md5((string)$keysDir);
+
+        $wantedLen = $expectedByteLen ?? self::keyByteLen();
+        $cacheKey = 'key_' . $envName . '_' . ($basename ?: 'env') . '_len' . (string)$wantedLen . '_' . md5((string)$keysDir);
+
         if (isset(self::$cache[$cacheKey])) {
             return self::$cache[$cacheKey];
         }
 
-        $b64 = self::getBase64Key($envName, $keysDir, $basename, $generateIfMissing);
+        $b64 = self::getBase64Key($envName, $keysDir, $basename, $generateIfMissing, $wantedLen);
         $raw = base64_decode($b64, true);
         if ($raw === false) {
-            throw new RuntimeException('Base64 decode failed in KeyManager for ' . $envName);
+            throw new KeyManagerException('Base64 decode failed in KeyManager for ' . $envName);
         }
 
         $ver = null;
@@ -158,19 +204,20 @@ final class KeyManager
      * Read a specific versioned key file (e.g. 'v2') if present.
      * Returns ['raw'=>'...', 'version'=>'v2'] or throws if not found/invalid.
      */
-    public static function getRawKeyBytesByVersion(string $envName, string $keysDir, string $basename, string $version): array
+    public static function getRawKeyBytesByVersion(string $envName, string $keysDir, string $basename, string $version, ?int $expectedByteLen = null): array
     {
         $version = ltrim($version, 'v'); // accept 'v2' or '2'
         $verStr = 'v' . (string)(int)$version;
         $path = rtrim($keysDir, '/\\') . '/' . $basename . '_' . $verStr . '.bin';
         if (!is_file($path)) {
-            throw new RuntimeException('Requested key version not found: ' . $path);
+            throw new KeyManagerException('Requested key version not found: ' . $path);
         }
         $raw = @file_get_contents($path);
-        if ($raw === false || strlen($raw) !== self::keyByteLen()) {
-            throw new RuntimeException('Key file invalid or wrong length: ' . $path);
+        $wantedLen = $expectedByteLen ?? self::keyByteLen();
+        if ($raw === false || strlen($raw) !== $wantedLen) {
+            throw new KeyManagerException('Key file invalid or wrong length: ' . $path);
         }
-        $cacheKey = 'key_' . $envName . '_' . $basename . '_' . $verStr;
+        $cacheKey = 'key_' . $envName . '_' . $basename . '_' . $verStr . '_len' . (string)$wantedLen;
         $res = ['raw' => $raw, 'version' => $verStr];
         self::$cache[$cacheKey] = $res;
         return $res;
@@ -225,15 +272,46 @@ final class KeyManager
     }
 
     /**
+     * Clear entire per-request key cache and memzero stored raw bytes.
+     */
+    public static function clearCache(): void
+    {
+        foreach (self::$cache as $k => &$v) {
+            if (is_array($v) && isset($v['raw'])) {
+                self::memzero($v['raw']);
+            }
+            unset(self::$cache[$k]);
+        }
+        self::$cache = [];
+    }
+
+    /**
+     * Purge cached keys for a given envName (memzero stored raw bytes).
+     * Matches keys by prefix 'key_$envName_...'
+     */
+    public static function purgeCacheFor(string $envName): void
+    {
+        $prefix = 'key_' . $envName . '_';
+        foreach (self::$cache as $k => &$v) {
+            if (strpos($k, $prefix) === 0) {
+                if (is_array($v) && isset($v['raw'])) {
+                    self::memzero($v['raw']);
+                }
+                unset(self::$cache[$k]);
+            }
+        }
+    }
+
+    /**
      * Convenience: get binary pepper + version (fail-fast).
      * Returns ['raw'=>binary,'version'=>'vN']
      */
     public static function getPasswordPepperInfo(?string $keysDir = null): array
     {
         $basename = 'password_pepper';
-        $info = self::getRawKeyBytes('PASSWORD_PEPPER', $keysDir, $basename, false);
+        $info = self::getRawKeyBytes('PASSWORD_PEPPER', $keysDir, $basename, false, 32);
         if (empty($info['raw'])) {
-            throw new RuntimeException('PASSWORD_PEPPER returned empty raw bytes.');
+            throw new KeyManagerException('PASSWORD_PEPPER returned empty raw bytes.');
         }
         return $info;
     }
@@ -254,9 +332,49 @@ final class KeyManager
     public static function getSaltInfo(?string $keysDir = null): array
     {
         $basename = 'app_salt';
-        $info = self::getRawKeyBytes('APP_SALT', $keysDir, $basename, false);
+        $info = self::getRawKeyBytes('APP_SALT', $keysDir, $basename, false, 32);
         if (empty($info['raw'])) {
-            throw new RuntimeException('APP_SALT returned empty raw bytes.');
+            throw new KeyManagerException('APP_SALT returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    public static function getSessionKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'session_key';
+        $info = self::getRawKeyBytes('SESSION_KEY', $keysDir, $basename, false, 32);
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('SESSION_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    public static function getIpHashKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'ip_hash_key';
+        $info = self::getRawKeyBytes('IP_HASH_KEY', $keysDir, $basename, false, 32);
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('IP_HASH_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    public static function getCsrfKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'csrf_key';
+        $info = self::getRawKeyBytes('CSRF_KEY', $keysDir, $basename, false, 32);
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('CSRF_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    public static function getJwtKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'jwt_key';
+        $info = self::getRawKeyBytes('JWT_KEY', $keysDir, $basename, false, 32);
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('JWT_KEY returned empty raw bytes.');
         }
         return $info;
     }

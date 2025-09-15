@@ -138,7 +138,7 @@ final class Logger
     private static function filterSensitive(?array $meta): ?array
     {
         if ($meta === null) return null;
-        $blacklist = ['csrf','token','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret'];
+        $blacklist = ['csrf','token','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret','g-recaptcha-response','recaptcha_token','recaptcha'];
         $clean = [];
         foreach ($meta as $k => $v) {
             $lk = strtolower((string)$k);
@@ -441,11 +441,16 @@ final class Logger
 
     public static function systemError(\Throwable $e, ?int $userId = null, ?string $token = null, ?array $context = null, bool $aggregateByFingerprint = true): void
     {
-        $message = (string)$e->getMessage();
+        if ($e instanceof \PDOException) {
+            $message = 'Database error';
+        } else {
+            $message = (string)$e->getMessage();
+        }
+
         $exceptionClass = get_class($e);
         $file = $e->getFile();
         $line = $e->getLine();
-        $stack = $e->getTraceAsString();
+        $stack = !empty($_ENV['DEBUG']) ? $e->getTraceAsString() : null;
 
         $ipResult = self::getHashedIp(null);
         $ipHash = self::prepareIpForStorage($ipResult['hash']);
