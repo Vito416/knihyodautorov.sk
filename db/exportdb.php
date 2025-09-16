@@ -2,7 +2,7 @@
 // showdb.php
 
 // Načti PDO připojení
-$pdo = require __DIR__ . '/db/config/config.php';
+$pdo = require __DIR__ . '/../../../db/config/config.php';
 
 // Funkce pro smazání všech tabulek
 function dropAllTables($pdo) {
@@ -57,10 +57,32 @@ if (!$tables) {
     exit;
 }
 
+// helper: rozpozná, jestli typ sloupce je binární/blob
+function isBinaryColumnType(string $type): bool {
+    $type = strtolower($type);
+    return str_contains($type, 'blob')
+        || str_contains($type, 'binary')
+        || str_contains($type, 'varbinary')
+        || str_contains($type, 'bit'); // bit může být binární taky
+}
+
 foreach ($tables as $table) {
     echo "<h2>Tabulka: <code>$table</code></h2>";
 
-    // Získej všechna data
+    // Zjistíme typy sloupců (SHOW COLUMNS)
+    $colsStmt = $pdo->query("SHOW COLUMNS FROM `$table`");
+    $cols = $colsStmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$cols) {
+        echo "<p><em>Nelze načíst schéma tabulky.</em></p>";
+        continue;
+    }
+    $colTypes = [];
+    foreach ($cols as $c) {
+        // 'Type' obsahuje něco jako "varbinary(32)" nebo "longblob"
+        $colTypes[$c['Field']] = $c['Type'];
+    }
+
+    // Dotaz na data (bez změn)
     $stmt = $pdo->query("SELECT * FROM `$table`");
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -79,8 +101,27 @@ foreach ($tables as $table) {
     // Data
     foreach ($rows as $row) {
         echo "<tr>";
-        foreach ($row as $val) {
-            echo "<td>" . htmlspecialchars((string)$val) . "</td>";
+        foreach ($row as $colName => $val) {
+            $type = $colTypes[$colName] ?? '';
+            if ($val === null) {
+                echo "<td><em>null</em></td>";
+                continue;
+            }
+
+            if (isBinaryColumnType($type)) {
+                // binární data: zobrazíme délku a base64 (bez raw bin)
+                $len = is_string($val) ? strlen($val) : 0;
+                $b64 = base64_encode((string)$val);
+                // zkrátit zobrazení base64 pokud je velmi dlouhé
+                $show = $b64;
+                if (strlen($b64) > 200) {
+                    $show = substr($b64, 0, 200) . '... (base64 zkráceno, celkem ' . $len . ' B)';
+                }
+                echo "<td><code>BIN(len={$len})</code><br><small>" . htmlspecialchars($show) . "</small></td>";
+            } else {
+                // neterminální textová/nebinární data - bezpečné HTML escaping
+                echo "<td>" . nl2br(htmlspecialchars((string)$val)) . "</td>";
+            }
         }
         echo "</tr>";
     }

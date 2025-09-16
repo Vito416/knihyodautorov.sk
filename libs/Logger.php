@@ -14,7 +14,6 @@ declare(strict_types=1);
 final class Logger
 {
     private function __construct() {}
-    const IP_HASH_BINARY = true;
     // -------------------------
     // HELPERS
     // -------------------------
@@ -25,30 +24,29 @@ final class Logger
     }
 
     /**
-     * Prepare IP storage form (hex string or binary depending on IP_HASH_BINARY).
-     * Returns string|null (binary string when IP_HASH_BINARY is true).
+     * Prepare IP hash for database storage.
+     * - Accepts either raw 32-byte binary or 64-char hex string (for backward robustness).
+     * - Returns binary 32-bytes on success, or null if input is invalid.
+     *
+     * Database expects VARBINARY(32) — we enforce that here.
      */
-    private static function prepareIpForStorage(?string $ipHash)
+    private static function prepareIpForStorage(?string $ipHash): ?string
     {
         if ($ipHash === null) return null;
 
-        $useBinary = false;
-        if (defined('IP_HASH_BINARY')) {
-            $val = constant('IP_HASH_BINARY');
-            $useBinary = is_bool($val) ? $val : filter_var((string)$val, FILTER_VALIDATE_BOOLEAN);
-        } elseif (isset($_ENV['IP_HASH_BINARY'])) {
-            $useBinary = filter_var($_ENV['IP_HASH_BINARY'], FILTER_VALIDATE_BOOLEAN);
+        // If already binary 32 bytes, accept it
+        if (is_string($ipHash) && strlen($ipHash) === 32) {
+            return $ipHash;
         }
 
-        if ($useBinary) {
-            if (is_string($ipHash) && ctype_xdigit($ipHash) && strlen($ipHash) === 64) {
-                $bin = @hex2bin($ipHash);
-                return $bin === false ? null : $bin;
-            }
-            return null;
+        // If given as 64-char hex, convert to binary
+        if (is_string($ipHash) && ctype_xdigit($ipHash) && strlen($ipHash) === 64) {
+            $bin = @hex2bin($ipHash);
+            return $bin === false ? null : $bin;
         }
 
-        return $ipHash;
+        // Anything else -> reject
+        return null;
     }
 
     public static function getClientIp(): ?string
@@ -79,48 +77,55 @@ final class Logger
     }
 
     /**
-     * Compute hashed IP using KeyManager or APP_SALT or fallback sha256.
-     * Returns ['hash'=>?string, 'key_id'=>?string, 'used'=>'keymanager'|'env'|'fallback'|'none']
+     * Compute HMAC-SHA256 of IP using dedicated IP_HASH_KEY from KeyManager.
+     * Returns binary 32-byte hash, key version and used='keymanager' or 'none'.
+     *
+     * If the dedicated key is not available, we return ['hash' => null, 'key_id' => null, 'used' => 'none']
+     * — no fallback to APP_SALT or plain sha256.
      */
     public static function getHashedIp(?string $ip = null): array
     {
         $ipRaw = $ip ?? self::getClientIp();
-        if ($ipRaw === null) return ['hash'=>null,'key_id'=>null,'used'=>'none'];
+        if ($ipRaw === null) {
+            return ['hash' => null, 'key_id' => null, 'used' => 'none'];
+        }
 
-        // KeyManager attempt (best-effort; don't throw here)
         try {
-            if (class_exists('KeyManager') && method_exists('KeyManager', 'getSaltInfo')) {
-                $keysDir = defined('KEYS_DIR') ? KEYS_DIR : ($_ENV['KEYS_DIR'] ?? null);
-                $saltInfo = \KeyManager::getSaltInfo($keysDir);
-                $saltRaw = $saltInfo['raw'] ?? null;
-                $saltVer = $saltInfo['version'] ?? null;
-                if (!empty($saltRaw) && is_string($saltRaw)) {
-                    $hmac = hash_hmac('sha256', $ipRaw, $saltRaw);
-                    // attempt memzero if available (best-effort)
-                    if (method_exists('KeyManager','memzero')) {
-                        try { \KeyManager::memzero($saltRaw); } catch (\Throwable $_) {}
-                    } elseif (function_exists('sodium_memzero')) {
-                        @sodium_memzero($saltRaw);
-                    }
-                    return ['hash'=>$hmac,'key_id'=>$saltVer,'used'=>'keymanager'];
-                }
+            if (!class_exists('KeyManager') || !method_exists('KeyManager', 'getIpHashKeyInfo')) {
+                return ['hash' => null, 'key_id' => null, 'used' => 'none'];
             }
-        } catch (\Throwable $e) {
-            // silent fallback to env
-        }
 
-        // env APP_SALT fallback
-        $envVal = $_ENV['APP_SALT'] ?? ($_SERVER['APP_SALT'] ?? null);
-        if (!empty($envVal)) {
-            $decoded = base64_decode($envVal, true);
-            $secret = ($decoded !== false && $decoded !== '') ? $decoded : $envVal;
-            $hmac = hash_hmac('sha256', $ipRaw, $secret);
-            return ['hash'=>$hmac,'key_id'=>null,'used'=>'env'];
-        }
+            $keysDir = defined('KEYS_DIR') ? KEYS_DIR : ($_ENV['KEYS_DIR'] ?? null);
+            $info = \KeyManager::getIpHashKeyInfo($keysDir);
+            $keyRaw = $info['raw'] ?? null;
+            $keyVer = isset($info['version']) && is_string($info['version']) ? $info['version'] : null;
 
-        // last resort
-        $h = hash('sha256', $ipRaw);
-        return ['hash'=>$h,'key_id'=>null,'used'=>'fallback'];
+            if (!is_string($keyRaw) || strlen($keyRaw) !== KeyManager::keyByteLen()) {
+                // unexpected key format -> return none
+                return ['hash' => null, 'key_id' => null, 'used' => 'none'];
+            }
+
+            // compute raw binary HMAC (32 bytes)
+            $hmacBin = hash_hmac('sha256', $ipRaw, $keyRaw, true);
+
+            // best-effort memzero of key material
+            if (method_exists('KeyManager', 'memzero')) {
+                try { \KeyManager::memzero($keyRaw); } catch (\Throwable $_) {}
+            } elseif (function_exists('sodium_memzero')) {
+                @sodium_memzero($keyRaw);
+                $keyRaw = null;
+            }
+
+            // best-effort: purge KeyManager per-request cache for this env so no copies remain
+            if (method_exists('KeyManager', 'purgeCacheFor')) {
+                try { \KeyManager::purgeCacheFor('IP_HASH_KEY'); } catch (\Throwable $_) {}
+            }
+
+            return ['hash' => $hmacBin, 'key_id' => $keyVer, 'used' => 'keymanager'];
+        } catch (\Throwable $_) {
+            // any error -> no hash
+            return ['hash' => null, 'key_id' => null, 'used' => 'none'];
+        }
     }
 
     private static function getUserAgent(): ?string
@@ -138,7 +143,7 @@ final class Logger
     private static function filterSensitive(?array $meta): ?array
     {
         if ($meta === null) return null;
-        $blacklist = ['csrf','token','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret','g-recaptcha-response','recaptcha_token','recaptcha'];
+        $blacklist = ['csrf','token','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret','g-recaptcha-response','recaptcha_token','recaptcha', 'authorization_bearer', 'refresh_token', 'id_token'];
         $clean = [];
         foreach ($meta as $k => $v) {
             $lk = strtolower((string)$k);
@@ -388,11 +393,10 @@ final class Logger
         $ipKeyId = $ipResult['key_id'];
         $ipUsed = $ipResult['used'];
         $ua = self::truncateUserAgent(self::getUserAgent());
-
+        $context = $context ?? [];
         $file = $context['file'] ?? null;
         $line = $context['line'] ?? null;
         $fingerprint = hash('sha256', $level . '|' . $message . '|' . ($file ?? '') . ':' . ($line ?? ''));
-        $context = $context ?? [];
         $context['_ip_hash_used'] = $ipUsed;
         if ($ipKeyId !== null) $context['_ip_hash_key'] = $ipKeyId;
         $jsonContext = self::safeJsonEncode($context);

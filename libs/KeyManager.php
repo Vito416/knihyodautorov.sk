@@ -62,6 +62,126 @@ final class KeyManager
         return SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES;
     }
 
+    public static function rotateKey(string $basename, string $keysDir, ?PDO $pdo = null, int $keepVersions = 5, bool $archiveOld = false, ?string $archiveDir = null): array
+    {
+        self::requireSodium();
+        $wantedLen = self::keyByteLen();
+
+        $dir = rtrim($keysDir, '/\\');
+        if ($basename === '' || $dir === '') {
+            throw new KeyManagerException('rotateKey: basename and keysDir are required');
+        }
+
+        // simple lockfile to avoid concurrent rotations
+        $lockFile = $dir . '/.keymgr.lock';
+        $fp = @fopen($lockFile, 'c');
+        if ($fp === false) {
+            throw new KeyManagerException('rotateKey: cannot open lockfile ' . $lockFile);
+        }
+        if (!flock($fp, LOCK_EX)) {
+            fclose($fp);
+            throw new KeyManagerException('rotateKey: cannot obtain lock');
+        }
+
+        try {
+            // determine next version
+            $versions = self::listKeyVersions($dir, $basename); // oldest->newest
+            $next = 1;
+
+            if (!empty($versions)) {
+                $max = 0;
+                foreach (array_keys($versions) as $k) {
+                    if (preg_match('/^v(\d+)$/', $k, $m)) {
+                        $num = (int) $m[1];
+                        if ($num > $max) $max = $num;
+                    }
+                }
+                $next = $max + 1;
+            }
+
+            $target = $dir . '/' . $basename . '_v' . $next . '.bin';
+            $raw = random_bytes($wantedLen);
+
+            // atomic write (uses existing method)
+            self::atomicWriteKeyFile($target, $raw);
+
+            // compute fingerprint for audit (sha256 hex)
+            $fingerprint = hash('sha256', $raw);
+
+            // Log to DB key_events / key_rotation_jobs if PDO provided (best-effort)
+            if ($pdo !== null) {
+                try {
+                    // insert key_events
+                    $stmt = $pdo->prepare("INSERT INTO key_events (key_id, basename, event_type, actor_id, note, meta, source) VALUES (NULL, :basename, 'rotated', NULL, :note, :meta, 'rotation')");
+                    $meta = json_encode(['filename' => basename($target), 'fingerprint' => $fingerprint]);
+                    $stmt->execute([':basename' => $basename, ':note' => 'Automatic rotation', ':meta' => $meta]);
+                } catch (PDOException $e) {
+                    // log but continue — rotation already created file
+                    error_log('[KeyManager::rotateKey] DB log failed: ' . $e->getMessage());
+                }
+            }
+
+            // optionally cleanup/archive old versions
+            try {
+                self::cleanupOldVersions($dir, $basename, $keepVersions, $archiveOld, $archiveDir);
+            } catch (\Throwable $e) {
+                // don't fail rotation; just log
+                error_log('[KeyManager::rotateKey] cleanup failed: ' . $e->getMessage());
+            }
+
+            // zero raw in memory
+            self::memzero($raw);
+
+            // purge cache pro daný basename (aby se další getRawKeyBytes načetl nový soubor)
+            self::purgeCacheFor(strtoupper($basename));
+
+            return ['path' => $target, 'version' => 'v' . $next, 'fingerprint' => $fingerprint];
+        } finally {
+            // release lock
+            flock($fp, LOCK_UN);
+            fclose($fp);
+        }
+    }
+
+    /**
+     * Cleanup or archive old versions, keeping $keepVersions newest.
+     * If $archiveOld==true and $archiveDir provided, move older files to archiveDir (create dir if needed),
+     * otherwise do nothing (safer default).
+     */
+    public static function cleanupOldVersions(string $keysDir, string $basename, int $keepVersions = 5, bool $archiveOld = false, ?string $archiveDir = null): void
+    {
+        $dir = rtrim($keysDir, '/\\');
+        $versions = self::listKeyVersions($dir, $basename); // oldest->newest
+        if (count($versions) <= $keepVersions) return;
+
+        $toRemove = array_slice(array_keys($versions), 0, count($versions) - $keepVersions);
+        foreach ($toRemove as $v) {
+            $path = $versions[$v];
+            if ($archiveOld) {
+                if ($archiveDir === null) {
+                    $archiveDir = $dir . '/.archive';
+                }
+                if (!is_dir($archiveDir)) {
+                    if (!@mkdir($archiveDir, 0750, true)) {
+                        error_log('[KeyManager::cleanupOldVersions] archive mkdir failed: ' . $archiveDir);
+                        continue;
+                    }
+                }
+                $dest = rtrim($archiveDir, '/\\') . '/' . basename($path);
+                // atomic move
+                if (!@rename($path, $dest)) {
+                    error_log('[KeyManager::cleanupOldVersions] archive rename failed: ' . $path);
+                    continue;
+                }
+                @chmod($dest, 0400);
+            } else {
+                // default SAFE behavior: do NOT delete, only log
+                error_log('[KeyManager::cleanupOldVersions] old key present (not deleted): ' . $path);
+                // Optionally you could check file age and warn
+            }
+        }
+    }
+
     /**
      * List available versioned key files for a basename (e.g. password_pepper or app_salt).
      * Returns array of versions => fullpath, e.g. ['v1'=>'/keys/app_salt_v1.bin','v2'=>...]
@@ -99,9 +219,16 @@ final class KeyManager
     {
         $list = self::listKeyVersions($keysDir, $basename);
         if (!empty($list)) {
-            end($list);
-            $v = key($list);
-            return ['path' => $list[$v], 'version' => $v];
+            $max = 0; $sel = null;
+            foreach ($list as $ver => $p) {
+                if (preg_match('/^v(\d+)$/', $ver, $m)) {
+                    $num = (int)$m[1];
+                    if ($num > $max) { $max = $num; $sel = $ver; }
+                }
+            }
+            if ($sel !== null) {
+                return ['path' => $list[$sel], 'version' => $sel];
+            }
         }
 
         $exact = rtrim($keysDir, '/\\') . '/' . $basename . '.bin';
@@ -151,14 +278,12 @@ final class KeyManager
             if ($keysDir === null || $basename === '') {
                 throw new KeyManagerException('generateIfMissing requires keysDir and basename');
             }
-            $raw = random_bytes($wantedLen);
-            $info = self::locateLatestKeyFile($keysDir, $basename);
-            $next = 1;
-            if ($info !== null && preg_match('/v([0-9]+)/', $info['version'], $m)) {
-                $next = ((int)$m[1]) + 1;
+            // použijeme rotateKey pro lock + audit
+            $res = self::rotateKey($basename, $keysDir, null, 5, false);
+            $raw = @file_get_contents($res['path']);
+            if ($raw === false || strlen($raw) !== $wantedLen) {
+                throw new KeyManagerException('Failed to read generated key ' . $res['path']);
             }
-            $target = rtrim($keysDir, '/\\') . '/' . $basename . '_v' . $next . '.bin';
-            self::atomicWriteKeyFile($target, $raw);
             return base64_encode($raw);
         }
 
@@ -249,6 +374,9 @@ final class KeyManager
             throw new RuntimeException('Failed to atomically move key file to destination');
         }
 
+        // zajistíme správná práva i po rename
+        @chmod($path, 0400);
+
         clearstatcache(true, $path);
         if (!is_readable($path) || filesize($path) !== strlen($raw)) {
             throw new RuntimeException('Key file appears corrupted after write');
@@ -300,6 +428,68 @@ final class KeyManager
                 unset(self::$cache[$k]);
             }
         }
+    }
+
+    /**
+     * Derive single HMAC (binary) using the newest key for the given basename.
+     * Returns ['hash' => binary32, 'version' => 'vN'] (throws on error).
+     */
+    public static function deriveHmacWithLatest(string $envName, ?string $keysDir, string $basename, string $data): array
+    {
+        // get latest key (fail-fast)
+        $info = self::getRawKeyBytes($envName, $keysDir, $basename, false, self::keyByteLen());
+        $key = $info['raw'];
+        $ver = $info['version'] ?? null;
+        if (!is_string($key) || strlen($key) !== self::keyByteLen()) {
+            throw new KeyManagerException('deriveHmacWithLatest: invalid key material');
+        }
+        $h = hash_hmac('sha256', $data, $key, true);
+        // best-effort memzero of copy
+        try { self::memzero($key); } catch (\Throwable $_) {}
+        return ['hash' => $h, 'version' => $ver];
+    }
+
+    /**
+     * Produce array of candidate HMACs (binary) computed with all available keys (newest -> oldest).
+     * Returns array of ['version'=>'vN','hash'=>binary] entries.
+     * This is used for validation (try all keys for rotation support).
+     */
+    public static function deriveHmacCandidates(string $envName, ?string $keysDir, string $basename, string $data): array
+    {
+        $out = [];
+        // prefer versioned files order -> listKeyVersions gives versions
+        $expectedLen = self::keyByteLen();
+        if ($keysDir !== null && $basename !== '') {
+            $versions = self::listKeyVersions($keysDir, $basename);
+            // versions are sorted oldest->newest; iterate newest->oldest
+            $vers = array_keys($versions);
+            for ($i = count($vers) - 1; $i >= 0; $i--) {
+                $ver = $vers[$i];
+                try {
+                    $info = self::getRawKeyBytesByVersion($envName, $keysDir, $basename, $ver, $expectedLen);
+                    $key = $info['raw'];
+                    $h = hash_hmac('sha256', $data, $key, true);
+                    $out[] = ['version' => $ver, 'hash' => $h];
+                    try { self::memzero($key); } catch (\Throwable $_) {}
+                } catch (\Throwable $_) {
+                    // skip invalid version
+                    continue;
+                }
+            }
+        }
+        // fallback to ENV-only (if no files)
+        if (empty($out)) {
+            $envVal = $_ENV[$envName] ?? '';
+            if ($envVal !== '') {
+                $raw = base64_decode($envVal, true);
+                if ($raw !== false && strlen($raw) === $expectedLen) {
+                    $h = hash_hmac('sha256', $data, $raw, true);
+                    $out[] = ['version' => 'env', 'hash' => $h];
+                    try { self::memzero($raw); } catch (\Throwable $_) {}
+                }
+            }
+        }
+        return $out;
     }
 
     /**

@@ -67,13 +67,13 @@ if (!defined('APP_URL')) define('APP_URL', $config['app_url'] ?? ($_ENV['APP_URL
 try {
     if (!class_exists('KeyManager')) throw new RuntimeException('KeyManager class not available');
     if (!class_exists('Crypto')) throw new RuntimeException('Crypto class not available');
+    if (empty(KEYS_DIR)) throw new RuntimeException('keys dir not configured in config');
 
-    $keysDir = $config['paths']['keys'];
-    // KeyManager::getBase64Key should centralize key lookup; throws or returns empty if not found
-    $b64 = KeyManager::getBase64Key('APP_CRYPTO_KEY', $keysDir, 'crypto_key', ($config['app_env'] ?? '') === 'dev');
-    if (empty($b64)) throw new RuntimeException('Crypto key not found or invalid');
+    // Ensure libsodium is present
+    KeyManager::requireSodium();
 
-    Crypto::init_from_base64($b64);
+    // Initialize Crypto from KeyManager (reads versioned key file: crypto_key_vN.bin)
+    Crypto::initFromKeyManager(KEYS_DIR);
 } catch (Throwable $e) {
     $logBootstrapError('Crypto initialization failed', $e);
     http_response_code(500);

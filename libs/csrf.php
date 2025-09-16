@@ -90,17 +90,61 @@ final class CSRF
         $val = bin2hex(random_bytes(32)); // 64 hex chars
         self::$session['csrf_tokens'][$id] = ['v' => $val, 'exp' => $now + self::$ttl];
 
-        return $id . ':' . $val;
+        $mac = bin2hex(Crypto::hmac($id . ':' . $val, 'CSRF_KEY', 'csrf_key'));
+        return $id . ':' . $val . ':' . $mac;
     }
 
     public static function validate(?string $token): bool
     {
         self::ensureInitialized();
 
-        if (!is_string($token) || strpos($token, ':') === false) {
+        if (!is_string($token)) {
             return false;
         }
-        [$id, $val] = explode(':', $token, 2);
+        $parts = explode(':', $token, 3);
+        if (count($parts) !== 3) {
+            return false;
+        }
+        [$id, $val, $mac] = $parts;
+
+        // validate ID (16 random bytes -> 32 hex chars) and value (32 random bytes -> 64 hex chars)
+        if (!ctype_xdigit($id) || strlen($id) !== 32) {
+            return false;
+        }
+        if (!ctype_xdigit($val) || strlen($val) !== 64) {
+            return false;
+        }
+
+        // --- KEY ROTATION AWARE CHECK ---
+        $candidates = Crypto::hmac($id . ':' . $val, 'CSRF_KEY', 'csrf_key', null, true);
+        
+        // token() vytváří mac jako bin2hex(...), převést zpět na binary
+        $macBin = @hex2bin($mac);
+        if ($macBin === false || strlen($macBin) !== 32) {
+            return false;
+        }
+
+        $ok = false;
+        foreach ($candidates as $cand) {
+            // očekáváme $cand = ['version'=>'vN','hash'=>binary]
+            if (is_array($cand) && isset($cand['hash']) && is_string($cand['hash'])) {
+                if (hash_equals($cand['hash'], $macBin)) {
+                    $ok = true;
+                    break;
+                }
+            } elseif (is_string($cand)) {
+                // fallback pro případ, že candidate je přímo binární string
+                if (hash_equals($cand, $macBin)) {
+                    $ok = true;
+                    break;
+                }
+            }
+        }
+        if (!$ok) {
+            return false;
+        }
+
+        // --- CHECK SESSION STATE ---
         if (!isset(self::$session['csrf_tokens'][$id])) {
             return false;
         }

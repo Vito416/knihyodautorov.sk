@@ -153,6 +153,8 @@ if (isset($_POST['create_db'])) {
     $sql = "CREATE TABLE IF NOT EXISTS session_audit (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         session_token VARBINARY(32) NULL,      -- referenční token_hash (binary) nebo NULL
+        session_token_key_version INT NULL,
+        csrf_key_version INT NULL,
         session_id VARCHAR(128) NULL,          -- optional PHP session_id() if tracked
         event VARCHAR(64) NOT NULL,
         user_id BIGINT UNSIGNED NULL,
@@ -180,6 +182,10 @@ if (isset($_POST['create_db'])) {
     $sql = "CREATE TABLE IF NOT EXISTS sessions (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         token_hash VARBINARY(32) NOT NULL,     -- sha256 raw binary (recommended)
+        token_hash_key VARCHAR(64) NULL,       -- key version (např. v2, env)
+        token_key_version INT NULL,     -- numerická verze klíče použitá pro podpis
+        token_key_fingerprint CHAR(64) NULL,
+        token_issued_at DATETIME(6) NULL,
         user_id BIGINT UNSIGNED NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         last_seen_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -188,15 +194,18 @@ if (isset($_POST['create_db'])) {
         ip_hash VARBINARY(32) NULL,            -- binary sha256 of IP/salt
         ip_hash_key VARCHAR(64) NULL,
         user_agent VARCHAR(512) NULL,
+        session_blob LONGBLOB NULL,            -- encrypted JSON payload
         -- Indexy
         UNIQUE KEY uq_token_hash (token_hash),
         INDEX idx_user_id (user_id),
         INDEX idx_expires_at (expires_at),
         INDEX idx_last_seen (last_seen_at),
+        INDEX idx_token_key (token_hash_key),
         CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB
-        DEFAULT CHARSET = utf8mb4
-        COLLATE = utf8mb4_unicode_ci;";
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;";
+
     createTable($pdo, $sql, "sessions");
 
     // Tabuľka auth_events
@@ -295,10 +304,7 @@ if (isset($_POST['create_db'])) {
         UNIQUE KEY uq_err_fp (fingerprint),
         CONSTRAINT fk_err_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
         CONSTRAINT fk_err_resolved_by FOREIGN KEY (resolved_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB
-    DEFAULT CHARSET = utf8mb4
-    COLLATE = utf8mb4_unicode_ci;
-    ";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "system_error");
 
     // Tabuľka user_consents
@@ -360,6 +366,85 @@ if (isset($_POST['create_db'])) {
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "books");
 
+    
+    // Tabuľka crypto_keys
+    $sql = "CREATE TABLE IF NOT EXISTS crypto_keys (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        basename VARCHAR(100) NOT NULL,          -- např. 'password_pepper', 'crypto_key'
+        version INT NOT NULL,                     -- numerická verze (1,2,3)
+        filename VARCHAR(255) NULL,               -- např. 'crypto_key_v3.bin' (neobsahuje path sensitive)
+        file_path VARCHAR(1024) NULL,             -- volitelné, relativní / bezpečně nastavitelné
+        fingerprint CHAR(64) NULL,                -- sha256 hex of raw key OR of file contents
+        key_meta JSON NULL,                       -- volitelně: extra metadata (alg, length, notes)
+        status ENUM('active','retired','compromised','archived') NOT NULL DEFAULT 'active',
+        is_backup_encrypted TINYINT(1) NOT NULL DEFAULT 0, -- pokud ukládáš encrypted blob
+        backup_blob LONGBLOB NULL,                -- pouze pokud explicitně chcete ukládat šifrovaný dump (silně discouraged)
+        created_by BIGINT UNSIGNED NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        activated_at DATETIME(6) NULL,
+        retired_at DATETIME(6) NULL,
+        replaced_by INT NULL,                     -- FK na keys.id (novější verze)
+        notes TEXT NULL,
+        CONSTRAINT uq_keys_basename_version UNIQUE (basename, version),
+        CONSTRAINT fk_keys_created_by FOREIGN KEY (created_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
+        CONSTRAINT fk_keys_replaced_by FOREIGN KEY (replaced_by) REFERENCES crypto_keys(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "crypto_keys");
+
+   // Tabuľka key_events
+    $sql = "CREATE TABLE IF NOT EXISTS key_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        key_id INT NULL,                           -- FK na keys.id (může být NULL při globálních událostech)
+        basename VARCHAR(100) NULL,                -- duplicitně pro události bez key_id
+        event_type ENUM('created','rotated','activated','retired','compromised','deleted','used_encrypt','used_decrypt','access_failed','backup','restore') NOT NULL,
+        actor_id BIGINT UNSIGNED NULL,             -- who/what triggered (cron/admin user id)
+        job_id INT NULL,                           -- optional reference to key_rotation_jobs.id
+        note TEXT NULL,
+        meta JSON NULL,                            -- optional structured data (e.g. filename, fingerprint, env)
+        source ENUM('cron','admin','api','manual') NOT NULL DEFAULT 'admin',
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        CONSTRAINT fk_key_events_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE SET NULL,
+        CONSTRAINT fk_key_events_actor FOREIGN KEY (actor_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
+    createTable($pdo, $sql, "key_events");
+        try {
+        $pdo->exec("CREATE INDEX idx_key_events_key_created ON key_events (key_id, created_at)");
+        } catch (PDOException $e) { /* fallback / log */ }
+
+   // Tabuľka key_rotation_jobs
+    $sql = "CREATE TABLE IF NOT EXISTS key_rotation_jobs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        basename VARCHAR(100) NOT NULL,            -- který klíč rotujeme
+        target_version INT NULL,                    -- expected new version (optional)
+        scheduled_at DATETIME(6) NULL,
+        started_at DATETIME(6) NULL,
+        finished_at DATETIME(6) NULL,
+        status ENUM('pending','running','done','failed','cancelled') NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        executed_by BIGINT UNSIGNED NULL,
+        result TEXT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        CONSTRAINT fk_key_rotation_jobs_user FOREIGN KEY (executed_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
+    createTable($pdo, $sql, "key_rotation_jobs");
+        try {
+        $pdo->exec("CREATE INDEX idx_key_rotation_jobs_basename_sched ON key_rotation_jobs (basename, scheduled_at)");
+        } catch (PDOException $e) { /* fallback / log */ }
+
+   // Tabuľka key_usage
+    $sql = "CREATE TABLE IF NOT EXISTS key_usage (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        key_id INT NOT NULL,
+        date DATE NOT NULL,
+        encrypt_count INT NOT NULL DEFAULT 0,
+        decrypt_count INT NOT NULL DEFAULT 0,
+        verify_count INT NOT NULL DEFAULT 0,
+        last_used_at DATETIME(6) NULL,
+        CONSTRAINT fk_key_usage_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE CASCADE,
+        UNIQUE KEY uq_key_usage_key_date (key_id, date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "key_usage");
+
     // Tabuľka book_assets
     $sql = "CREATE TABLE IF NOT EXISTS book_assets (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -377,9 +462,11 @@ if (isset($_POST['create_db'])) {
         encryption_iv VARBINARY(255) NULL,
         encryption_tag VARBINARY(255) NULL,
         key_version INT NULL,
+        key_id INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
+        CONSTRAINT fk_book_assets_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE SET NULL,
+        CONSTRAINT fk_book_assets_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "book_assets");
 
     // Tabuľka book_categories
@@ -462,6 +549,8 @@ if (isset($_POST['create_db'])) {
         book_id INT NOT NULL,
         asset_id INT NOT NULL,
         download_token VARCHAR(255) NOT NULL,
+        encryption_key_version INT NULL,
+        token_key_version INT NULL,
         max_uses INT NOT NULL,
         used INT NOT NULL DEFAULT 0,
         expires_at DATETIME NOT NULL,
@@ -640,7 +729,7 @@ if (isset($_POST['create_db'])) {
         user_agent VARCHAR(255) NULL,
         request_id VARCHAR(100) NULL,
         FOREIGN KEY (changed_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "audit_log");
 
     // Tabuľka webhook_outbox
@@ -653,22 +742,24 @@ if (isset($_POST['create_db'])) {
         next_attempt_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "webhook_outbox");
 
     // Tabuľka email_verifications (required pre register/verify/resend)
     $sql = "CREATE TABLE IF NOT EXISTS email_verifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT UNSIGNED NOT NULL,
-        token_hash CHAR(64) NOT NULL,           -- sha256 hex (alebo HMAC hex neskôr)
+        token_hash CHAR(64) NOT NULL,
         key_version INT NOT NULL DEFAULT 0,
+        key_id INT NULL,
         expires_at DATETIME NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         used_at DATETIME NULL,
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
+        CONSTRAINT fk_email_verifications_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE SET NULL,
+        CONSTRAINT fk_email_verifications_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
         UNIQUE (user_id, token_hash),
         INDEX (expires_at)
-    ) ENGINE=InnoDB;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "email_verifications");
 
     // Index pre rýchle čistenie expirovaných tokenov
