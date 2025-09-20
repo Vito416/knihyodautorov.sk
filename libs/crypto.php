@@ -228,6 +228,104 @@ final class Crypto
         return null;
     }
 
+    /**
+     * Encrypt using a specific raw key bytes (32B).
+     * Same format as encrypt(): either binary(versioned) or compact_base64.
+     * Does NOT alter internal self::$keys; caller is responsible for key memzero.
+     *
+     * @param string $plaintext
+     * @param string $keyRaw  raw binary key (32 bytes)
+     * @param string $outFormat 'binary'|'compact_base64'
+     * @return string
+     */
+    public static function encryptWithKeyBytes(string $plaintext, string $keyRaw, string $outFormat = 'binary'): string
+    {
+        KeyManager::requireSodium();
+        $expectedLen = KeyManager::keyByteLen();
+        if (!is_string($keyRaw) || strlen($keyRaw) !== $expectedLen) {
+            throw new RuntimeException('encryptWithKeyBytes: invalid key length.');
+        }
+
+        if ($outFormat !== 'binary' && $outFormat !== 'compact_base64') {
+            throw new InvalidArgumentException('Unsupported outFormat');
+        }
+
+        $nonceSize = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES; // 24
+        $nonce = random_bytes($nonceSize);
+        $combined = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt($plaintext, self::AD, $nonce, $keyRaw);
+        if ($combined === false) {
+            throw new RuntimeException('encryptWithKeyBytes: encryption failed');
+        }
+
+        if ($outFormat === 'compact_base64') {
+            return base64_encode($nonce . $combined);
+        }
+
+        return chr(self::VERSION) . chr($nonceSize) . $nonce . $combined;
+    }
+
+    /**
+     * Try to decrypt payload using a list of candidate raw keys (newest->oldest).
+     * Useful when you store key versions separately and want to support rotation.
+     *
+     * @param string $payload
+     * @param array<int,string> $candidateKeys raw keys, order: oldest..newest OR newest..oldest
+     *        Function will try newest->oldest (so pass newest last OR reverse in method).
+     * @return string|null decrypted plaintext or null
+     */
+    public static function decryptWithKeyCandidates(string $payload, array $candidateKeys): ?string
+    {
+        KeyManager::requireSodium();
+        if ($payload === '') return null;
+
+        // normalize order: ensure newest is last -> iterate reverse
+        $expectedLen = KeyManager::keyByteLen();
+
+        // handle versioned binary or compact_base64 via existing decrypt logic,
+        // but using *given* keys rather than self::$keys.
+        // If payload is compact_base64:
+        $decoded = base64_decode($payload, true);
+        if ($decoded !== false) {
+            // compact_base64 path
+            if (strlen($decoded) < SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES + SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_ABYTES) {
+                return null;
+            }
+            $nonceLen = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES;
+            $nonce = substr($decoded, 0, $nonceLen);
+            $cipher = substr($decoded, $nonceLen);
+
+            for ($i = count($candidateKeys) - 1; $i >= 0; $i--) {
+                $k = $candidateKeys[$i];
+                if (!is_string($k) || strlen($k) !== $expectedLen) continue;
+                $plain = @sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
+                if ($plain !== false) return $plain;
+            }
+            return null;
+        }
+
+        // versioned binary path
+        if (strlen($payload) >= 2 && ord($payload[0]) === self::VERSION) {
+            $ptr = 0;
+            $version = ord($payload[$ptr++]);
+            $nonce_len = ord($payload[$ptr++]);
+            if ($nonce_len < 1 || $nonce_len > 255) return null;
+            if (strlen($payload) < $ptr + $nonce_len) return null;
+            $nonce = substr($payload, $ptr, $nonce_len);
+            $ptr += $nonce_len;
+            $cipher = substr($payload, $ptr);
+            for ($i = count($candidateKeys) - 1; $i >= 0; $i--) {
+                $k = $candidateKeys[$i];
+                if (!is_string($k) || strlen($k) !== $expectedLen) continue;
+                $plain = @sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
+                if ($plain !== false) return $plain;
+            }
+            return null;
+        }
+
+        // unknown format
+        return null;
+    }
+
     private static function log(string $msg): void
     {
         if (class_exists('Logger')) {

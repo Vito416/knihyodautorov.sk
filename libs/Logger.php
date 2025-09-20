@@ -196,20 +196,53 @@ final class Logger
         $ipKeyId = $ipResult['key_id'];
         $ipUsed = $ipResult['used'];
 
+        // sanitize meta (remove sensitive values)
         $filteredMeta = self::filterSensitive($meta) ?? [];
+
+        // --- protect against accidental plaintext email logging ---
+        // If caller passed plaintext 'email', remove it entirely.
+        if (isset($filteredMeta['email'])) {
+            unset($filteredMeta['email']);
+        }
+
+        // If caller provided a precomputed email hash (binary or base64/text), use it for meta_email.
+        $metaEmail = null;
+        if (isset($filteredMeta['email_hash'])) {
+            $eh = $filteredMeta['email_hash'];
+            // if binary (non-printable), base64 encode for storage
+            if (is_string($eh)) {
+                if (preg_match('/[^\x20-\x7E]/', $eh)) {
+                    // binary -> base64
+                    $metaEmail = base64_encode($eh);
+                } else {
+                    // printable -> store as-is (expected base64 or hex or textual token)
+                    $metaEmail = $eh;
+                }
+            } elseif (is_scalar($eh)) {
+                $metaEmail = (string)$eh;
+            }
+            // remove from meta JSON to avoid duplication of sensitive-ish value
+            unset($filteredMeta['email_hash']);
+        }
+
+        // add ip metadata
         $filteredMeta['_ip_hash_used'] = $ipUsed;
         if ($ipKeyId !== null) $filteredMeta['_ip_hash_key'] = $ipKeyId;
+
         $json = self::safeJsonEncode($filteredMeta);
 
-        $sql = "INSERT INTO auth_events (user_id, type, ip_hash, ip_hash_key, user_agent, occurred_at, meta)
-                VALUES (:user_id, :type, :ip_hash, :ip_hash_key, :ua, UTC_TIMESTAMP(), :meta)";
+        // include meta_email column (stores email_hash token/base64) to avoid saving plaintext email in meta JSON
+        $sql = "INSERT INTO auth_events (user_id, type, ip_hash, ip_hash_key, user_agent, occurred_at, meta, meta_email)
+                VALUES (:user_id, :type, :ip_hash, :ip_hash_key, :ua, UTC_TIMESTAMP(), :meta, :meta_email)";
+
         $params = [
-            ':user_id' => $userId,
-            ':type' => $type,
-            ':ip_hash' => $ipHash,
-            ':ip_hash_key' => $ipKeyId,
-            ':ua' => $userAgent,
-            ':meta' => $json,
+            ':user_id'    => $userId,
+            ':type'       => $type,
+            ':ip_hash'    => $ipHash,
+            ':ip_hash_key'=> $ipKeyId,
+            ':ua'         => $userAgent,
+            ':meta'       => $json,
+            ':meta_email' => $metaEmail,
         ];
 
         if (\Database::isInitialized()) {
@@ -218,7 +251,7 @@ final class Logger
             try {
                 \Database::getInstance()->execute($sql, $params);
             } catch (\Throwable $e) {
-                // silent fail in production
+                // silent fail in production — logger nesmí shodit aplikaci
                 return;
             }
             return;
@@ -349,10 +382,42 @@ final class Logger
             if ($sid !== '' && $sid !== null) $sessId = $sid;
         }
 
-        $sql = "INSERT INTO session_audit (session_token, session_id, event, user_id, ip_hash, ip_hash_key, ua, meta_json, outcome, created_at)
-                VALUES (:session_token, :session_id, :event, :user_id, :ip_hash, :ip_hash_key, :ua, :meta, :outcome, UTC_TIMESTAMP())";
+        // z meta si vyzobneme verze pokud tam jsou
+        $sessionTokenKeyVersion = $filteredMeta['session_token_key_version'] ?? null;
+        $csrfKeyVersion = $filteredMeta['csrf_key_version'] ?? null;
+
+        $sql = "INSERT INTO session_audit (
+                    session_token,
+                    session_token_key_version,
+                    csrf_key_version,
+                    session_id,
+                    event,
+                    user_id,
+                    ip_hash,
+                    ip_hash_key,
+                    ua,
+                    meta_json,
+                    outcome,
+                    created_at
+                ) VALUES (
+                    :session_token,
+                    :session_token_key_version,
+                    :csrf_key_version,
+                    :session_id,
+                    :event,
+                    :user_id,
+                    :ip_hash,
+                    :ip_hash_key,
+                    :ua,
+                    :meta,
+                    :outcome,
+                    UTC_TIMESTAMP()
+                )";
+
         $params = [
             ':session_token' => $tokenHashBin,
+            ':session_token_key_version' => $sessionTokenKeyVersion,
+            ':csrf_key_version' => $csrfKeyVersion,
             ':session_id' => $sessId,
             ':event' => $event,
             ':user_id' => $userId,

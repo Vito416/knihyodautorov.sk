@@ -34,7 +34,16 @@ final class SessionManager
     private static function truncateUserAgent(?string $ua): ?string
     {
         if ($ua === null) return null;
-        return mb_substr($ua, 0, 255);
+
+        // 1) odstraníme kontrolní znaky (včetně NUL, CR, LF, DEL)
+        $ua = preg_replace('/[\x00-\x1F\x7F]+/u', '', $ua);
+
+        // 2) nahradíme vícenásobné whitespace jednou mezerou a trim
+        $ua = preg_replace('/\s+/u', ' ', $ua);
+        $ua = trim($ua);
+
+        // 3) ořežeme na max. 512 UTF-8 znaků (odpovídá VARCHAR(512))
+        return mb_substr($ua, 0, 512, 'UTF-8');
     }
 
     private static function isHttps(): bool
@@ -81,7 +90,7 @@ final class SessionManager
                     }
 
                     // binary token/hash fields (fixed 32 bytes) should be bound as LOB/BINARY
-                    if (($name === ':token_hash' || $name === ':ip_hash') && strlen($v) === 32) {
+                    if (in_array($name, [':token_hash', ':ip_hash', ':token_fingerprint'], true) && strlen($v) === 32) {
                         $stmt->bindValue($name, $v, \PDO::PARAM_LOB);
                         continue;
                     }
@@ -125,7 +134,7 @@ final class SessionManager
                 } elseif (is_string($v)) {
                     if ($name === ':blob' || $name === ':session_blob') {
                         $stmt->bindValue($name, $v, \PDO::PARAM_LOB);
-                    } elseif (($name === ':token_hash' || $name === ':ip_hash') && strlen($v) === 32) {
+                    } elseif (in_array($name, [':token_hash', ':ip_hash', ':token_fingerprint'], true) && strlen($v) === 32) {
                         $stmt->bindValue($name, $v, \PDO::PARAM_LOB);
                     } elseif (strpos($v, "\0") !== false) {
                         $stmt->bindValue($name, $v, \PDO::PARAM_LOB);
@@ -229,7 +238,7 @@ final class SessionManager
             if (!is_array($data)) { return false; }
 
             // merge: ensure user_id from DB takes precedence
-            $userIdFromDb = $_SESSION['user_id'] ?? null;
+            $userIdFromDb = $row['user_id'] ?? null;
             $_SESSION = $data;
             if ($userIdFromDb !== null) $_SESSION['user_id'] = $userIdFromDb;
             return true;
@@ -309,11 +318,13 @@ final class SessionManager
             }
 
             // Insert - session_blob will be null initially; we'll persist after cookie + $_SESSION set
-            $sql = 'INSERT INTO sessions (token_hash, token_hash_key, user_id, created_at, last_seen_at, expires_at, ip_hash, ip_hash_key, user_agent, revoked, session_blob)
-                    VALUES (:token_hash, :token_hash_key, :user_id, :created_at, :last_seen_at, :expires_at, :ip_hash, :ip_hash_key, :user_agent, 0, NULL)';
+            $sql = 'INSERT INTO sessions (token_hash, token_hash_key, token_fingerprint, token_issued_at, user_id, created_at, last_seen_at, expires_at, ip_hash, ip_hash_key, user_agent, revoked, session_blob)
+                    VALUES (:token_hash, :token_hash_key, :token_fingerprint, :token_issued_at, :user_id, :created_at, :last_seen_at, :expires_at, :ip_hash, :ip_hash_key, :user_agent, 0, NULL)';
             $params = [
                 ':token_hash'   => $tokenHashBin,
                 ':token_hash_key' => $tokenHashKeyVer,
+                ':token_fingerprint' => hash('sha256', $cookieToken, true),
+                ':token_issued_at'   => $nowUtc,
                 ':user_id'      => $userId,
                 ':created_at'   => $nowUtc,
                 ':last_seen_at' => $nowUtc,
@@ -329,7 +340,10 @@ final class SessionManager
                 try {
                     $meta = ['source' => 'SessionManager::createSession', '_token_hash_key' => $tokenHashKeyVer];
                     $meta['_token_hash_hex'] = bin2hex($tokenHashBin);
-                    Logger::session('session_created', $userId, $meta, $ipRaw, $ua, null, $tokenHashBin);
+                    $meta['session_token_key_version'] = $tokenHashKeyVer;
+                    $meta['csrf_key_version'] = CSRF::getKeyVersion() ?? null;
+                    $storedUa = self::truncateUserAgent($ua);
+                    Logger::session('session_created', $userId, $meta, $ipRaw, $storedUa, null, $tokenHashBin);
                 } catch (\Throwable $_) {}
             }
         } catch (\Throwable $e) {
@@ -440,8 +454,10 @@ final class SessionManager
         }
 
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        if (($row['user_agent'] ?? null) !== null && $ua !== null) {
-            if ($row['user_agent'] !== $ua) return null;
+        $normalizedUa = self::truncateUserAgent($ua);
+        // DB obsahuje already-sanitized UA (uloženo při createSession)
+        if (($row['user_agent'] ?? null) !== null) {
+            if ($row['user_agent'] !== $normalizedUa) return null;
         }
 
         // populate session from encrypted blob; if decryption fails -> treat session as invalid
@@ -506,14 +522,33 @@ final class SessionManager
             }
         }
 
-        // clear cookie securely (same attributes as createSession)
-        setcookie(self::COOKIE_NAME, '', [
-            'expires'  => time() - 3600,
-            'path'     => '/',
-            'secure'   => self::isHttps(),
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
+        // ensure candidate exists for later logging
+        $candidate = $candidate ?? null;
+
+        // clear cookie securely (use same attributes/domain as createSession, with PHP <7.3 fallback)
+        $cookieOpts = [
+            'expires' => time() - 3600,
+            'path'    => '/',
+            'secure'  => self::isHttps(),
+            'httponly'=> true,
+            'samesite'=> 'Lax',
+        ];
+        $cookieDomain = $_ENV['SESSION_DOMAIN'] ?? ($_SERVER['HTTP_HOST'] ?? null);
+        if (!empty($cookieDomain)) $cookieOpts['domain'] = $cookieDomain;
+
+        if (PHP_VERSION_ID >= 70300) {
+            setcookie(self::COOKIE_NAME, '', $cookieOpts);
+        } else {
+            setcookie(
+                self::COOKIE_NAME,
+                '',
+                $cookieOpts['expires'],
+                $cookieOpts['path'],
+                $cookieDomain ?? '',
+                $cookieOpts['secure'],
+                $cookieOpts['httponly']
+            );
+        }
 
         // destroy PHP session
         $userId = $_SESSION['user_id'] ?? null;

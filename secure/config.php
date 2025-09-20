@@ -22,10 +22,13 @@ $config = [
     ],
 
     'paths' => [
-        'storage' => __DIR__ . '/../storage',
-        'uploads' => __DIR__ . '/../storage/uploads',
-        'keys' => __DIR__ . '/keys',
+    'templates' => __DIR__ . '/../www/domains/knihyodautorov.sk/eshop/templates',
+    'email_templates' => __DIR__ . '/../www/domains/knihyodautorov.sk/eshop/templates/emails',
+    'storage' => __DIR__ . '/../storage',
+    'uploads' => __DIR__ . '/../storage/uploads',
+    'keys' => __DIR__ . '/keys',
     ],
+    'debug' => false,
 
     'google' => [
         'client_id' => $_ENV['GOOGLE_CLIENT_ID'] ?? '',
@@ -42,14 +45,16 @@ $config = [
     ],
 
     'smtp' => [
-        'host' => $_ENV['SMTP_HOST'] ?? '',
-        'port' => (int)($_ENV['SMTP_PORT'] ?? 0),
-        'user' => $_ENV['SMTP_USER'] ?? '',
-        'pass' => $_ENV['SMTP_PASS'] ?? '',
-        'from_email' => $_ENV['SMTP_FROM_EMAIL'] ?? '',
-        'from_name' => $_ENV['SMTP_FROM_NAME'] ?? '',
+    'host' => $_ENV['SMTP_HOST'] ?? '',
+    'port' => (int)($_ENV['SMTP_PORT'] ?? 0),
+    'user' => $_ENV['SMTP_USER'] ?? '',
+    'pass' => $_ENV['SMTP_PASS'] ?? '',
+    'from_email' => $_ENV['SMTP_FROM_EMAIL'] ?? '',
+    'from_name' => $_ENV['SMTP_FROM_NAME'] ?? '',
+    'secure' => $_ENV['SMTP_SECURE'] ?? '', // 'ssl'|'tls' or ''
+    'timeout' => 10,
+    'max_retries' => 6,
     ],
-
     'table_names' => [],
 ];
 

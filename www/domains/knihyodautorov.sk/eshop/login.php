@@ -1,147 +1,171 @@
 <?php
 declare(strict_types=1);
 
-require __DIR__ . '/inc/bootstrap.php';
+require_once __DIR__ . '/inc/bootstrap.php';
 
-$email = $_POST['email'] ?? '';
-$returnTo = $_GET['return_to'] ?? $_POST['return_to'] ?? null;
-$err = '';
-$info = '';
+/**
+ * login.php
+ * Bezpečné prihlásenie používateľa — kompatibilné s Auth a SessionManager.
+ * Jazyk chybových hlásení: slovensky.
+ *
+ * Predpoklady (musí byť k dispozícii v bootstrap.php alebo konfigu):
+ *  - autoload tried: Auth, SessionManager, KeyManager, Logger, Database alebo $GLOBALS['pdo']
+ *  - definovaná konštanta KEYS_DIR (security-first)
+ *  - Templates::render() pre zobrazovanie stránok
+ */
 
-/* ----------------- Helpers ----------------- */
-function e(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+// Zabezpečené HTTP hlavičky (len ak ešte neboli odoslané)
+if (!headers_sent()) {
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: no-referrer-when-downgrade');
+    header('Strict-Transport-Security: max-age=63072000; includeSubDomains; preload'); // vyžaduje HTTPS
+    header("Content-Security-Policy: default-src 'self'; frame-ancestors 'none';");
 }
 
-function is_safe_return_to(?string $url): bool {
-    if (!$url) return false;
-    if (strpos($url, "\n") !== false || strpos($url, "\r") !== false) return false;
-    $decoded = rawurldecode($url);
-    if (preg_match('#^[a-zA-Z0-9+\-.]+://#', $decoded)) return false;
-    $path = parse_url($decoded, PHP_URL_PATH);
-    return $path !== null && $path !== '' && $path[0] === '/' && strpos($path, '//') === false && strpos($path, '..') === false;
+// Povinné kritické triedy
+$required = ['Auth', 'SessionManager', 'KeyManager', 'Logger'];
+$missing = [];
+foreach ($required as $c) {
+    if (!class_exists($c)) $missing[] = $c;
+}
+if (!empty($missing)) {
+    $msg = 'Interná chyba: chýbajú tieto knižnice: ' . implode(', ', $missing) . '.';
+    if (class_exists('Logger')) {
+        try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
+    }
+    http_response_code(500);
+    echo Templates::render('pages/error.php', ['message' => $msg]);
+    exit;
 }
 
-/* ----------------- Handle POST ----------------- */
+// KEYS_DIR musí byť definovaný — Auth vyžaduje kľúče pre pepper/email/session
+if (!defined('KEYS_DIR') || !is_string(KEYS_DIR) || KEYS_DIR === '') {
+    $msg = 'Interná chyba: KEYS_DIR nie je nastavený. Skontrolujte konfiguráciu.';
+    try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
+    http_response_code(500);
+    echo Templates::render('pages/error.php', ['message' => $msg]);
+    exit;
+}
+
+// POST processing (prihlásenie)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $emailNorm = strtolower(trim($email));
-    $password = $_POST['password'] ?? '';
-    $csrfToken = $_POST['csrf_token'] ?? '';
+    $email = trim((string)($_POST['email'] ?? ''));
+    $password = (string)($_POST['password'] ?? '');
 
-    if (!CSRF::validate($csrfToken)) {
-        Logger::warn('Login attempt with invalid CSRF token', null, ['email' => $emailNorm]);
-        $err = 'CSRF token neplatný';
-    } elseif (!filter_var($emailNorm, FILTER_VALIDATE_EMAIL)) {
-        $err = 'Neplatné prihlasovacie údaje.';
-    } else {
+    // veľmi krátka sanitácia vstupu + validácia formátu
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        echo Templates::render('pages/login.php', ['error' => 'Neplatný e-mail alebo chýbajúci údaj.']);
+        exit;
+    }
+    if ($password === '') {
+        echo Templates::render('pages/login.php', ['error' => 'Zadajte heslo.']);
+        exit;
+    }
+
+    // voliteľná CSRF validácia, ak je dostupná
+    if (class_exists('CSRF') && method_exists('CSRF', 'validate')) {
         try {
-            [$user, $status] = Auth::login($db, $emailNorm, $password, (int)($_ENV['LOGIN_MAX_FAILED'] ?? 5));
-
-            if (!$user) {
-                $err = 'Neplatné prihlasovacie údaje.';
-            } elseif ($status === 'MUST_CHANGE_PASSWORD') {
-                $loc = '/eshop/change-password.php';
-                if ($returnTo && is_safe_return_to($returnTo)) {
-                    $loc .= '?return_to=' . urlencode($returnTo);
-                }
-                header('Location: ' . $loc, true, 302);
-                exit;
-            } else {
-                // session
-                SessionManager::createSession(
-                    $db,
-                    (int)$user['id'],
-                    (int)($_ENV['SESSION_LIFETIME_DAYS'] ?? 30),
-                    true,
-                    'Lax'
-                );
-
-                // redirect logic
-                $loc = '/eshop/';
-                if ($returnTo && is_safe_return_to($returnTo)) {
-                    $decoded = rawurldecode($returnTo);
-                    $path = parse_url($decoded, PHP_URL_PATH) ?: '';
-                    $query = parse_url($decoded, PHP_URL_QUERY);
-                    $finalReturn = $path . ($query ? '?' . $query : '');
-
-                    if (Auth::isAdmin($user)) {
-                        $loc = strpos($path, '/admin') === 0 ? $finalReturn : '/admin/';
-                    } else {
-                        $loc = strpos($path, '/admin') === 0 ? '/eshop/' : $finalReturn;
-                    }
-                } elseif (Auth::isAdmin($user)) {
-                    $loc = '/admin/';
-                }
-
-                header('Location: ' . $loc, true, 302);
+            if (!CSRF::validate($_POST['csrf'] ?? null)) {
+                echo Templates::render('pages/login.php', ['error' => 'Neplatný CSRF token.']);
                 exit;
             }
         } catch (\Throwable $e) {
-            Logger::systemError($e);
-            $err = 'Prihlásenie zlyhalo. Skúste to neskôr.';
+            // ak CSRF hádže chybu, považujeme to za internú chybu (logujeme)
+            try { Logger::systemError($e); } catch (\Throwable $_) {}
+            http_response_code(500);
+            echo Templates::render('pages/error.php', ['message' => 'Interná chyba (CSRF).']);
+            exit;
         }
+    }
+
+    // získať PDO inštanciu (Auth::login očakáva PDO)
+    try {
+        $pdo = null;
+        if (class_exists('Database') && method_exists('Database', 'getInstance')) {
+            $dbInst = Database::getInstance();
+            if ($dbInst instanceof \PDO) {
+                $pdo = $dbInst;
+            } elseif (is_object($dbInst) && method_exists($dbInst, 'getPdo')) {
+                $pdo = $dbInst->getPdo();
+            }
+        }
+        if ($pdo === null && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
+            $pdo = $GLOBALS['pdo'];
+        }
+        if (!($pdo instanceof \PDO)) {
+            throw new \RuntimeException('Databázové pripojenie nie je dostupné vo forme PDO.');
+        }
+    } catch (\Throwable $e) {
+        try { Logger::systemError($e); } catch (\Throwable $_) {}
+        http_response_code(500);
+        echo Templates::render('pages/error.php', ['message' => 'Interná chyba (DB).']);
+        exit;
+    }
+
+    // call Auth::login (defensive wrapper)
+    try {
+        // maxFailed môže byť konfigurovateľné, tu základná hodnota
+        $maxFailed = 5;
+        $res = Auth::login($pdo, $email, $password, $maxFailed);
+
+        if (!is_array($res)) {
+            // neočakávaný návrat z Auth — logovať a 500
+            $err = new \RuntimeException('Auth::login vrátil neočakávaný typ výsledku.');
+            try { Logger::systemError($err); } catch (\Throwable $_) {}
+            http_response_code(500);
+            echo Templates::render('pages/error.php', ['message' => 'Interná chyba pri autentifikácii.']);
+            exit;
+        }
+
+        if (empty($res['success'])) {
+            // neúspešné prihlásenie — Auth už spravuje limiter/logy
+            $msg = $res['message'] ?? 'Nesprávny e-mail alebo heslo.';
+            // pre bezpečnosť nezobrazovať detaily (uniformné hlásenie)
+            echo Templates::render('pages/login.php', ['error' => $msg]);
+            exit;
+        }
+
+        // úspešné prihlásenie — očakávame user.id
+        $user = $res['user'] ?? null;
+        $userId = null;
+        if (is_array($user) && isset($user['id'])) $userId = (int)$user['id'];
+        if ($userId === null) {
+            $err = new \RuntimeException('Auth success, ale chýba user id.');
+            try { Logger::systemError($err); } catch (\Throwable $_) {}
+            http_response_code(500);
+            echo Templates::render('pages/error.php', ['message' => 'Interná chyba pri prihlasovaní.']);
+            exit;
+        }
+
+        // vytvorenie session cez SessionManager (persistuje do DB, nastaví cookie)
+        try {
+            $token = SessionManager::createSession($pdo, $userId, 30, true, 'Lax');
+        } catch (\Throwable $e) {
+            try { Logger::systemError($e, $userId); } catch (\Throwable $_) {}
+            http_response_code(500);
+            echo Templates::render('pages/error.php', ['message' => 'Nepodarilo sa vytvoriť reláciu.']);
+            exit;
+        }
+
+        // bezpečné vyčistenie citlivých údajov z pamäti
+        try { unset($password); } catch (\Throwable $_) {}
+
+        // logovanie úspechu (Auth môže už volať Logger::auth('login_success')) - dublovanie je OK (best-effort)
+        try { Logger::auth('login_success', $userId); } catch (\Throwable $_) {}
+
+        // redirect (relative)
+        header('Location: index.php', true, 302);
+        exit;
+
+    } catch (\Throwable $e) {
+        // všeobecná chyba pri autentifikácii / key management
+        try { Logger::systemError($e); } catch (\Throwable $_) {}
+        http_response_code(500);
+        echo Templates::render('pages/error.php', ['message' => 'Chyba pri prihlásení (server). Skontrolujte konfiguráciu kľúčov a Logger.']);
+        exit;
     }
 }
 
-// CSRF token
-$csrfToken = CSRF::token();
-
-// Info messages
-if (isset($_GET['registered']) && $_GET['registered'] == 1) {
-    $info = 'Registrácia bola úspešne dokončená. Skontrolujte si svoj e-mail a aktivujte svoj účet.';
-}
-
-$verificationMessages = [
-    0 => 'E-mail bol úspešne potvrdený. Môžete sa prihlásiť.',
-    1 => 'Účet neexistuje.',
-    2 => 'Účet je zablokovaný na 15 minút kvôli príliš veľa neúspešným pokusom.',
-    3 => 'Príliš veľa neúspešných pokusov. Skúste to neskôr.',
-    4 => 'Neplatný alebo expirovaný odkaz. Pošlite nový ověřovací e-mail.',
-    5 => 'Tento odkaz už bol použitý.',
-    6 => 'Odkaz vypršal.',
-    7 => 'Tento odkaz už bol použitý alebo účet je aktívny.',
-    8 => 'Došlo k chybe. Skúste neskôr.',
-];
-
-if (isset($_GET['verified'])) {
-    $code = (int)$_GET['verified'];
-    $info = $verificationMessages[$code] ?? 'Neznámy stav overenia.';
-}
-?>
-<!doctype html>
-<html lang="sk">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Prihlásenie</title>
-    <link rel="stylesheet" href="assets/css/base.css">
-</head>
-<body>
-<?php include __DIR__.'/templates/layout-header.php'; ?>
-<main>
-    <h1>Prihlásenie</h1>
-
-    <?php if ($err): ?>
-        <p class="error"><?= e($err) ?></p>
-    <?php elseif ($info): ?>
-        <p class="info"><?= e($info) ?></p>
-    <?php endif; ?>
-
-    <form method="post" novalidate>
-        <label>Email
-            <input type="email" name="email" required value="<?= e($email) ?>">
-        </label>
-        <label>Heslo
-            <input type="password" name="password" required autocomplete="current-password">
-        </label>
-        <input type="hidden" name="csrf_token" value="<?= e($csrfToken) ?>">
-        <?php if ($returnTo && is_safe_return_to($returnTo)): ?>
-            <input type="hidden" name="return_to" value="<?= e($returnTo) ?>">
-        <?php endif; ?>
-        <button type="submit">Prihlásiť</button>
-    </form>
-    <p><a href="register.php">Registrovať</a></p>
-</main>
-<?php include __DIR__.'/templates/layout-footer.php'; ?>
-</body>
-</html>
+// GET -> zobraziť formulár prihlásenia
+echo Templates::render('pages/login.php', ['error' => null]);

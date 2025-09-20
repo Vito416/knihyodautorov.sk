@@ -170,5 +170,13 @@ if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) 
     try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
 }
 
+Templates::init($config);
+// $db je PDO
+// předáme logger jako callable (záleží na implementaci Logger)
+Mailer::init($config, $db, function(string $level, string $msg){
+    // přepni do svého Loggeru, nebo použij metodu
+    \Logger::error(sprintf('[%s] %s', $level, $msg));
+});
+
 // Return PDO for backwards compatibility (old code expects $db = require 'bootstrap.php';)
 return $db;

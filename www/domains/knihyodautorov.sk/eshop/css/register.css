@@ -1,0 +1,4 @@
+/* /www/eshop/css/register.css */
+@import "login.css";
+/* Shared rules, maybe different colours */
+button { background:#0b8; }

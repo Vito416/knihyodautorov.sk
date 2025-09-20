@@ -45,6 +45,8 @@ try {
         ['env'=>'IP_HASH_KEY',       'basename'=>'ip_hash_key',    'required'=>true],
         ['env'=>'CSRF_KEY',          'basename'=>'csrf_key',       'required'=>true],
         ['env'=>'JWT_KEY',           'basename'=>'jwt_key',        'required'=>true],
+        ['env'=>'EMAIL_KEY',         'basename'=>'email_key',      'required'=>true],
+        ['env'=>'EMAIL_HASH_KEY',    'basename'=>'email_hash_key', 'required'=>true],
     ];
 
     foreach ($toCreate as $spec) {

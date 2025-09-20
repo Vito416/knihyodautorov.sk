@@ -1,0 +1,6 @@
+/* /www/eshop/css/login.css - jednoduchý reset a layout */
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background:#f8f9fb; color:#222; }
+.container { max-width:480px; margin:40px auto; background:#fff; padding:20px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06); }
+input, button { width:100%; padding:10px; margin:8px 0; box-sizing:border-box; }
+button { cursor:pointer; background:#007bff; color:#fff; border:none; border-radius:6px; }
+.msg { margin-top:8px; color:#b00; }

@@ -43,6 +43,21 @@ final class CSRF
         }
     }
 
+    public static function getKeyVersion(): ?string
+    {
+        try {
+            $candidates = Crypto::hmac('probe', 'CSRF_KEY', 'csrf_key', null, true);
+            if (!empty($candidates) && is_array($candidates[0]) && isset($candidates[0]['version'])) {
+                return $candidates[0]['version'];
+            }
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) {
+                try { Logger::systemError($e); } catch (\Throwable $_) {}
+            }
+        }
+        return null;
+    }
+
     private static function ensureInitialized(): void
     {
         if (self::$session === null) {

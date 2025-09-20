@@ -568,4 +568,35 @@ final class KeyManager
         }
         return $info;
     }
+
+    /**
+     * Convenience: get binary key for email content encryption (raw bytes + version).
+     * Use for AEAD XChaCha20-Poly1305 encryption of email payloads.
+     * Returns ['raw'=>binary,'version'=>'vN']
+     */
+    public static function getEmailKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'email_key';
+        $info = self::getRawKeyBytes('EMAIL_KEY', $keysDir, $basename, false, self::keyByteLen());
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('EMAIL_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    /**
+     * Convenience: get binary key for email hashing (HMAC) (raw bytes + version).
+     * Use for deterministic HMAC-SHA256(email) to allow lookups/uniqueness without plaintext.
+     * Returns ['raw'=>binary,'version'=>'vN']
+     */
+    public static function getEmailHashKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'email_hash_key';
+        $info = self::getRawKeyBytes('EMAIL_HASH_KEY', $keysDir, $basename, false, self::keyByteLen());
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('EMAIL_HASH_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
 }
