@@ -1,8 +1,50 @@
 <?php
 // showdb.php
-
-// Načti PDO připojení
-$pdo = require __DIR__ . '/../../../db/config/config.php';
+$PROJECT_ROOT = realpath(dirname(__DIR__, 3));
+if ($PROJECT_ROOT === false) {
+    error_log('[bootstrap] Cannot resolve PROJECT_ROOT');
+    http_response_code(500);
+    exit;
+}
+$configFile = $PROJECT_ROOT . '/secure/config.php';
+if (!file_exists($configFile)) {
+    error_log('[bootstrap] Missing secure/config.php');
+    http_response_code(500);
+    exit;
+}
+require_once $configFile;
+if (!isset($config) || !is_array($config)) {
+    error_log('[bootstrap] secure/config.php must define $config array');
+    http_response_code(500);
+    exit;
+}
+$autoloadPath = $PROJECT_ROOT . '/libs/autoload.php';
+if (!file_exists($autoloadPath)) {
+    error_log('[bootstrap] Autoloader not found at ' . $autoloadPath);
+    http_response_code(500);
+    exit;
+}
+require_once $autoloadPath;
+try {
+    if (!class_exists('Database')) {
+        throw new RuntimeException('Database class not available (autoload error)');
+    }
+    if (empty($config['adb']) || !is_array($config['adb'])) {
+        throw new RuntimeException('Missing $config[\'adb\']');
+    }
+    Database::init($config['adb']);
+    $database = Database::getInstance();
+    $pdo = $database->getPdo();
+} catch (Throwable $e) {
+    $logBootstrapError('Database initialization failed', $e);
+    http_response_code(500);
+    exit;
+}
+if (!($pdo instanceof PDO)) {
+    $logBootstrapError('DB variable is not a PDO instance after init');
+    http_response_code(500);
+    exit;
+}
 
 // Funkce pro smazání všech tabulek
 function dropAllTables($pdo) {
@@ -26,6 +68,17 @@ if (isset($_POST['drop_db'])) {
     exit;
 }
 
+// Po stlačení tlačidla "presun"
+if (isset($_POST['move_script'])) {
+    $current = __FILE__;
+    $destination = $PROJECT_ROOT . '/secure/exportdb.php';
+    if (@rename($current, $destination)) {
+        echo "<p>Skript bol presunutý do adresára /secure/.</p>";
+        exit;
+    } else {
+        echo "<p>Presun sa nepodaril – skontrolujte práva na adresár /secure/.</p>";
+    }
+}
 // Zjisti seznam tabulek
 $tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
 
@@ -50,6 +103,11 @@ echo "<form method='post' onsubmit=\"return confirm('Opravdu chcete smazat celou
             Smazat celou databázi
         </button>
       </form>";
+echo "<form method='post' onsubmit=\"return confirm('Naozaj chcete presunúť initdb.php do /secure/?');\">
+        <button type='submit' name='move_script' style='background:#00CC00;color:#fff;padding:10px 15px;border:none;cursor:pointer;'>
+            Presunúť do /secure/
+        </button>
+    </form>";
 
 if (!$tables) {
     echo "<h2>Databáze je prázdná (žádné tabulky)</h2>";

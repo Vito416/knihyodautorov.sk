@@ -1,32 +1,48 @@
 <?php
-// Pripojenie k databáze cez PDO a existujúceho konfiguračného súboru
-require_once __DIR__ . '/../../../db/config/config.php';
-
+$PROJECT_ROOT = realpath(dirname(__DIR__, 3));
+if ($PROJECT_ROOT === false) {
+    error_log('[bootstrap] Cannot resolve PROJECT_ROOT');
+    http_response_code(500);
+    exit;
+}
+$configFile = $PROJECT_ROOT . '/secure/config.php';
+if (!file_exists($configFile)) {
+    error_log('[bootstrap] Missing secure/config.php');
+    http_response_code(500);
+    exit;
+}
+require_once $configFile;
+if (!isset($config) || !is_array($config)) {
+    error_log('[bootstrap] secure/config.php must define $config array');
+    http_response_code(500);
+    exit;
+}
+$autoloadPath = $PROJECT_ROOT . '/libs/autoload.php';
+if (!file_exists($autoloadPath)) {
+    error_log('[bootstrap] Autoloader not found at ' . $autoloadPath);
+    http_response_code(500);
+    exit;
+}
+require_once $autoloadPath;
 try {
-    // Ak konfiguračný súbor nespecifikuje spojenie, vytvoríme PDO manuálne
-    if (!isset($pdo)) {
-        $dsn = "mysql:host={$db_host};dbname={$db_name};charset=utf8mb4";
-        $options = [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_EMULATE_PREPARES => false,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ];
-        // pridaj MYSQL_ATTR_INIT_COMMAND len ak je definovaný (bezpečne)
-        if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
-            $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci";
-        }
-        $pdo = new PDO($dsn, $db_user, $db_pass, $options);
-    } else {
-        // ak $pdo už existuje, uisti sa, že má požadované atribúty
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-        $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-        if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
-            $pdo->setAttribute(PDO::MYSQL_ATTR_INIT_COMMAND, "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-        }
+    if (!class_exists('Database')) {
+        throw new RuntimeException('Database class not available (autoload error)');
     }
-} catch (PDOException $e) {
-    die("Nepodařilo sa pripojiť k databáze: " . $e->getMessage());
+    if (empty($config['adb']) || !is_array($config['adb'])) {
+        throw new RuntimeException('Missing $config[\'adb\']');
+    }
+    Database::init($config['adb']);
+    $database = Database::getInstance();
+    $pdo = $database->getPdo();
+} catch (Throwable $e) {
+    $logBootstrapError('Database initialization failed', $e);
+    http_response_code(500);
+    exit;
+}
+if (!($pdo instanceof PDO)) {
+    $logBootstrapError('DB variable is not a PDO instance after init');
+    http_response_code(500);
+    exit;
 }
 
 // Funkcia na vytvorenie tabuľky s hlásením
@@ -106,21 +122,11 @@ if (isset($_POST['create_db'])) {
     // Tabuľka user_profiles
     $sql = "CREATE TABLE IF NOT EXISTS user_profiles (
         user_id BIGINT UNSIGNED PRIMARY KEY,
-        full_name VARCHAR(255) NOT NULL DEFAULT '',
-        phone_enc VARBINARY(255) NULL,
-        address_enc VARBINARY(255) NULL,
-        company_name_enc VARBINARY(255) NULL,
-        street_enc VARBINARY(255) NULL,
-        city_enc VARBINARY(255) NULL,
-        zip_enc VARBINARY(255) NULL,
-        tax_id_enc VARBINARY(255) NULL,
-        vat_id_enc VARBINARY(255) NULL,
-        country_code CHAR(2) NULL,
-        encryption_algo VARCHAR(50) NULL,
-        key_version INT NULL,
-        updated_at DATETIME NULL,
+        profile_enc LONGBLOB DEFAULT NULL,
+        key_version VARCHAR(64) DEFAULT NULL,
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_profiles");
 
     // Tabuľka user_identities
@@ -129,13 +135,12 @@ if (isset($_POST['create_db'])) {
         user_id BIGINT UNSIGNED NOT NULL,
         provider VARCHAR(100) NOT NULL,
         provider_user_id VARCHAR(255) NOT NULL,
-        email_verified BOOLEAN NOT NULL DEFAULT FALSE,
-        raw_profile JSON NULL,
-        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE(provider, provider_user_id),
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        UNIQUE KEY ux_provider_user (provider, provider_user_id),
+        INDEX idx_user_id (user_id),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
+    ) ENGINE=InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_identities");
 
     // Tabuľka roles
@@ -374,9 +379,16 @@ if (isset($_POST['create_db'])) {
         bio TEXT NULL,
         foto VARCHAR(255) NULL,
         story LONGTEXT NULL,
+        books_count INT NOT NULL DEFAULT 0,
+        ratings_count INT NOT NULL DEFAULT 0,
+        rating_sum INT NOT NULL DEFAULT 0,
+        avg_rating DECIMAL(3,2) NULL DEFAULT NULL,
+        last_rating_at DATETIME NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    ) ENGINE=InnoDB;";
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_authors_avg_rating (avg_rating),
+        INDEX idx_authors_books_count (books_count)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "authors");
 
     // Tabuľka categories
@@ -387,8 +399,9 @@ if (isset($_POST['create_db'])) {
         parent_id INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB;";
+        FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL,
+        INDEX idx_categories_parent (parent_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "categories");
 
     // Tabuľka books
@@ -396,24 +409,46 @@ if (isset($_POST['create_db'])) {
         id INT AUTO_INCREMENT PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
         slug VARCHAR(255) NOT NULL UNIQUE,
-        description TEXT NULL,
-        price DECIMAL(10,2) NOT NULL,
-        currency CHAR(3) NOT NULL,
+        short_description VARCHAR(512) NULL,
+        full_description LONGTEXT NULL,
+        price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        currency CHAR(3) NOT NULL DEFAULT 'EUR',
         author_id INT NOT NULL,
         main_category_id INT NOT NULL,
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        is_available BOOLEAN NOT NULL DEFAULT TRUE,
+        isbn VARCHAR(32) NULL,
+        language VARCHAR(16) NULL,
+        pages INT NULL,
+        publisher VARCHAR(255) NULL,
+        published_at DATE NULL,
+        sku VARCHAR(64) NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        is_available TINYINT(1) NOT NULL DEFAULT 1,
         stock_quantity INT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         FOREIGN KEY (author_id) REFERENCES authors(id) ON DELETE RESTRICT,
         FOREIGN KEY (main_category_id) REFERENCES categories(id) ON DELETE RESTRICT,
         INDEX idx_books_author_id (author_id),
-        INDEX idx_books_main_category_id (main_category_id)
-    ) ENGINE=InnoDB;";
+        INDEX idx_books_main_category_id (main_category_id),
+        INDEX idx_books_sku (sku)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "books");
 
-    
+    // Tabuľka reviews
+    $sql = "CREATE TABLE IF NOT EXISTS reviews (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    book_id INT NOT NULL,
+    user_id BIGINT UNSIGNED NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    review_text TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    INDEX idx_reviews_book_id (book_id),
+    INDEX idx_reviews_created_at (created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "reviews");
+
     // Tabuľka crypto_keys
     $sql = "CREATE TABLE IF NOT EXISTS crypto_keys (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -530,17 +565,19 @@ if (isset($_POST['create_db'])) {
         storage_path TEXT NULL,
         content_hash VARCHAR(64) NULL,
         download_filename VARCHAR(255) NULL,
-        is_encrypted BOOLEAN NOT NULL DEFAULT FALSE,
+        is_encrypted TINYINT(1) NOT NULL DEFAULT 0,
         encryption_algo VARCHAR(50) NULL,
         encryption_key_enc VARBINARY(255) NULL,
         encryption_iv VARBINARY(255) NULL,
         encryption_tag VARBINARY(255) NULL,
-        key_version INT NULL,
+        key_version VARCHAR(64) NULL,
         key_id INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_book_assets_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE SET NULL,
-        CONSTRAINT fk_book_assets_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
+        CONSTRAINT fk_book_assets_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+        INDEX idx_book_assets_book (book_id),
+        INDEX idx_book_assets_type (asset_type)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "book_assets");
 
     // Tabuľka book_categories
@@ -549,8 +586,9 @@ if (isset($_POST['create_db'])) {
         category_id INT NOT NULL,
         PRIMARY KEY (book_id, category_id),
         FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
-        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB;";
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        INDEX idx_book_categories_category (category_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "book_categories");
 
     // Tabuľka carts
@@ -828,17 +866,17 @@ if (isset($_POST['create_db'])) {
         token_hash CHAR(64) NOT NULL,
         selector CHAR(12) NOT NULL,
         validator_hash VARBINARY(32) NOT NULL, -- raw HMAC-SHA256
-        key_version INT NOT NULL DEFAULT 0,
-        key_id INT NULL,
+        key_version VARCHAR(64) DEFAULT NULL,
         expires_at DATETIME(6) NOT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         used_at DATETIME(6) NULL,
-        CONSTRAINT fk_ev_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE SET NULL,
         CONSTRAINT fk_ev_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
-        UNIQUE (selector),
-        INDEX (user_id),
-        INDEX (expires_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+        UNIQUE KEY ux_ev_selector (selector),
+        INDEX idx_ev_user (user_id),
+        INDEX idx_ev_expires (expires_at)
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET=utf8mb4
+    COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "email_verifications");
 
     // Tabuľka notifications (jednoduchá, idempotentná)
@@ -870,6 +908,39 @@ if (isset($_POST['create_db'])) {
     COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "notifications");
 
+    // Tabuľka newsletter_subscribers (doladené podľa pouzivatelia)
+    $sql = "CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT UNSIGNED NULL,
+        CONSTRAINT fk_ns_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
+        email_enc LONGBLOB NULL,
+        email_key_version VARCHAR(64) NULL,
+        email_hash VARBINARY(32) NULL,
+        email_hash_key_version VARCHAR(64) NULL,
+        confirm_selector CHAR(12) DEFAULT NULL,
+        confirm_validator_hash VARBINARY(32) DEFAULT NULL,
+        confirm_key_version VARCHAR(64) DEFAULT NULL,
+        confirm_expires DATETIME(6) DEFAULT NULL,
+        confirmed_at DATETIME(6) DEFAULT NULL,
+        unsubscribe_token_hash VARBINARY(32) DEFAULT NULL,
+        unsubscribe_token_key_version VARCHAR(64) DEFAULT NULL,
+        unsubscribed_at DATETIME(6) DEFAULT NULL,
+        origin VARCHAR(100) DEFAULT NULL,
+        ip_hash VARBINARY(32) DEFAULT NULL,
+        ip_hash_key_version VARCHAR(64) DEFAULT NULL,
+        meta JSON DEFAULT NULL,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+        UNIQUE KEY ux_ns_email_hash (email_hash),
+        UNIQUE KEY ux_ns_confirm_selector (confirm_selector),
+        INDEX idx_ns_user (user_id),
+        INDEX idx_ns_confirm_expires (confirm_expires),
+        INDEX idx_ns_unsubscribed_at (unsubscribed_at)
+    ) ENGINE=InnoDB
+    DEFAULT CHARSET = utf8mb4
+    COLLATE = utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "newsletter_subscribers");
+    
     // Tabuľka system_jobs (jednoduchá)
     $sql = "CREATE TABLE IF NOT EXISTS system_jobs (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1039,23 +1110,325 @@ if (isset($_POST['insert_demo'])) {
         echo "<p>Chyba při vytváření admin účtu: " . htmlspecialchars($e->getMessage()) . "</p>";
     }
 
-    // Ukážkový autor
-    executeQuery($pdo, "INSERT INTO authors (meno, slug, bio, story, created_at, updated_at)
-        VALUES ('Janko Kráľ', 'janko-kral', 'Slovenský spisovateľ', 'Životopisné informácie o Jankovi Kráľovi', NOW(), NOW())", "Autor");
-    $authorId = $pdo->lastInsertId();
+    // Seed demo autorov (idempotentné, ON DUPLICATE KEY UPDATE podľa slug)
+    $demoAuthors = [
+        [
+            'meno' => 'Ján Novák',
+            'slug' => 'jan-novak',
+            'bio'  => 'Autor beletrie a povídek, zameraný na sociálne témy.',
+            'story'=> 'Narodil sa v Bratislave, pôsobil ako redaktor a neskôr debutoval románom.',
+            'books_count'   => 3,
+            'ratings_count' => 10,
+            'rating_sum'    => 42, // avg 4.20
+            'last_rating_offset_days' => 2,
+        ],
+        [
+            'meno' => 'Lucia Horváthová',
+            'slug' => 'lucia-horvathova',
+            'bio'  => 'Poetka a autorka literatúry pre mládež.',
+            'story'=> 'Vyrastala na východe, autorka viacerých básnických zbierok.',
+            'books_count'   => 5,
+            'ratings_count' => 24,
+            'rating_sum'    => 96, // avg 4.00
+            'last_rating_offset_days' => 10,
+        ],
+        [
+            'meno' => 'Peter Kováč',
+            'slug' => 'peter-kovac',
+            'bio'  => 'Autor detektívnych románov a krimi bestsellerov.',
+            'story'=> 'Predtým žurnalista, dnes píše napäté krimi príbehy.',
+            'books_count'   => 7,
+            'ratings_count' => 55,
+            'rating_sum'    => 233, // avg 4.24
+            'last_rating_offset_days' => 1,
+        ],
+        [
+            'meno' => 'Martina Čechová',
+            'slug' => 'martina-cechova',
+            'bio'  => 'Publicistka a autorka populárno-náučných kníh.',
+            'story'=> 'Študovala históriu, píše pre magazíny a knižné publikácie.',
+            'books_count'   => 2,
+            'ratings_count' => 4,
+            'rating_sum'    => 15, // avg 3.75
+            'last_rating_offset_days' => 30,
+        ],
+        [
+            'meno' => 'Tomáš Rybár',
+            'slug' => 'tomas-rybar',
+            'bio'  => 'Mladý sci-fi autor so záujmom o AI a budúcnosť.',
+            'story'=> 'Pochádza z Košíc, publikuje krátke sci-fi poviedky a e-knihy.',
+            'books_count'   => 4,
+            'ratings_count' => 12,
+            'rating_sum'    => 50, // avg 4.17
+            'last_rating_offset_days' => 5,
+        ],
+    ];
 
-    // Ukážková kategória
-    executeQuery($pdo, "INSERT INTO categories (nazov, slug, created_at, updated_at)
-        VALUES ('Beletria','beletria', NOW(), NOW())", "Kategória");
-    $categoryId = $pdo->lastInsertId();
+    try {
+        $pdo->beginTransaction();
 
-    // Ukážková kniha
-    executeQuery($pdo, "INSERT INTO books (title, slug, description, price, currency, author_id, main_category_id, is_active, is_available, stock_quantity, created_at, updated_at)
-        VALUES ('Príkladová kniha', 'prikladova-kniha', 'Opis príkladovej knihy', 19.99, 'EUR', $authorId, $categoryId, TRUE, TRUE, 100, NOW(), NOW())", "Kniha");
-    $bookId = $pdo->lastInsertId();
+        $sql = "
+        INSERT INTO authors (
+            meno, slug, bio, story,
+            books_count, ratings_count, rating_sum, avg_rating, last_rating_at,
+            created_at, updated_at
+        ) VALUES (
+            :meno, :slug, :bio, :story,
+            :books_count, :ratings_count, :rating_sum, :avg_rating, :last_rating_at,
+            NOW(), NOW()
+        )
+        ON DUPLICATE KEY UPDATE
+            meno = VALUES(meno),
+            bio = VALUES(bio),
+            story = VALUES(story),
+            books_count = VALUES(books_count),
+            ratings_count = VALUES(ratings_count),
+            rating_sum = VALUES(rating_sum),
+            avg_rating = VALUES(avg_rating),
+            last_rating_at = VALUES(last_rating_at),
+            updated_at = NOW()
+        ";
+        $stmt = $pdo->prepare($sql);
 
-    // Priradenie kniha-kategória
-    executeQuery($pdo, "INSERT INTO book_categories (book_id, category_id) VALUES ($bookId, $categoryId)", "Spojenie kniha-kategória");
+        $selectId = $pdo->prepare("SELECT id FROM authors WHERE slug = :slug LIMIT 1");
+
+        $firstAuthorId = null;
+        foreach ($demoAuthors as $i => $a) {
+            $ratings_count = (int)$a['ratings_count'];
+            $rating_sum = (int)$a['rating_sum'];
+            $avg = $ratings_count > 0 ? round($rating_sum / $ratings_count, 2) : null;
+
+            // last_rating_at demo: NOW() - offset days, alebo NULL ak žiadne hodnotenia
+            if ($ratings_count > 0 && !empty($a['last_rating_offset_days'])) {
+                $offset = (int)$a['last_rating_offset_days'];
+                $lastRatingAt = (new DateTimeImmutable("now"))->sub(new DateInterval("P{$offset}D"))->format('Y-m-d H:i:s');
+            } else {
+                $lastRatingAt = null;
+            }
+
+            $stmt->execute([
+                ':meno' => $a['meno'],
+                ':slug' => $a['slug'],
+                ':bio'  => $a['bio'],
+                ':story'=> $a['story'],
+                ':books_count'   => $a['books_count'],
+                ':ratings_count' => $ratings_count,
+                ':rating_sum'    => $rating_sum,
+                ':avg_rating'    => $avg,
+                ':last_rating_at'=> $lastRatingAt,
+            ]);
+
+            // vyzvedni id (nový alebo existujúci)
+            $selectId->execute([':slug' => $a['slug']]);
+            $id = (int)$selectId->fetchColumn();
+            if ($i === 0) $firstAuthorId = $id;
+        }
+
+        $pdo->commit();
+
+        // kompatibilita so starým kódom (napr. $authorId očekávané po vložení)
+        $authorId = $firstAuthorId;
+
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        // zachovej tvoje executeQuery/logger konvence, nebo aspoň error_log
+        error_log('Seed authors failed: ' . $e->getMessage());
+        throw $e;
+    }
+
+    // -------------------- Demo: 5 autorov, 3 kategórie, 5 kníh, assets, reviews --------------------
+    try {
+        if (!($pdo instanceof PDO)) throw new RuntimeException('PDO not available for demo inserts.');
+
+        $pdo->beginTransaction();
+
+        // --- Demo authors (idempotent: podle slug) ---
+        $demoAuthors = [
+            ['meno'=>'Janko Kráľ','slug'=>'janko-kral','bio'=>'Slovenský spisovateľ','story'=>'Životopisné informácie o Jankovi Kráľovi.'],
+            ['meno'=>'Mária Novotná','slug'=>'maria-novotna','bio'=>'Súčasná autorka poviedok','story'=>'Krátky životopis Márie Novotnej.'],
+            ['meno'=>'Peter Horváth','slug'=>'peter-horvath','bio'=>'Autor detektívok','story'=>'Peter píše napínavé detektívky s lokálnym nádychom.'],
+            ['meno'=>'Anna Bielik','slug'=>'anna-bielik','bio'=>'Fantasy autorka','story'=>'Anna vytvára bohaté fantasy svety plné detailov.'],
+            ['meno'=>'Lukáš Šimko','slug'=>'lukas-simko','bio'=>'Non-fiction a eseje','story'=>'Eseje o kultúre a spoločnosti.'],
+        ];
+        $authorIds = [];
+        $stExist = $pdo->prepare("SELECT id FROM authors WHERE slug = :slug LIMIT 1");
+        $stIns = $pdo->prepare("INSERT INTO authors (meno, slug, bio, story, created_at, updated_at) VALUES (:meno, :slug, :bio, :story, NOW(), NOW())");
+        foreach ($demoAuthors as $a) {
+            $stExist->execute([':slug'=>$a['slug']]);
+            $id = (int)$stExist->fetchColumn();
+            if ($id === 0) {
+                $stIns->execute([':meno'=>$a['meno'], ':slug'=>$a['slug'], ':bio'=>$a['bio'], ':story'=>$a['story']]);
+                $id = (int)$pdo->lastInsertId();
+            }
+            $authorIds[$a['slug']] = $id;
+        }
+
+        // --- Demo categories ---
+        $demoCats = [
+            ['nazov'=>'Beletria','slug'=>'beletria'],
+            ['nazov'=>'Detektívky','slug'=>'detektivky'],
+            ['nazov'=>'Eseje & Non-fiction','slug'=>'non-fiction'],
+        ];
+        $catIds = [];
+        $stExistCat = $pdo->prepare("SELECT id FROM categories WHERE slug = :slug LIMIT 1");
+        $stInsCat = $pdo->prepare("INSERT INTO categories (nazov, slug, created_at, updated_at) VALUES (:nazov, :slug, NOW(), NOW())");
+        foreach ($demoCats as $c) {
+            $stExistCat->execute([':slug'=>$c['slug']]);
+            $id = (int)$stExistCat->fetchColumn();
+            if ($id === 0) {
+                $stInsCat->execute([':nazov'=>$c['nazov'], ':slug'=>$c['slug']]);
+                $id = (int)$pdo->lastInsertId();
+            }
+            $catIds[$c['slug']] = $id;
+        }
+
+        // --- Demo books (5) ---
+        $demoBooks = [
+            [
+                'title'=>'Príbeh Janka', 'slug'=>'pribeh-janka',
+                'short'=>'Knižka o živote Janka.', 'full'=>'Plný obsah: historický príbeh, anekdoty, reflexie.',
+                'price'=>9.99, 'currency'=>'EUR', 'author_slug'=>'janko-kral', 'category_slug'=>'beletria',
+                'isbn'=>'978-1-11111-111-1','language'=>'sk','pages'=>180,'publisher'=>'Slovenské vydavateľstvo','published_at'=>'2022-06-01','sku'=>'JK-001','stock'=>50
+            ],
+            [
+                'title'=>'Nočné stopy', 'slug'=>'nocne-stopy',
+                'short'=>'Krátke detektívne poviedky.','full'=>'Séria krátkych príbehov so zvratom na konci každej kapitoly.',
+                'price'=>12.50, 'currency'=>'EUR', 'author_slug'=>'peter-horvath', 'category_slug'=>'detektivky',
+                'isbn'=>'978-1-22222-222-2','language'=>'sk','pages'=>240,'publisher'=>'Krimi Press','published_at'=>'2023-02-20','sku'=>'PH-002','stock'=>30
+            ],
+            [
+                'title'=>'Snové ríše', 'slug'=>'snove-riese',
+                'short'=>'Fantasy pre mladých aj dospelých.','full'=>'Epické putovanie cez sveta snov a mýtov.',
+                'price'=>18.00, 'currency'=>'EUR', 'author_slug'=>'anna-bielik', 'category_slug'=>'beletria',
+                'isbn'=>'978-1-33333-333-3','language'=>'sk','pages'=>420,'publisher'=>'FantasyHouse','published_at'=>'2021-11-11','sku'=>'AB-003','stock'=>20
+            ],
+            [
+                'title'=>'Eseje o kultúre', 'slug'=>'eseje-o-kulture',
+                'short'=>'Výber esejí o spoločnosti.','full'=>'Hloubkové úvahy o trendoch a kultúre 21. storočia.',
+                'price'=>14.99, 'currency'=>'EUR', 'author_slug'=>'lukas-simko', 'category_slug'=>'non-fiction',
+                'isbn'=>'978-1-44444-444-4','language'=>'sk','pages'=>160,'publisher'=>'Akademia','published_at'=>'2020-09-30','sku'=>'LS-004','stock'=>40
+            ],
+            [
+                'title'=>'Poviedky Márie', 'slug'=>'poviedky-marie',
+                'short'=>'Súbor moderných poviedok.','full'=>'Emotívne a precízne napísané príbehy o bežnom živote.',
+                'price'=>11.49, 'currency'=>'EUR', 'author_slug'=>'maria-novotna', 'category_slug'=>'beletria',
+                'isbn'=>'978-1-55555-555-5','language'=>'sk','pages'=>200,'publisher'=>'Novotná Press','published_at'=>'2024-03-15','sku'=>'MN-005','stock'=>60
+            ],
+        ];
+
+        $stExistBook = $pdo->prepare("SELECT id FROM books WHERE slug = :slug LIMIT 1");
+        $stInsBook = $pdo->prepare("
+            INSERT INTO books
+                (title, slug, short_description, full_description, price, currency, author_id, main_category_id,
+                isbn, language, pages, publisher, published_at, sku, is_active, is_available, stock_quantity, created_at, updated_at)
+            VALUES
+                (:title, :slug, :short, :full, :price, :currency, :author_id, :main_category_id,
+                :isbn, :language, :pages, :publisher, :published_at, :sku, 1, 1, :stock, NOW(), NOW())
+        ");
+
+        $bookIds = [];
+        foreach ($demoBooks as $b) {
+            $stExistBook->execute([':slug'=>$b['slug']]);
+            $id = (int)$stExistBook->fetchColumn();
+            if ($id === 0) {
+                $author_id = $authorIds[$b['author_slug']] ?? null;
+                $cat_id = $catIds[$b['category_slug']] ?? null;
+                if (empty($author_id) || empty($cat_id)) {
+                    throw new RuntimeException('Missing author or category for demo book ' . $b['slug']);
+                }
+                $stInsBook->execute([
+                    ':title'=>$b['title'], ':slug'=>$b['slug'], ':short'=>$b['short'], ':full'=>$b['full'],
+                    ':price'=>$b['price'], ':currency'=>$b['currency'], ':author_id'=>$author_id, ':main_category_id'=>$cat_id,
+                    ':isbn'=>$b['isbn'], ':language'=>$b['language'], ':pages'=>$b['pages'], ':publisher'=>$b['publisher'],
+                    ':published_at'=>$b['published_at'], ':sku'=>$b['sku'], ':stock'=>$b['stock']
+                ]);
+                $id = (int)$pdo->lastInsertId();
+            }
+            $bookIds[$b['slug']] = $id;
+        }
+
+        // --- Assign books to categories (many-to-many) if not exist ---
+        $stExistBC = $pdo->prepare("SELECT 1 FROM book_categories WHERE book_id = :bid AND category_id = :cid LIMIT 1");
+        $stInsBC = $pdo->prepare("INSERT INTO book_categories (book_id, category_id) VALUES (:bid, :cid)");
+        foreach ($bookIds as $slug => $bid) {
+            $mainCid = $demoBooks[array_search($slug, array_column($demoBooks,'slug'))]['category_slug'] ?? null;
+            $cid = $catIds[$mainCid] ?? null;
+            if ($cid) {
+                $stExistBC->execute([':bid'=>$bid, ':cid'=>$cid]);
+                if (!$stExistBC->fetchColumn()) {
+                    $stInsBC->execute([':bid'=>$bid, ':cid'=>$cid]);
+                }
+            }
+        }
+
+        // --- Add a simple cover asset for each book if missing ---
+        $stExistAsset = $pdo->prepare("SELECT 1 FROM book_assets WHERE book_id = :bid AND asset_type = 'cover' LIMIT 1");
+        $stInsAsset = $pdo->prepare("
+            INSERT INTO book_assets (book_id, asset_type, filename, mime_type, size_bytes, storage_path, content_hash, download_filename, is_encrypted, created_at)
+            VALUES (:bid, 'cover', :fn, 'image/jpeg', :size, :path, :hash, :dl, 0, NOW())
+        ");
+        foreach ($bookIds as $slug => $bid) {
+            $filename = "book1.png";
+            $stExistAsset->execute([':bid'=>$bid]);
+            if (!$stExistAsset->fetchColumn()) {
+                $path = "/storage/books/covers/{$filename}";
+                $hash = hash('sha256', $filename);
+                $stInsAsset->execute([':bid'=>$bid, ':fn'=>$filename, ':size'=>12345, ':path'=>$path, ':hash'=>$hash, ':dl'=>$filename]);
+            }
+        }
+
+        // --- Demo reviews (idempotent by identical text/rating/book) ---
+        $stExistReview = $pdo->prepare("SELECT id FROM reviews WHERE book_id = :bid AND rating = :rating AND review_text = :text LIMIT 1");
+        $stInsReview = $pdo->prepare("INSERT INTO reviews (book_id, user_id, rating, review_text, created_at) VALUES (:bid, NULL, :rating, :text, NOW())");
+
+        // some sample reviews for a few books
+        $sampleReviews = [
+            ['slug'=>'pribeh-janka','rating'=>5,'text'=>'Nádherný príbeh, veľa emócií.'],
+            ['slug'=>'pribeh-janka','rating'=>4,'text'=>'Páčilo sa mi, niekde pomalé tempo.'],
+            ['slug'=>'nocne-stopy','rating'=>5,'text'=>'Napínavé! Autor vie udržať čitateľa.'],
+            ['slug'=>'snove-riese','rating'=>4,'text'=>'Vizuálne bohaté, niekedy rozvláčne.'],
+            ['slug'=>'eseje-o-kulture','rating'=>4,'text'=>'Podnetné myšlienky, dobre spracované.'],
+            ['slug'=>'poviedky-marie','rating'=>5,'text'=>'Silné a emotívne poviedky.'],
+        ];
+        foreach ($sampleReviews as $r) {
+            $bid = $bookIds[$r['slug']] ?? null;
+            if (!$bid) continue;
+            $stExistReview->execute([':bid'=>$bid, ':rating'=>$r['rating'], ':text'=>$r['text']]);
+            if (!$stExistReview->fetchColumn()) {
+                $stInsReview->execute([':bid'=>$bid, ':rating'=>$r['rating'], ':text'=>$r['text']]);
+            }
+        }
+
+        // --- Update authors aggregates (books_count, ratings_count, rating_sum, avg_rating, last_rating_at) ---
+        // This computes aggregates from current books+reviews and writes into authors table.
+        $aggSql = "
+            UPDATE authors a
+            LEFT JOIN (
+                SELECT b.author_id AS author_id,
+                    COUNT(DISTINCT b.id) AS books_count,
+                    COUNT(r.id) AS ratings_count,
+                    COALESCE(SUM(r.rating),0) AS rating_sum,
+                    CASE WHEN COUNT(r.id)>0 THEN ROUND(SUM(r.rating)/COUNT(r.id),2) ELSE NULL END AS avg_rating,
+                    MAX(r.created_at) AS last_rating_at
+                FROM books b
+                LEFT JOIN reviews r ON r.book_id = b.id
+                GROUP BY b.author_id
+            ) ag ON ag.author_id = a.id
+            SET a.books_count = COALESCE(ag.books_count,0),
+                a.ratings_count = COALESCE(ag.ratings_count,0),
+                a.rating_sum = COALESCE(ag.rating_sum,0),
+                a.avg_rating = ag.avg_rating,
+                a.last_rating_at = ag.last_rating_at,
+                a.updated_at = NOW()
+        ";
+        $pdo->exec($aggSql);
+
+        $pdo->commit();
+    } catch (Throwable $e) {
+        try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (Throwable $_) {}
+        error_log('[demo-insert] ' . $e->getMessage());
+        throw $e;
+    }
 
     // Referenčné údaje: krajiny a DPH
     executeQuery($pdo, "INSERT INTO countries (iso2, nazov) VALUES ('SK','Slovensko')", "Štát (SK)");
@@ -1067,12 +1440,12 @@ if (isset($_POST['insert_demo'])) {
     // Po stlačení tlačidla "presun"
     if (isset($_POST['move_script'])) {
         $current = __FILE__;
-        $destination = __DIR__ . '/db/initdb.php';
+        $destination = $PROJECT_ROOT . '/secure/initdb.php';
         if (@rename($current, $destination)) {
-            echo "<p>Skript bol presunutý do adresára /db/.</p>";
+            echo "<p>Skript bol presunutý do adresára /secure/.</p>";
             exit;
         } else {
-            echo "<p>Presun sa nepodaril – skontrolujte práva na adresár /db/.</p>";
+            echo "<p>Presun sa nepodaril – skontrolujte práva na adresár /secure/.</p>";
         }
     }
 ?>
@@ -1090,8 +1463,8 @@ if (isset($_POST['insert_demo'])) {
     <form method="post">
         <button type="submit" name="insert_demo">Nahrať demo</button>
     </form>
-    <form method="post" onsubmit="return confirm('Naozaj chcete presunúť initdb.php do /db/?');">
-        <button type="submit" name="move_script">Presunúť do /db/</button>
+    <form method="post" onsubmit="return confirm('Naozaj chcete presunúť initdb.php do /secure/?');">
+        <button type="submit" name="move_script">Presunúť do /secure/</button>
     </form>
 </body>
 </html>

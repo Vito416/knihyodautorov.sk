@@ -599,4 +599,51 @@ final class KeyManager
         return $info;
     }
 
+    public static function getEmailVerificationKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'email_verification_key';
+        $info = self::getRawKeyBytes('EMAIL_VERIFICATION_KEY', $keysDir, $basename, false, self::keyByteLen());
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('EMAIL_VERIFICATION_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    /**
+     * Convenience: get binary key for unsubscribe token HMAC (raw bytes + version).
+     * Use for deterministic HMAC-SHA256(unsubscribe_token) to validate unsubscribe links.
+     * Returns ['raw'=>binary,'version'=>'vN']
+     *
+     * @param string|null $keysDir
+     * @return array{raw:string,version:string}
+     * @throws KeyManagerException
+     */
+    public static function getUnsubscribeKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'unsubscribe_key';
+        $info = self::getRawKeyBytes('UNSUBSCRIBE_KEY', $keysDir, $basename, false, self::keyByteLen());
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('UNSUBSCRIBE_KEY returned empty raw bytes.');
+        }
+        return $info;
+    }
+
+    /**
+     * Convenience: get binary key for profile encryption (raw bytes + version).
+     * Basename: 'profile_crypto', ENV: 'PROFILE_CRYPTO'.
+     * Use this for AEAD encryption of user profile JSON blobs.
+     *
+     * @param string|null $keysDir
+     * @return array{raw:string,version:string}
+     * @throws KeyManagerException
+     */
+    public static function getProfileKeyInfo(?string $keysDir = null): array
+    {
+        $basename = 'profile_crypto';
+        $info = self::getRawKeyBytes('PROFILE_CRYPTO', $keysDir, $basename, false, self::keyByteLen());
+        if (empty($info['raw'])) {
+            throw new KeyManagerException('PROFILE_CRYPTO returned empty raw bytes.');
+        }
+        return $info;
+    }
 }

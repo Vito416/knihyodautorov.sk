@@ -1,48 +1,78 @@
 <?php
 // partials/featured-authors.php
 // Feature: autori zoradení podľa počtu kníh a priemerného ratingu.
-
-// robustné načítanie PDO
-$pdo = null;
-$candidates = [
-    __DIR__ . '/../db/config/config.php',
-    __DIR__ . '/db/config/config.php',
-    __DIR__ . '/../../db/config/config.php',
-];
-foreach ($candidates as $c) {
-    if (file_exists($c)) {
-        $maybe = require $c;
-        if ($maybe instanceof PDO) { $pdo = $maybe; break; }
-        if (isset($pdo) && $pdo instanceof PDO) break;
-    }
+if (!($pdo instanceof PDO)) {
+  $PROJECT_ROOT = realpath(dirname(__DIR__, 4));
+  $configFile = $PROJECT_ROOT . '/secure/config.php';
+  require_once $configFile;
+  $autoloadPath = $PROJECT_ROOT . '/libs/Database.php';
+  require_once $autoloadPath;
+  try {
+      if (!class_exists('Database')) {
+          throw new RuntimeException('Database class not available (autoload error)');
+      }
+      if (empty($config['db']) || !is_array($config['db'])) {
+          throw new RuntimeException('Missing $config[\'db\']');
+      }
+      Database::init($config['db']);
+      $database = Database::getInstance();
+      $pdo = $database->getPdo();
+  } catch (Throwable $e) {
+      $logBootstrapError('Database initialization failed', $e);
+  }
+  if (!($pdo instanceof PDO)) {
+      $logBootstrapError('DB variable is not a PDO instance after init');
+  }
 }
 
 if (!function_exists('esc_fauth')) {
     function esc_fauth($s){ return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 }
 
-//  načítanie autorov: počet kníh, priemerné hodnotenie
+// načítanie autorov (používa uložené agregáty v authors: books_count, ratings_count, rating_sum, avg_rating)
 $limit = 4;
 $authors = [];
+
 if ($pdo instanceof PDO) {
     try {
         $sql = "
-          SELECT a.id, a.meno, a.slug, a.bio, a.foto,
-                 COUNT(b.id) AS books_count,
-                 ROUND(AVG(r.rating),2) AS avg_rating
-          FROM authors a
-          LEFT JOIN books b ON b.author_id = a.id AND COALESCE(b.is_active,1)=1
-          LEFT JOIN reviews r ON r.book_id = b.id
-          GROUP BY a.id
-          ORDER BY books_count DESC, avg_rating DESC
-          LIMIT :lim
+            SELECT
+                a.id,
+                a.meno,
+                a.slug,
+                a.bio,
+                a.foto,
+                COALESCE(a.books_count, 0) AS books_count,
+                COALESCE(a.ratings_count, 0) AS ratings_count,
+                COALESCE(a.rating_sum, 0) AS rating_sum,
+                -- použij uložený avg_rating, inak vypočti fallback z rating_sum/ratings_count
+                COALESCE(
+                    a.avg_rating,
+                    (CASE WHEN a.ratings_count > 0 THEN ROUND(a.rating_sum / a.ratings_count, 2) ELSE NULL END)
+                ) AS avg_rating,
+                a.last_rating_at
+            FROM authors a
+            ORDER BY books_count DESC, avg_rating DESC, a.updated_at DESC
+            LIMIT :lim
         ";
+
         $st = $pdo->prepare($sql);
         $st->bindValue(':lim', (int)$limit, PDO::PARAM_INT);
         $st->execute();
         $authors = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        // voliteľné: zabezpečiť, že numerické polia sú typu int/float v PHP (pre UI)
+        foreach ($authors as &$au) {
+            $au['books_count'] = isset($au['books_count']) ? (int)$au['books_count'] : 0;
+            $au['ratings_count'] = isset($au['ratings_count']) ? (int)$au['ratings_count'] : 0;
+            $au['rating_sum'] = isset($au['rating_sum']) ? (int)$au['rating_sum'] : 0;
+            $au['avg_rating'] = ($au['avg_rating'] !== null) ? (float)$au['avg_rating'] : null;
+        }
+        unset($au);
+
     } catch (Throwable $e) {
         error_log("featured-authors.php SQL error: " . $e->getMessage());
+        $authors = [];
     }
 }
 ?>

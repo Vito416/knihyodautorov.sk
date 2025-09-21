@@ -1,26 +1,27 @@
 <?php
 // partials/books.php
 // Sekcia + AJAX endpoint pre náhodné / search výsledky (SK)
-
-// -------- robustné načítanie PDO (skúsi niekoľko relatívnych ciest) ----------
-if (!isset($pdo) || !($pdo instanceof PDO)) {
-    $candidates = [
-        __DIR__ . '/../db/config/config.php',
-        __DIR__ . '/db/config/config.php',
-        __DIR__ . '/../../db/config/config.php',
-    ];
-    foreach ($candidates as $cfg) {
-        if (!file_exists($cfg)) continue;
-        try {
-            $maybe = require $cfg;
-            if ($maybe instanceof PDO) { $pdo = $maybe; break; }
-            if (isset($pdo) && $pdo instanceof PDO) break;
-        } catch (Throwable $e) {
-            // ignoruj a skúšaj ďalej
-        }
-    }
-}
-
+  $PROJECT_ROOT = realpath(dirname(__DIR__, 4));
+  $configFile = $PROJECT_ROOT . '/secure/config.php';
+  require_once $configFile;
+  $autoloadPath = $PROJECT_ROOT . '/libs/Database.php';
+  require_once $autoloadPath;
+  try {
+      if (!class_exists('Database')) {
+          throw new RuntimeException('Database class not available (autoload error)');
+      }
+      if (empty($config['db']) || !is_array($config['db'])) {
+          throw new RuntimeException('Missing $config[\'db\']');
+      }
+      Database::init($config['db']);
+      $database = Database::getInstance();
+      $pdo = $database->getPdo();
+  } catch (Throwable $e) {
+      $logBootstrapError('Database initialization failed', $e);
+  }
+  if (!($pdo instanceof PDO)) {
+      $logBootstrapError('DB variable is not a PDO instance after init');
+  }
 // helper
 function h($s){ return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 
@@ -42,15 +43,25 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
     try {
       if ($q !== '') {
           $limit = (int)$limit;
-          $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                        a.meno AS autor, a.id AS author_id,
-                        c.nazov AS category_nazov, c.slug AS category_slug
-                  FROM books b
+          $sql = "SELECT b.id, b.title AS nazov, b.full_description AS popis,
+                        (SELECT COALESCE(ba.download_filename, ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND (ba.asset_type = 'pdf' OR ba.asset_type = 'ebook')
+                         ORDER BY ba.id DESC LIMIT 1) AS pdf_file,
+                        (SELECT COALESCE(ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND ba.asset_type = 'cover'
+                         ORDER BY ba.id DESC LIMIT 1) AS obrazok,
+                       a.meno AS autor, a.id AS author_id,
+                       c.nazov AS category_nazov, c.slug AS category_slug
+                FROM books b
                   LEFT JOIN authors a ON b.author_id = a.id
-                  LEFT JOIN categories c ON b.category_id = c.id
+                  LEFT JOIN categories c ON b.main_category_id = c.id
                   WHERE COALESCE(b.is_active,1) = 1
                     AND (
-                        COALESCE(b.nazov,'')  COLLATE utf8mb4_unicode_ci LIKE :t1
+                        COALESCE(b.title,'')  COLLATE utf8mb4_unicode_ci LIKE :t1
                       OR COALESCE(a.meno,'')  COLLATE utf8mb4_unicode_ci LIKE :t2
                       OR COALESCE(c.nazov,'') COLLATE utf8mb4_unicode_ci LIKE :t3
                     )
@@ -65,14 +76,24 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
           $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
       } else {
           $limit = (int)$limit;
-          $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
-                        a.meno AS autor, a.id AS author_id,
-                        c.nazov AS category_nazov, c.slug AS category_slug
-                  FROM books b
-                  LEFT JOIN authors a ON b.author_id = a.id
-                  LEFT JOIN categories c ON b.category_id = c.id
-                  WHERE COALESCE(b.is_active,1) = 1
-                  ORDER BY RAND()
+        $sql = "SELECT b.id, b.title AS nazov, b.full_description AS popis,
+                        (SELECT COALESCE(ba.download_filename, ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND (ba.asset_type = 'pdf' OR ba.asset_type = 'ebook')
+                         ORDER BY ba.id DESC LIMIT 1) AS pdf_file,
+                        (SELECT COALESCE(ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND ba.asset_type = 'cover'
+                         ORDER BY ba.id DESC LIMIT 1) AS obrazok,
+                       a.meno AS autor, a.id AS author_id,
+                       c.nazov AS category_nazov, c.slug AS category_slug
+                FROM books b
+                LEFT JOIN authors a ON b.author_id = a.id
+                LEFT JOIN categories c ON b.main_category_id = c.id
+                WHERE COALESCE(b.is_active,1) = 1
+                ORDER BY RAND()
                   LIMIT $limit"; // přímo integer
 
           $stmt = $pdo->prepare($sql);
@@ -113,12 +134,22 @@ if ((isset($_GET['ajax']) && $_GET['ajax'] === '1') || (isset($_POST['ajax']) &&
 $books = [];
 if (isset($pdo) && ($pdo instanceof PDO)) {
     try {
-        $sql = "SELECT b.id, b.nazov, b.popis, b.pdf_file, b.obrazok,
+        $sql = "SELECT b.id, b.title AS nazov, b.full_description AS popis,
+                        (SELECT COALESCE(ba.download_filename, ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND (ba.asset_type = 'pdf' OR ba.asset_type = 'ebook')
+                         ORDER BY ba.id DESC LIMIT 1) AS pdf_file,
+                        (SELECT COALESCE(ba.filename, ba.storage_path, '') 
+                          FROM book_assets ba 
+                         WHERE ba.book_id = b.id 
+                           AND ba.asset_type = 'cover'
+                         ORDER BY ba.id DESC LIMIT 1) AS obrazok,
                        a.meno AS autor, a.id AS author_id,
                        c.nazov AS category_nazov, c.slug AS category_slug
                 FROM books b
                 LEFT JOIN authors a ON b.author_id = a.id
-                LEFT JOIN categories c ON b.category_id = c.id
+                LEFT JOIN categories c ON b.main_category_id = c.id
                 WHERE COALESCE(b.is_active,1) = 1
                 ORDER BY RAND()
                 LIMIT 4";

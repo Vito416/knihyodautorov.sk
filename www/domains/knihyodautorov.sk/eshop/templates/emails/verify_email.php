@@ -1,16 +1,18 @@
-<?php
-/** @var string $verify_url */
-/** @var string|null $name */
-$name = $name ?? '';
-?>
-<!doctype html>
+<!DOCTYPE html>
 <html lang="sk">
-<head><meta charset="utf-8"><title>Overenie e-mailu</title></head>
+<head>
+    <meta charset="UTF-8">
+    <title>Overenie e-mailovej adresy</title>
+</head>
 <body>
-  <p>Dobrý deň <?= $name !== '' ? htmlspecialchars($name) : '' ?>,</p>
-  <p>ďakujeme za registráciu v našom e-shope. Pre dokončenie registrácie prosím potvrďte svoj e-mail kliknutím na nasledujúci odkaz:</p>
-  <p><a href="<?= htmlspecialchars($verify_url) ?>"><?= htmlspecialchars($verify_url) ?></a></p>
-  <p>Ak ste túto žiadosť nevyžiadali, ignorujte tento e-mail.</p>
-  <p>S pozdravom,<br>tím e-shopu</p>
+    <h2>Overenie e-mailovej adresy</h2>
+    <p>Dobrý deň <?= htmlspecialchars($user['name'] ?? $user['email']) ?>,</p>
+
+    <p>ďakujeme za registráciu v našom e-shope.</p>
+
+    <p>Na dokončenie aktivácie účtu prosím kliknite na nasledujúci odkaz:</p>
+    <p><a href="<?= htmlspecialchars($verify_url) ?>">Overiť e-mail</a></p>
+
+    <p>Ak ste si účet nevytvorili vy, tento e-mail ignorujte.</p>
 </body>
 </html>

@@ -5,6 +5,7 @@ final class DeferredHelper
 {
     private const MAX_QUEUE = 1000;
     private static array $queue = [];
+    private static bool $isProcessing = false;
 
     private function __construct() {}
 
@@ -26,7 +27,11 @@ final class DeferredHelper
      */
     public static function flush(): void
     {
-        if (empty(self::$queue)) return;
+        if (self::$isProcessing || empty(self::$queue)) {
+            return;
+        }
+
+        self::$isProcessing = true;
 
         while (!empty(self::$queue)) {
             $cb = array_shift(self::$queue);
@@ -37,7 +42,6 @@ final class DeferredHelper
                     try {
                         Logger::systemError($e);
                     } catch (\Throwable $_) {
-                        // fallback, pokud Logger vyhodí chybu
                         error_log('[DeferredHelper fallback] ' . $e->getMessage());
                     }
                 } else {
@@ -45,5 +49,7 @@ final class DeferredHelper
                 }
             }
         }
+
+        self::$isProcessing = false;
     }
 }

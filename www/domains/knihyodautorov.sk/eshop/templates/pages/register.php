@@ -5,20 +5,18 @@
 //  - $user (array|null)
 //  - $navActive (string|null)
 //  - $error (string|null)        // chybová zpráva nebo null
-//  - $csrf_token (string|null)
-// Uses partials: header.php, flash.php, footer.php
 
-$pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Registrace';
+$pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Registrácia';
 $navActive = $navActive ?? 'account';
-$csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
 
 $partialsDir = __DIR__ . '/../partials';
 include $partialsDir . '/header.php';
 include $partialsDir . '/flash.php';
 
 // safe prefill from previous POST (controllers may pass explicit values instead)
-$pref_name  = htmlspecialchars($_POST['full_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$pref_email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$pref_given  = htmlspecialchars($_POST['given_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$pref_family = htmlspecialchars($_POST['family_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 ?>
 <article class="auth-page register-page">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -29,8 +27,13 @@ $pref_email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUT
 
     <form method="post" action="/eshop/register.php" class="form form-register" autocomplete="off" novalidate>
         <div class="form-row">
-            <label for="full_name">Jméno a příjmení</label>
-            <input id="full_name" name="full_name" type="text" required maxlength="255" value="<?= $pref_name ?>">
+            <label for="given_name">Meno</label>
+            <input id="given_name" name="given_name" type="text" required maxlength="100" value="<?= $pref_given ?>">
+        </div>
+
+        <div class="form-row">
+            <label for="family_name">Priezvisko</label>
+            <input id="family_name" name="family_name" type="text" required maxlength="150" value="<?= $pref_family ?>">
         </div>
 
         <div class="form-row">
@@ -41,26 +44,42 @@ $pref_email = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUT
         <div class="form-row">
             <label for="password">Heslo</label>
             <input id="password" name="password" type="password" required autocomplete="new-password">
-            <small>Heslo alespoň 8 znaků.</small>
+            <small>Heslo aspoň 12 znakov, veľké/malé písmená, číslo, špeciálny znak.</small>
         </div>
 
         <div class="form-row">
-            <label for="password2">Heslo znovu</label>
+            <label for="password2">Heslo znova</label>
             <input id="password2" name="password2" type="password" required autocomplete="new-password">
         </div>
 
-        <?php if ($csrf !== null): ?>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-        <?php endif; ?>
+        <div class="form-row">
+            <?= CSRF::hiddenInput('csrf') ?>
+            <input type="hidden" name="newsletter_subscribe" id="newsletter_subscribe" value="0">
+        </div>
 
         <div class="form-row">
-            <button type="submit" class="btn btn-primary">Registrovat</button>
+            <button type="submit" class="btn btn-primary">Registrovať</button>
         </div>
 
         <div class="form-row form-links">
-            <a href="/eshop/login.php">Mám už účet — přihlásit</a>
+            <a href="/eshop/login.php">Už mám účet — prihlásiť sa</a>
         </div>
     </form>
+<?php if (empty($existingNewsletter) || !$existingNewsletter): ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('.form-register');
+        if (!form) return;
+
+        form.addEventListener('submit', function(e) {
+            // jen pokud checkbox/skrytý popup ještě nebyl potvrzen
+            let subscribe = confirm("Chcete dostávať náš newsletter?");
+            document.getElementById('newsletter_subscribe').value = subscribe ? "1" : "0";
+            // pokračujeme v odeslání
+        });
+    });
+    </script>
+<?php endif; ?>
 </article>
 
 <?php

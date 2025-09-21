@@ -152,6 +152,7 @@ $prefixes = [
 
     'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
 
+    'Cron\\' => __DIR__ . '/../cron/',
 ];
 
 /* SPL autoloader */

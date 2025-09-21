@@ -21,6 +21,17 @@ $config = [
         ],
     ],
 
+    'adb' => [
+        'dsn' => 'mysql:host=' . ($_ENV['ADB_HOST'] ?? '') . ';dbname=' . ($_ENV['ADB_NAME'] ?? '') . ';charset=utf8mb4',
+        'user' => $_ENV['ADB_USER'] ?? '',
+        'pass' => $_ENV['ADB_PASS'] ?? '',
+        'options' => [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ],
+    ],
+
     'paths' => [
     'templates' => __DIR__ . '/../www/domains/knihyodautorov.sk/eshop/templates',
     'email_templates' => __DIR__ . '/../www/domains/knihyodautorov.sk/eshop/templates/emails',

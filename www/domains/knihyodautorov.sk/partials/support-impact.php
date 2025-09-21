@@ -1,19 +1,28 @@
 <?php
 // partials/support-impact.php
 // Sekcia "Podpora a dopad" - načítava štatistiky z DB a zobrazí progress, odhady.
-
-$pdo = null;
-$candidates = [
-    __DIR__ . '/../db/config/config.php',
-    __DIR__ . '/db/config/config.php',
-    __DIR__ . '/../../db/config/config.php',
-];
-foreach ($candidates as $c) {
-    if (file_exists($c)) {
-        $maybe = require $c;
-        if ($maybe instanceof PDO) { $pdo = $maybe; break; }
-        if (isset($pdo) && $pdo instanceof PDO) break;
-    }
+if (!($pdo instanceof PDO)) {
+  $PROJECT_ROOT = realpath(dirname(__DIR__, 4));
+  $configFile = $PROJECT_ROOT . '/secure/config.php';
+  require_once $configFile;
+  $autoloadPath = $PROJECT_ROOT . '/libs/Database.php';
+  require_once $autoloadPath;
+  try {
+      if (!class_exists('Database')) {
+          throw new RuntimeException('Database class not available (autoload error)');
+      }
+      if (empty($config['db']) || !is_array($config['db'])) {
+          throw new RuntimeException('Missing $config[\'db\']');
+      }
+      Database::init($config['db']);
+      $database = Database::getInstance();
+      $pdo = $database->getPdo();
+  } catch (Throwable $e) {
+      $logBootstrapError('Database initialization failed', $e);
+  }
+  if (!($pdo instanceof PDO)) {
+      $logBootstrapError('DB variable is not a PDO instance after init');
+  }
 }
 
 if (!function_exists('esc_si')) {

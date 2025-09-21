@@ -47,6 +47,9 @@ try {
         ['env'=>'JWT_KEY',           'basename'=>'jwt_key',        'required'=>true],
         ['env'=>'EMAIL_KEY',         'basename'=>'email_key',      'required'=>true],
         ['env'=>'EMAIL_HASH_KEY',    'basename'=>'email_hash_key', 'required'=>true],
+        ['env'=>'EMAIL_VERIFICATION_KEY','basename'=>'email_verification_key','required'=>true],
+        ['env'=>'UNSUBSCRIBE_KEY',   'basename'=>'unsubscribe_key','required'=>true],
+        ['env'=>'PROFILE_CRYPTO',    'basename'=>'profile_crypto', 'required'=>true],
     ];
 
     foreach ($toCreate as $spec) {

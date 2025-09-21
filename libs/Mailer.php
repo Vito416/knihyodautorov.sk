@@ -69,7 +69,6 @@ final class Mailer
             throw new RuntimeException('Invalid notification payload.');
         }
 
-        // get email key raw bytes using configured keys dir
         $keysDir = self::$keysDir ?? (self::$config['paths']['keys'] ?? null);
         $emailKeyInfo = KeyManager::getEmailKeyInfo($keysDir); // ['raw'=>binary,'version'=>'vN']
         $keyRaw = $emailKeyInfo['raw'] ?? null;
@@ -79,11 +78,9 @@ final class Mailer
 
         $cipher = Crypto::encryptWithKeyBytes($json, $keyRaw, 'binary');
 
-        // zero the raw key if possible
-        try { KeyManager::memzero($keyRaw); } catch (\Throwable $_) { /* best-effort */ }
+        try { KeyManager::memzero($keyRaw); } catch (\Throwable $_) {}
         unset($keyRaw);
 
-        // store as JSON object in payload column (DB has JSON type)
         $payloadForDb = json_encode([
             'cipher' => base64_encode($cipher),
             'meta' => [
@@ -92,16 +89,54 @@ final class Mailer
             ],
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-        $stmt = self::$pdo->prepare('INSERT INTO notifications (user_id, channel, template, payload, status, retries, max_retries, scheduled_at, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, NOW())');
-        $ok = $stmt->execute([0, 'email', $templateName, $payloadForDb, 'pending', $maxRetries]);
-        if (!$ok) {
-            $err = self::$pdo->errorInfo();
-            Logger::systemMessage('error', 'Mailer enqueue DB insert failed', null, ['error' => $err[2] ?? $err]);
-            throw new RuntimeException('Failed to enqueue notification (DB).');
+        // optional: protect against extremely large payloads
+        if (strlen($payloadForDb) > 2000000) { // 2MB safe-guard (adjust as needed)
+            Logger::systemMessage('error', 'Mailer enqueue failed: payload too large', null, ['size' => strlen($payloadForDb)]);
+            throw new RuntimeException('Notification payload too large.');
         }
-        $id = (int) self::$pdo->lastInsertId();
-        Logger::systemMessage('info', 'Notification enqueued', null, ['id' => $id, 'template' => $templateName]);
-        return $id;
+
+        // získat user_id z payloadu
+        $userId = null;
+        if (isset($payloadArr['user_id'])) {
+            $userId = (int)$payloadArr['user_id'];
+        } elseif (isset($payloadArr['userId'])) {
+            $userId = (int)$payloadArr['userId'];
+        }
+
+        if ($userId === null || $userId <= 0) {
+            Logger::systemMessage('error', 'Mailer enqueue failed: missing/invalid user_id in payload', null, ['template' => $templateName]);
+            throw new \InvalidArgumentException('Mailer::enqueue requires valid user_id in payload.');
+        }
+
+        // ověření existence uživatele
+        try {
+            $chk = self::$pdo->prepare('SELECT 1 FROM pouzivatelia WHERE id = ? LIMIT 1');
+            $chk->execute([$userId]);
+            if (!$chk->fetchColumn()) {
+                Logger::systemMessage('error', 'Mailer enqueue failed: user_id does not exist', $userId, ['template' => $templateName]);
+                throw new \RuntimeException("Mailer::enqueue: user_id {$userId} does not exist.");
+            }
+        } catch (\Throwable $e) {
+            Logger::systemMessage('error', 'Mailer enqueue DB check failed', $userId, ['exception' => $e->getMessage()]);
+            throw $e;
+        }
+
+        // vložení notifikace (UTC_TIMESTAMP pro konzistenci)
+        try {
+            $stmt = self::$pdo->prepare('INSERT INTO notifications (user_id, channel, template, payload, status, retries, max_retries, scheduled_at, created_at) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, UTC_TIMESTAMP())');
+            $ok = $stmt->execute([$userId, 'email', $templateName, $payloadForDb, 'pending', $maxRetries]);
+            if (!$ok) {
+                $err = self::$pdo->errorInfo();
+                Logger::systemMessage('error', 'Mailer enqueue DB insert failed', $userId, ['error' => $err[2] ?? $err]);
+                throw new RuntimeException('Failed to enqueue notification (DB).');
+            }
+            $id = (int) self::$pdo->lastInsertId();
+            Logger::systemMessage('notice', 'Notification enqueued', $userId, ['id' => $id, 'template' => $templateName]);
+            return $id;
+        } catch (\Throwable $e) {
+            Logger::systemMessage('error', 'Mailer enqueue failed (exception)', $userId, ['exception' => $e->getMessage()]);
+            throw $e;
+        }
     }
 
     public static function processPendingNotifications(int $limit = 100): array
@@ -211,7 +246,7 @@ final class Mailer
                     $stmt = $pdo->prepare('UPDATE notifications SET status = ?, sent_at = NOW(), error = NULL, last_attempt_at = NOW(), retries = ?, updated_at = NOW() WHERE id = ?');
                     $stmt->execute(['sent', $retries + 1, $id]);
                     $report['sent']++;
-                    Logger::systemMessage('info', 'Notification sent', null, ['id' => $id, 'to' => $to]);
+                    Logger::systemMessage('notice', 'Notification sent', null, ['id' => $id, 'to' => $to]);
                 } else {
                     $err = $sendMeta['error'] ?? 'send_failed';
                     self::markFailed($id, $retries, $maxRetries, $err);

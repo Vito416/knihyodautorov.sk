@@ -267,51 +267,6 @@ final class Logger
         });
     }
 
-    public static function register(string $type, ?int $userId = null, ?array $meta = null, ?string $ip = null, ?string $userAgent = null): void
-    {
-        $type = self::validateRegisterType($type);
-        $userAgent = self::truncateUserAgent($userAgent ?? self::getUserAgent());
-
-        $ipResult = self::getHashedIp($ip);
-        $ipHash = self::prepareIpForStorage($ipResult['hash']);
-        $ipKeyId = $ipResult['key_id'];
-        $ipUsed = $ipResult['used'];
-
-        $filteredMeta = self::filterSensitive($meta) ?? [];
-        $filteredMeta['_ip_hash_used'] = $ipUsed;
-        if ($ipKeyId !== null) $filteredMeta['_ip_hash_key'] = $ipKeyId;
-        $json = self::safeJsonEncode($filteredMeta);
-
-        $sql = "INSERT INTO register_events (user_id, type, ip_hash, ip_hash_key, user_agent, occurred_at, meta)
-                VALUES (:user_id, :type, :ip_hash, :ip_hash_key, :ua, UTC_TIMESTAMP(), :meta)";
-        $params = [
-            ':user_id' => $userId,
-            ':type' => $type,
-            ':ip_hash' => $ipHash,
-            ':ip_hash_key' => $ipKeyId,
-            ':ua' => $userAgent,
-            ':meta' => $json,
-        ];
-
-        if (\Database::isInitialized()) {
-            DeferredHelper::flush();
-            try {
-                \Database::getInstance()->execute($sql, $params);
-            } catch (\Throwable $e) {
-                return;
-            }
-            return;
-        }
-
-        DeferredHelper::enqueue(function() use ($sql, $params) {
-            try {
-                \Database::getInstance()->execute($sql, $params);
-            } catch (\Throwable $e) {
-                // silent fail – logger nikdy nesmí shodit aplikaci
-            }
-        });
-    }
-
     public static function verify(string $type, ?int $userId = null, ?array $meta = null, ?string $ip = null, ?string $userAgent = null): void
     {
         $type = self::validateVerifyType($type);
