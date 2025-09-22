@@ -882,7 +882,7 @@ if (isset($_POST['create_db'])) {
     // Tabuľka notifications (jednoduchá, idempotentná)
     $sql = "CREATE TABLE IF NOT EXISTS notifications (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id BIGINT UNSIGNED NOT NULL,
+        user_id BIGINT UNSIGNED NULL,
         channel ENUM('email','push') NOT NULL,
         template VARCHAR(100) NOT NULL,
         payload JSON NULL,
@@ -958,6 +958,14 @@ if (isset($_POST['create_db'])) {
     DEFAULT CHARSET=utf8mb4
     COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "system_jobs");
+
+    // Tabuľka worker_locks (jednoduchá)
+    $sql = "CREATE TABLE IF NOT EXISTS worker_locks (
+    name VARCHAR(191) NOT NULL PRIMARY KEY,
+    locked_until DATETIME NOT NULL,
+    INDEX (locked_until)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "worker_locks");
 
 }
 

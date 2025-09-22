@@ -67,6 +67,13 @@ $config = [
     'max_retries' => 6,
     ],
     'table_names' => [],
+
+    'capchav3' => [
+    'site_key' => $_ENV['CAPCHA_SITE_KEY'] ?? '',
+    'secret_key' => $_ENV['CAPCHA_SECRET_KEY'] ?? '',
+    'min_score' => $_ENV['CAPCHA_MIN_SCORE'] ?? '',
+    ],
+    'app_domain' => $_ENV['APP_DOMAIN'] ?? '',
 ];
 
 // helper functions (resolve_path, warn_if_within_document_root) — reuse earlier implementations

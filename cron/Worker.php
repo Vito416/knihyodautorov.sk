@@ -43,10 +43,14 @@ final class Worker
         $report = [];
 
         if ($immediate) {
-            // pokus o odeslání všech pending + failed hned
-            $report = Mailer::processPendingNotifications($limit);
+            try {
+                // Mailer se postará o všechny pending/failed notifikace a locking
+                $report = Mailer::processPendingNotifications($limit);
+            } catch (\Throwable $e) {
+                Logger::systemError($e);
+                $report = ['error' => $e->getMessage()];
+            }
         } else {
-            // jen "enqueue" fallback, worker si je vezme při dalším spuštění
             $report = ['info' => 'Immediate processing disabled, fallback to queue only'];
         }
 

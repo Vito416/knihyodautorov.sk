@@ -169,10 +169,15 @@
 (function () {
   'use strict';
 
-  const forms = document.querySelectorAll('.contact-form');
+  // všechny formuláře s AJAX odesláním
+  const forms = document.querySelectorAll('.contact-form, .subscribe-form');
 
   forms.forEach(form => {
+    // public key a akce z datasetu
     const RECAPTCHA_PUBLIC_KEY = form.dataset.sitekey;
+    const recaptchaAction = form.dataset.action || (form.classList.contains('subscribe-form') ? 'subscribe' : 'contact');
+    const feedbackId = form.dataset.feedback || (form.classList.contains('subscribe-form') ? 'subscribe-feedback' : 'contact-feedback');
+
     if (!RECAPTCHA_PUBLIC_KEY) {
       console.error('reCAPTCHA public key není nastavený!');
       return;
@@ -182,7 +187,7 @@
       e.preventDefault();
 
       const submitBtn = form.querySelector('button[type="submit"]');
-      const feedbackEl = document.getElementById('contact-feedback');
+      const feedbackEl = document.getElementById(feedbackId);
       if (!submitBtn || !feedbackEl) return;
 
       const btnText = submitBtn.querySelector('.btn-text');
@@ -195,23 +200,26 @@
       feedbackEl.textContent = '';
 
       grecaptcha.ready(() => {
-        grecaptcha.execute(RECAPTCHA_PUBLIC_KEY, { action: 'contact' }).then(token => {
-          // doplnění tokenu
-          form.querySelector('input[name="g-recaptcha-response"]').value = token;
+        grecaptcha.execute(RECAPTCHA_PUBLIC_KEY, { action: recaptchaAction }).then(token => {
+          let recaptchaInput = form.querySelector('input[name="g-recaptcha-response"]');
+          if (!recaptchaInput) {
+            recaptchaInput = document.createElement('input');
+            recaptchaInput.type = 'hidden';
+            recaptchaInput.name = 'g-recaptcha-response';
+            form.appendChild(recaptchaInput);
+          }
+          recaptchaInput.value = token;
 
           const formData = new FormData(form);
           fetch(form.action, { method: 'POST', body: formData })
             .then(resp => {
               if (!resp.ok) throw new Error('Network response not OK');
-              return resp.json(); // parse JSON
+              return resp.json();
             })
             .then(data => {
-              if (data.success) {
-                feedbackEl.textContent = data.message;
-                form.reset();
-              } else {
-                feedbackEl.textContent = data.error || 'Chyba při odesílání.';
-              }
+              // vždy zobrazuje message, resetuje pouze pokud success
+              feedbackEl.textContent = data.message || 'Chyba při odesílání.';
+              if (data.success) form.reset();
             })
             .catch(err => {
               console.error(err);

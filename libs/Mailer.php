@@ -18,6 +18,9 @@ declare(strict_types=1);
  *  - implements retry/backoff and locking
  */
 
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception as PHPMailerException;
+
 final class Mailer
 {
     private static ?array $config = null;
@@ -35,7 +38,9 @@ final class Mailer
         if (!class_exists('Logger')) {
             throw new RuntimeException('Mailer init failed: Logger missing.');
         }
-
+        if (!class_exists('\PHPMailer\PHPMailer\PHPMailer')) {
+            throw new RuntimeException('Mailer init failed: PHPMailer not available. Ensure bootstrap loads PHPMailer.');
+        }
         self::$config = $config;
         self::$pdo = $pdo;
 
@@ -103,22 +108,27 @@ final class Mailer
             $userId = (int)$payloadArr['userId'];
         }
 
-        if ($userId === null || $userId <= 0) {
-            Logger::systemMessage('error', 'Mailer enqueue failed: missing/invalid user_id in payload', null, ['template' => $templateName]);
+        // --- SPEC. PŘÍPAD: newsletter_subscribe_confirm může mít user_id null ---
+        $allowNoUserId = ($payloadArr['template'] ?? '') === 'newsletter_subscribe_confirm';
+
+        if (($userId === null || $userId <= 0) && !$allowNoUserId) {
+            Logger::systemMessage('error', 'Mailer enqueue failed: missing/invalid user_id in payload', null, ['template' => $payloadArr['template'] ?? null]);
             throw new \InvalidArgumentException('Mailer::enqueue requires valid user_id in payload.');
         }
 
-        // ověření existence uživatele
-        try {
-            $chk = self::$pdo->prepare('SELECT 1 FROM pouzivatelia WHERE id = ? LIMIT 1');
-            $chk->execute([$userId]);
-            if (!$chk->fetchColumn()) {
-                Logger::systemMessage('error', 'Mailer enqueue failed: user_id does not exist', $userId, ['template' => $templateName]);
-                throw new \RuntimeException("Mailer::enqueue: user_id {$userId} does not exist.");
+        // ověření existence uživatele jen pokud máme platné user_id
+        if ($userId !== null && $userId > 0) {
+            try {
+                $chk = self::$pdo->prepare('SELECT 1 FROM pouzivatelia WHERE id = ? LIMIT 1');
+                $chk->execute([$userId]);
+                if (!$chk->fetchColumn()) {
+                    Logger::systemMessage('error', 'Mailer enqueue failed: user_id does not exist', $userId, ['template' => $payloadArr['template'] ?? null]);
+                    throw new \RuntimeException("Mailer::enqueue: user_id {$userId} does not exist.");
+                }
+            } catch (\Throwable $e) {
+                Logger::systemMessage('error', 'Mailer enqueue DB check failed', $userId, ['exception' => $e->getMessage()]);
+                throw $e;
             }
-        } catch (\Throwable $e) {
-            Logger::systemMessage('error', 'Mailer enqueue DB check failed', $userId, ['exception' => $e->getMessage()]);
-            throw $e;
         }
 
         // vložení notifikace (UTC_TIMESTAMP pro konzistenci)
@@ -234,7 +244,146 @@ final class Mailer
                     Logger::systemMessage('warning', 'Notification payload validation failed', null, ['id' => $id, 'template' => $templateName]);
                     continue;
                 }
+                // ensure vars is array so template assignments won't throw notices
+                if (!isset($payload['vars']) || !is_array($payload['vars'])) {
+                    $payload['vars'] = [];
+                }
+                // --- attachments processing: download inline_remote and prepare cids before rendering ---
+                $attachmentsDownloads = [];
+                $totalBytes = 0;
+                $maxPerFile = (int)(self::$config['smtp']['max_attachment_bytes'] ?? 2 * 1024 * 1024);     // 2MB default
+                $maxTotal   = (int)(self::$config['smtp']['max_total_attachments_bytes'] ?? 8 * 1024 * 1024); // 8MB default
 
+                if (!empty($payload['attachments']) && is_array($payload['attachments'])) {
+                    foreach ($payload['attachments'] as $att) {
+                        if (!is_array($att) || empty($att['type']) || empty($att['src'])) continue;
+                        $type = $att['type'];
+                        $src  = $att['src'];
+                        $name = $att['name'] ?? basename(parse_url($src, PHP_URL_PATH) ?: 'file.bin');
+                        if (!empty($att['cid'])) {
+                            $cid = $att['cid'];
+                        } else {
+                            try {
+                                $cid = 'img_' . bin2hex(random_bytes(6));
+                            } catch (\Throwable $_) {
+                                $cid = 'img_' . uniqid('', true);
+                            }
+                        }
+                // Only handle inline_remote (download & embed) here
+                if ($type === 'inline_remote') {
+                        $parsed = @parse_url($src);
+                        if ($parsed === false) {
+                            Logger::systemMessage('warning', 'attachment_invalid_url', null, ['src' => $src]);
+                            continue;
+                        }
+                        $scheme = strtolower($parsed['scheme'] ?? '');
+                        if (!in_array($scheme, ['http', 'https'], true)) {
+                            Logger::systemMessage('warning', 'attachment_invalid_scheme', null, ['src' => $src]);
+                            continue;
+                        }
+                        // build stream context for TLS verification using smtp config
+                        // pokud je allow_url_fopen zakázáno, nezkoušej fopen na https — fallback na remote URL
+                        if (!ini_get('allow_url_fopen')) {
+                            Logger::systemMessage('warning', 'allow_url_fopen_disabled', null, ['src' => $src]);
+                            $varBase = '__img_' . preg_replace('/[^A-Za-z0-9_]/', '_', pathinfo($name, PATHINFO_FILENAME));
+                            $payload['vars'][$varBase . '_url'] = $src;
+                            continue;
+                        }
+
+                        $smtpCfg = self::$config['smtp'] ?? [];
+                        $verifyTls = isset($smtpCfg['tls_verify']) ? (bool)$smtpCfg['tls_verify'] : true;
+                        $cafile = $smtpCfg['cafile'] ?? null;
+                        $ctxOpts = [
+                            'ssl' => [
+                                'verify_peer' => $verifyTls,
+                                'verify_peer_name' => $verifyTls,
+                                'allow_self_signed' => !$verifyTls,
+                            ]
+                        ];
+                        if (!empty($cafile)) $ctxOpts['ssl']['cafile'] = $cafile;
+                        $ctx = stream_context_create($ctxOpts);
+
+                        $fh = @fopen($src, 'rb', false, $ctx);
+                        if ($fh === false) {
+                            Logger::systemMessage('warning', 'attachment_remote_fetch_failed', null, ['src' => $src]);
+                            continue;
+                        }
+
+                        // nastav timeout pro čtení (v sekundách)
+                        $readTimeout = (int)(self::$config['smtp']['attachment_fetch_timeout'] ?? 5);
+                        stream_set_timeout($fh, max(1, $readTimeout));
+                        $bin = stream_get_contents($fh, $maxPerFile + 1);
+                        $meta = stream_get_meta_data($fh);
+                        fclose($fh);
+
+                        if (!empty($meta['timed_out']) && $meta['timed_out'] === true) {
+                            Logger::systemMessage('warning', 'attachment_fetch_timeout', null, ['src' => $src]);
+                        }
+
+                        if ($bin === false || $bin === '') {
+                            Logger::systemMessage('warning', 'attachment_fetch_failed', null, ['src' => $src]);
+                            continue;
+                        }
+                        if (strlen($bin) > $maxPerFile) {
+                            Logger::systemMessage('warning', 'attachment_too_large', null, ['src' => $src, 'size' => strlen($bin)]);
+                            continue;
+                        }
+
+                        $totalBytes += strlen($bin);
+                        if ($totalBytes > $maxTotal) {
+                            Logger::systemMessage('warning', 'attachments_total_too_large', null, ['total' => $totalBytes]);
+                            break;
+                        }
+
+                        $mime = 'application/octet-stream';
+                        if (class_exists('finfo')) {
+                            try {
+                                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                                $m = $finfo->buffer($bin);
+                                if (is_string($m) && $m !== '') $mime = $m;
+                            } catch (\Throwable $_) {
+                                // leave $mime fallback
+                            }
+                        }
+                        // (doporučuji whitelistovat: png/jpg/gif/webp)
+                        $allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+                        if (!in_array($mime, $allowed, true)) {
+                            Logger::systemMessage('warning', 'attachment_not_allowed_mime', null, ['src'=>$src,'mime'=>$mime]);
+                            continue;
+                        }
+                        $attachmentsDownloads[] = [
+                            'type' => 'inline',
+                            'cid'  => $cid,
+                            'bin'  => $bin,
+                            'mime' => $mime,
+                            'name' => $name,
+                        ];
+
+                        // expose cid + fallback url to template vars (use predictable keys)
+                        $varBase = '__img_' . preg_replace('/[^A-Za-z0-9_]/', '_', pathinfo($name, PATHINFO_FILENAME));
+                        $payload['vars'][$varBase . '_cid'] = $cid;
+                        $payload['vars'][$varBase . '_url'] = $src;
+                        } else {
+                            // for remote usage, expose url to template as fallback
+                            if ($type === 'remote') {
+                                $varBase = '__img_' . preg_replace('/[^A-Za-z0-9_]/', '_', pathinfo($name, PATHINFO_FILENAME));
+                                $payload['vars'][$varBase . '_url'] = $src;
+                            }
+                            // attach/local 'attach'/'inline' will be handled in sendSmtpEmail() if needed
+                        }
+                    } // foreach attachments
+                }
+
+                // attach downloads to payload for send stage
+                if (!empty($attachmentsDownloads)) {
+                    $payload['__attachments_downloaded'] = $attachmentsDownloads;
+                } else {
+                    $payload['__attachments_downloaded'] = [];
+                }
+                // Ensure template has .php extension (EmailTemplates::render expects .php)
+                if ($templateName !== '' && pathinfo($templateName, PATHINFO_EXTENSION) === '') {
+                    $templateName .= '.php';
+                }
                 $rendered = EmailTemplates::renderWithText($templateName, $payload['vars'] ?? []);
                 $to = (string)$payload['to'];
                 $subject = (string)$payload['subject'];
@@ -247,6 +396,10 @@ final class Mailer
                     $stmt->execute(['sent', $retries + 1, $id]);
                     $report['sent']++;
                     Logger::systemMessage('notice', 'Notification sent', null, ['id' => $id, 'to' => $to]);
+                    // optional: free large memory buffers explicitly
+                    if (isset($payload['__attachments_downloaded'])) {
+                        unset($payload['__attachments_downloaded']);
+                    }
                 } else {
                     $err = $sendMeta['error'] ?? 'send_failed';
                     self::markFailed($id, $retries, $maxRetries, $err);
@@ -280,6 +433,11 @@ final class Mailer
         $stmt->execute([$status, $retriesNew, $error, $nextAttempt, $id]);
     }
 
+    /**
+     * Send email using PHPMailer.
+     *
+     * Returns ['ok'=>bool,'error'=>null|string]
+     */
     private static function sendSmtpEmail(string $to, string $subject, string $htmlBody, string $textBody, array $payload): array
     {
         if (!self::$config || !isset(self::$config['smtp'])) {
@@ -288,8 +446,8 @@ final class Mailer
         $smtp = self::$config['smtp'];
         $host = trim((string)($smtp['host'] ?? ''));
         $port = (int)($smtp['port'] ?? 0);
-        $user = $smtp['user'] ?? '';
-        $pass = $smtp['pass'] ?? '';
+        $user = (string)($smtp['user'] ?? '');
+        $pass = (string)($smtp['pass'] ?? '');
         $fromEmail = trim((string)($smtp['from_email'] ?? ($smtp['user'] ?? '')));
         $fromName = (string)($smtp['from_name'] ?? '');
         $secure = strtolower(trim((string)($smtp['secure'] ?? ''))); // '', 'ssl', 'tls'
@@ -297,7 +455,7 @@ final class Mailer
 
         $verifyTls = isset($smtp['tls_verify']) ? (bool)$smtp['tls_verify'] : true;
         $cafile = $smtp['cafile'] ?? null;
-        $peerName = $smtp['peer_name'] ?? $host;
+        $envelopeFrom = $smtp['envelope_from'] ?? $fromEmail;
 
         if ($host === '') {
             return ['ok' => false, 'error' => 'smtp_host_missing'];
@@ -314,7 +472,7 @@ final class Mailer
             return ['ok' => false, 'error' => 'no_recipients'];
         }
         foreach ($rcpts as $r) {
-            if (!filter_var($r, FILTER_VALIDATE_EMAIL)) {
+            if (!Validator::validateEmail($r)) {
                 return ['ok' => false, 'error' => 'invalid_recipient: ' . $r];
             }
         }
@@ -325,157 +483,136 @@ final class Mailer
             else $port = 25;
         }
 
-        $transportPrefix = ($secure === 'ssl') ? 'ssl://' : '';
-
-        // build stream context for TLS/SSL verification (best-effort; configurable)
-        $sslOptions = [
-            'verify_peer' => $verifyTls,
-            'verify_peer_name' => $verifyTls,
-        ];
-        if ($cafile) $sslOptions['cafile'] = $cafile;
-        if ($peerName) $sslOptions['peer_name'] = $peerName;
-        $ctx = stream_context_create(['ssl' => $sslOptions]);
-
-        $errno = null; $errstr = null;
-        $socket = @stream_socket_client($transportPrefix . $host . ':' . $port, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $ctx);
-        if ($socket === false) {
-            return ['ok' => false, 'error' => "socket_connect_failed: $errno $errstr"];
-        }
-        stream_set_timeout($socket, $timeout);
-
-        $recv = function() use ($socket, $timeout) {
-            $s = '';
-            $start = time();
-            while (($line = fgets($socket, 515)) !== false) {
-                $s .= $line;
-                if (isset($line[3]) && $line[3] === ' ') break;
-                if ((time() - $start) > $timeout) break;
-            }
-            return $s;
-        };
-        $send = function(string $cmd) use ($socket) {
-            fwrite($socket, $cmd . "\r\n");
-        };
-
-        $banner = $recv();
-        if ($banner === '' || stripos($banner, '220') !== 0) {
-            fclose($socket);
-            return ['ok' => false, 'error' => 'smtp_banner_invalid: ' . trim($banner)];
-        }
-
-        $send("EHLO " . (gethostname() ?: 'localhost'));
-        $ehlo = $recv();
-
-        if ($secure === 'tls') {
-            $send("STARTTLS");
-            $r = $recv();
-            if (stripos($r, '220') === 0) {
-                // enable crypto and verify peer name (stream_socket_enable_crypto respects context)
-                if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-                    fclose($socket);
-                    return ['ok' => false, 'error' => 'starttls_failed'];
-                }
-                $send("EHLO " . (gethostname() ?: 'localhost'));
-                $ehlo = $recv();
-            } else {
-                fclose($socket);
-                return ['ok' => false, 'error' => 'starttls_not_supported'];
-            }
-        }
-
-        if ($user !== '') {
-            $send("AUTH LOGIN");
-            $r = $recv();
-            if (stripos($r, '334') === 0) {
-                $send(base64_encode($user));
-                $r = $recv();
-                if (stripos($r, '334') !== 0) { fclose($socket); return ['ok'=>false,'error'=>'smtp_auth_user_rejected']; }
-                $send(base64_encode($pass));
-                $r = $recv();
-                if (stripos($r, '235') !== 0) { fclose($socket); return ['ok'=>false,'error'=>'smtp_auth_failed']; }
-            } else {
-                // server didn't accept AUTH right now - proceed and let RCPT/MAIL fail if needed
-            }
-        }
-
+        // create PHPMailer instance and configure SMTP
+        $mail = new PHPMailer(true);
         try {
-            $msgId = bin2hex(random_bytes(8)) . '@' . (self::$config['app_domain'] ?? 'localhost');
-        } catch (\Throwable $e) {
-            fclose($socket);
-            return ['ok' => false, 'error' => 'random_bytes_failed'];
-        }
-
-        $boundary = 'b' . bin2hex(random_bytes(8));
-        $headers = [];
-        $headers[] = 'From: ' . (self::encodeHeader($fromName) !== '' ? (self::encodeHeader($fromName) . " <{$fromEmail}>") : $fromEmail);
-        $headers[] = 'To: ' . implode(', ', $rcpts);
-        $headers[] = 'Subject: ' . self::encodeHeader($subject);
-        $headers[] = 'MIME-Version: 1.0';
-        $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
-        $headers[] = 'Date: ' . gmdate('r');
-        $headers[] = 'Message-ID: <' . $msgId . '>';
-        $headers[] = 'X-Mailer: CustomMailer/1';
-        $headersRaw = implode("\r\n", $headers);
-
-        $bodyLines = [];
-        $bodyLines[] = "--{$boundary}";
-        $bodyLines[] = 'Content-Type: text/plain; charset="utf-8"';
-        $bodyLines[] = 'Content-Transfer-Encoding: 8bit';
-        $bodyLines[] = '';
-        $bodyLines[] = $textBody;
-        $bodyLines[] = '';
-        $bodyLines[] = "--{$boundary}";
-        $bodyLines[] = 'Content-Type: text/html; charset="utf-8"';
-        $bodyLines[] = 'Content-Transfer-Encoding: 8bit';
-        $bodyLines[] = '';
-        $bodyLines[] = $htmlBody;
-        $bodyLines[] = '';
-        $bodyLines[] = "--{$boundary}--";
-        $body = implode("\r\n", $bodyLines);
-
-        $body = preg_replace_callback("/(^|\r\n)\./", function($m){ return $m[1] . '..'; }, $body);
-
-        // envelope_from support (use for MAIL FROM to correctly route SPF/bounces)
-        $envelopeFrom = $smtp['envelope_from'] ?? $fromEmail;
-
-        $send("MAIL FROM:<{$envelopeFrom}>");
-        $r = $recv();
-        if (stripos($r, '250') !== 0) { fclose($socket); return ['ok' => false, 'error' => 'MAIL_FROM rejected: ' . trim($r)]; }
-
-        foreach ($rcpts as $rto) {
-            $send("RCPT TO:<{$rto}>");
-            $r = $recv();
-            if (!(stripos($r, '250') === 0 || stripos($r, '251') === 0)) {
-                fclose($socket);
-                return ['ok' => false, 'error' => 'RCPT_TO rejected: ' . trim($r)];
+            $mail->CharSet = 'UTF-8';
+            $mail->Encoding = '8bit';
+            $mail->isSMTP();
+            $mail->Host = $host;
+            $mail->Port = $port;
+            // secure handling
+            if ($secure === 'ssl') {
+                if (defined('PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS')) {
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                } else {
+                    $mail->SMTPSecure = 'ssl';
+                }
+            } elseif ($secure === 'tls') {
+                if (defined('PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS')) {
+                    $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                } else {
+                    $mail->SMTPSecure = 'tls';
+                }
+            } else {
+                $mail->SMTPSecure = '';
             }
+
+            $mail->SMTPAutoTLS = ($secure === 'tls'); // allow PHPMailer to attempt STARTTLS if requested
+            $mail->SMTPAuth = $user !== '';
+            if ($mail->SMTPAuth) {
+                $mail->Username = $user;
+                $mail->Password = $pass;
+            }
+
+            // TLS/SSL verification options + peer_name (works with PHP OpenSSL extension)
+            $peerName = $smtp['peer_name'] ?? $host;
+            $smtpOptions = [
+                'ssl' => [
+                    'verify_peer'      => $verifyTls,
+                    'verify_peer_name' => $verifyTls,
+                    'allow_self_signed'=> !$verifyTls,
+                    'peer_name'        => $peerName,
+                ],
+            ];
+            if (!empty($cafile)) {
+                $smtpOptions['ssl']['cafile'] = $cafile;
+            }
+            $mail->SMTPOptions = $smtpOptions;
+
+            // Timeout and debug
+            $mail->Timeout = $timeout;
+            // Debug disabled by default; enable >0 only temporarily for diagnostics
+            $mail->SMTPDebug = 0;
+            $mail->Debugoutput = function($str, $level) {
+                // Temporarily log PHPMailer debug lines into your Logger (useful for TLS handshake troubleshooting)
+                Logger::systemMessage('debug', 'PHPMailer debug', null, ['level' => $level, 'msg' => $str]);
+            };
+
+            // Envelope-from (bounces)
+            $mail->Sender = $envelopeFrom;
+
+            // From and recipients
+            $mail->setFrom($fromEmail, $fromName !== '' ? $fromName : null);
+            foreach ($rcpts as $r) {
+                $mail->addAddress($r);
+            }
+
+            // Message-ID: try to generate strong random id
+            try {
+                $msgId = bin2hex(random_bytes(8)) . '@' . (self::$config['app_domain'] ?? 'localhost');
+            } catch (\Throwable $e) {
+                $msgId = uniqid(bin2hex(random_bytes(4)), true) . '@' . (self::$config['app_domain'] ?? 'localhost');
+            }
+            // PHPMailer exposes MessageID property
+            $mail->MessageID = '<' . $msgId . '>';
+
+            // content
+            $mail->isHTML(true);
+            $mail->Subject = $subject;
+            $mail->Body = $htmlBody;
+            $mail->AltBody = $textBody;
+
+            // headers
+            $mail->addCustomHeader('X-Mailer', 'CustomMailer/1');
+            // --- attach downloaded attachments (memory) if present ---
+            if (!empty($payload['__attachments_downloaded']) && is_array($payload['__attachments_downloaded'])) {
+                foreach ($payload['__attachments_downloaded'] as $d) {
+                    $dname = 'file.bin';
+                    try {
+                        if (!is_array($d)) continue;
+                        $dtype = $d['type'] ?? 'inline';
+                        $dname = $d['name'] ?? ($d['cid'] ?? $dname);
+                        $dmime = $d['mime'] ?? 'application/octet-stream';
+                        $dbin  = $d['bin'] ?? null;
+                        $dcid  = $d['cid'] ?? null;
+                        if ($dbin === null) {
+                            Logger::systemMessage('warning', 'attachment_missing_binary', null, ['name' => $dname]);
+                            continue;
+                        }
+                        if ($dtype === 'inline') {
+                            if ($dcid === null) {
+                                Logger::systemMessage('warning', 'attachment_missing_cid', null, ['name' => $dname]);
+                                continue;
+                            }
+                            // addStringEmbeddedImage(binary, cid, name, encoding, mime)
+                            $mail->addStringEmbeddedImage($dbin, $dcid, $dname, 'base64', $dmime);
+                        } else {
+                            // fallback: attach as regular file in memory
+                            $mail->addStringAttachment($dbin, $dname, 'base64', $dmime);
+                        }
+                    } catch (\Throwable $e) {
+                        Logger::systemMessage('warning', 'attachment_add_failed', null, ['err' => $e->getMessage(), 'name' => $dname]);
+                        // continue with next attachment
+                    }
+                }
+            }
+            // send
+            $mail->send();
+
+            // small cleanup to free memory (attachments might be large)
+            try {
+                $mail->clearAddresses();
+                $mail->clearAllRecipients();
+                $mail->clearAttachments();
+                $mail->clearCustomHeaders();
+            } catch (\Throwable $_) { /* ignore cleanup errors */ }
+
+            return ['ok' => true, 'error' => null];
+        } catch (PHPMailerException $e) {
+            return ['ok' => false, 'error' => 'phpmailer: ' . $e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'error' => 'send_exception: ' . $e->getMessage()];
         }
-
-        $send("DATA");
-        $r = $recv();
-        if (stripos($r, '354') !== 0) { fclose($socket); return ['ok' => false, 'error' => 'DATA command rejected: ' . trim($r)]; }
-
-        fwrite($socket, $headersRaw . "\r\n\r\n");
-        fwrite($socket, $body . "\r\n.\r\n");
-
-        $r = $recv();
-        if (stripos($r, '250') !== 0) {
-            fclose($socket);
-            return ['ok' => false, 'error' => 'DATA send failed: ' . trim($r)];
-        }
-
-        $send("QUIT");
-        $recv();
-        fclose($socket);
-        return ['ok' => true, 'error' => null];
-    }
-
-    private static function encodeHeader(string $s): string
-    {
-        if ($s === '') return '';
-        if (preg_match('/[^\x20-\x7F]/', $s)) {
-            return '=?UTF-8?B?' . base64_encode($s) . '?=';
-        }
-        return $s;
     }
 }

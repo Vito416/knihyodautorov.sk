@@ -160,8 +160,18 @@
     </div>
     <div class="footer-contact section-subtitle">
       <?php
-      $recaptchaConfig = include __DIR__ . '/../../../../db/config/configrecaptcha.php';
-      $siteKey = $recaptchaConfig['site_key'] ?? ''; 
+      if (!isset($config) || !is_array($config)) {
+          $configPath = realpath(dirname(__DIR__, 4) . '/secure/config.php');
+          $config = [];
+          if ($configPath && is_file($configPath)) {
+              $maybe = require_once $configPath;
+              if (is_array($maybe)) {
+                  $config = $maybe;
+              }
+          }
+      }
+
+      $siteKey = $config['capchav3']['site_key'] ?? $_ENV['CAPCHA_SITE_KEY'] ?? '';
       ?>
       <form class="contact-form" action="/../partials/send.php" method="post" novalidate data-sitekey="<?= htmlspecialchars($siteKey) ?>">
         <!-- Flag že jde o kontaktní formulář -->
@@ -264,19 +274,23 @@
       <meta itemProp="url" content="https://knihyodautorov.sk" />
       <strong>Kontakt</strong><a href="mailto:info@knihyodautorov.sk" itemProp="email">info@knihyodautorov.sk</a><br>
       <a href="tel:+421901770666" itemProp="telephone">+421 901 770 666</a></p>
-      <!--<div class="footer-subscribe" aria-label="Prihlásenie k odberu">
+      <div class="footer-subscribe" aria-label="Prihlásenie k odberu">
       <p class="section-title" data-lines="2"><span>Prihlásiť</span> k odberu</p>
       <div class="footer-subscribe-book"></div>
-      <form class="subscribe-form" action="/subscribe" method="post" novalidate>
+      <form class="subscribe-form" action="/../partials/subscribe.php" method="post" novalidate data-action="subscribe" data-sitekey="<?= htmlspecialchars($siteKey) ?>">
         <label class="visually-hidden" for="subscribe-email-footer">E-mail</label>
         <div class="subscribe-row">
+          <input type="hidden" name="subscribe_form" value="1">
+          <input type="text" name="website" value="" autocomplete="off" tabindex="-1"
+          style="position:absolute;left:-9999px;top:auto;overflow:hidden;">
           <input id="subscribe-email-footer" name="email" type="email" placeholder="Váš e-mail" required autocomplete="email" class="input-field" />
+          <input type="hidden" name="g-recaptcha-response" value="">
           <button type="submit" class="btn-subscribe" aria-label="Prihlásiť k odberu">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
               <path d="M13.485 1.929a1.5 1.5 0 0 1 0 2.122L6.06 11.475l-3.182-3.182a1.5 1.5 0 0 1 2.122-2.122L6.06 8.232l5.303-5.303a1.5 1.5 0 0 1 2.122 0z"/>
               </svg>
           </button>
-      </div></form></div>-->
+      </div><div id="subscribe-feedback" class="subscribe-feedback section-subtitle" role="status" aria-live="polite"></div></form></div>
   </div>
   </div>
   </div>
