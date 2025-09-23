@@ -143,7 +143,7 @@ final class Logger
     private static function filterSensitive(?array $meta): ?array
     {
         if ($meta === null) return null;
-        $blacklist = ['csrf','token','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret','g-recaptcha-response','recaptcha_token','recaptcha', 'authorization_bearer', 'refresh_token', 'id_token'];
+        $blacklist = ['csrf','token','validator','password','pwd','pass','card_number','cardnum','cc_number','ccnum','cvv','cvc','authorization','auth_token','api_key','secret','g-recaptcha-response','recaptcha_token','recaptcha', 'authorization_bearer', 'refresh_token', 'id_token'];
         $clean = [];
         foreach ($meta as $k => $v) {
             $lk = strtolower((string)$k);
@@ -420,6 +420,23 @@ final class Logger
         $context['_ip_hash_used'] = $ipUsed;
         if ($ipKeyId !== null) $context['_ip_hash_key'] = $ipKeyId;
         $jsonContext = self::safeJsonEncode($context);
+        $rawUrl = $_SERVER['REQUEST_URI'] ?? null;
+        if ($rawUrl !== null) {
+            $parts = parse_url($rawUrl);
+            if (isset($parts['query'])) {
+                parse_str($parts['query'], $q);
+                $qClean = self::filterSensitive($q); // použij tvou funkci
+                $parts['query'] = http_build_query($qClean);
+                // složíme URL zpět
+                $cleanUrl = (isset($parts['path']) ? $parts['path'] : '')
+                        . (isset($parts['query']) ? '?' . $parts['query'] : '')
+                        . (isset($parts['fragment']) ? '#' . $parts['fragment'] : '');
+            } else {
+                $cleanUrl = $rawUrl;
+            }
+        } else {
+            $cleanUrl = null;
+        }
 
         // Upsert style: requires UNIQUE index on fingerprint in DB
         $sql = "INSERT INTO system_error
@@ -439,7 +456,7 @@ final class Logger
             ':ip_hash' => $ipHash,
             ':ip_hash_key' => $ipKeyId,
             ':ua' => $ua,
-            ':url' => $_SERVER['REQUEST_URI'] ?? null,
+            ':url' => $cleanUrl,
             ':method' => $_SERVER['REQUEST_METHOD'] ?? null,
             ':status' => http_response_code() ?: null,
         ];
@@ -488,6 +505,23 @@ final class Logger
         $context['_ip_hash_used'] = $ipUsed;
         if ($ipKeyId !== null) $context['_ip_hash_key'] = $ipKeyId;
         $jsonContext = self::safeJsonEncode($context);
+        $rawUrl = $_SERVER['REQUEST_URI'] ?? null;
+        if ($rawUrl !== null) {
+            $parts = parse_url($rawUrl);
+            if (isset($parts['query'])) {
+                parse_str($parts['query'], $q);
+                $qClean = self::filterSensitive($q); // použij tvou funkci
+                $parts['query'] = http_build_query($qClean);
+                // složíme URL zpět
+                $cleanUrl = (isset($parts['path']) ? $parts['path'] : '')
+                        . (isset($parts['query']) ? '?' . $parts['query'] : '')
+                        . (isset($parts['fragment']) ? '#' . $parts['fragment'] : '');
+            } else {
+                $cleanUrl = $rawUrl;
+            }
+        } else {
+            $cleanUrl = null;
+        }
 
         $sql = "INSERT INTO system_error
             (level, message, exception_class, file, line, stack_trace, token, context, fingerprint, occurrences, user_id, ip_hash, ip_hash_key, user_agent, url, method, http_status, created_at, last_seen)
@@ -507,7 +541,7 @@ final class Logger
             ':ip_hash' => $ipHash,
             ':ip_hash_key' => $ipKeyId,
             ':ua' => $ua,
-            ':url' => $_SERVER['REQUEST_URI'] ?? null,
+            ':url' => $cleanUrl,
             ':method' => $_SERVER['REQUEST_METHOD'] ?? null,
             ':status' => http_response_code() ?: null,
         ];

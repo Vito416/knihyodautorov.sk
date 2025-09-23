@@ -16,7 +16,6 @@ require_once __DIR__ . '/inc/bootstrap.php';
 // jednoduché validácie vstupu
 $selector = (string)($_GET['selector'] ?? '');
 $validatorHex = (string)($_GET['validator'] ?? '');
-
 // selector: očakávame hex (bin2hex(random_bytes(6)) => 12 hex znakov), ale ak chcete povoliť iné dĺžky, upravte
 if ($selector === '' || !ctype_xdigit($selector)) {
     echo Templates::render('pages/verify.php', ['status' => 'invalid']);
@@ -45,9 +44,6 @@ try {
             $pdo = $dbInst->getPdo();
         }
     }
-    if ($pdo === null && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
-        $pdo = $GLOBALS['pdo'];
-    }
     if (!($pdo instanceof \PDO)) {
         throw new \RuntimeException('Databázové pripojenie nie je dostupné vo forme PDO.');
     }
@@ -60,9 +56,10 @@ try {
 
 try {
     // načítame záznam podľa selector (limit 1)
-    $sql = "SELECT ev.id AS ev_id, ev.user_id, ev.token_hash, ev.validator_hash, ev.expires_at, u.is_active
+    $sql = "SELECT ev.id AS ev_id, ev.user_id, ev.token_hash, ev.validator_hash, ev.expires_at, u.is_active, x.confirm_selector, x.confirm_validator_hash, x.confirm_key_version, x.confirm_expires, x.confirmed_at, x.unsubscribed_at
             FROM email_verifications ev
             JOIN pouzivatelia u ON u.id = ev.user_id
+            LEFT JOIN newsletter_subscribers x ON x.user_id = ev.user_id
             WHERE ev.selector = :selector
             LIMIT 1";
     $stmt = $pdo->prepare($sql);
@@ -98,7 +95,9 @@ try {
     if (!hash_equals($dbTokenHash, $calcTokenHex)) {
         // nezhoda -> invalid
         if (class_exists('Logger')) {
-            try { Logger::systemMessage('warning', 'email_verify_token_mismatch', $row['user_id'] ?? null, ['selector'=>$selector]); } catch (\Throwable $_) {}
+            if (method_exists('Logger', 'verify')) {
+                try { Logger::verify('verify_failure', (int)$row['user_id'], ['selector' => $selector, 'reason' => 'email_verify_token_mismatch']); } catch (\Throwable $_) {}
+            }
         }
         echo Templates::render('pages/verify.php', ['status' => 'invalid']);
         exit;
@@ -130,34 +129,19 @@ try {
             if (class_exists('Logger')) { try { Logger::error('KeyManager deriveHmacCandidates failed during verification', $row['user_id'] ?? null, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
         }
 
-        // fallback: pepper HMAC ak KeyManager nebol úspešný
-        if (!$validatorHashOk) {
-            try {
-                if (class_exists('KeyManager') && method_exists('KeyManager', 'getPasswordPepperInfo')) {
-                    $pinfo = KeyManager::getPasswordPepperInfo(defined('KEYS_DIR') ? KEYS_DIR : ($_ENV['KEYS_DIR'] ?? null));
-                    $pepRaw = $pinfo['raw'] ?? null;
-                    if (is_string($pepRaw) && strlen($pepRaw) === 32) {
-                        $calc = hash_hmac('sha256', $validator, $pepRaw, true);
-                        if (is_string($dbValidatorHash) && is_string($calc) && hash_equals($dbValidatorHash, $calc)) {
-                            $validatorHashOk = true;
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                if (class_exists('Logger')) { try { Logger::warn('Pepper fallback failed during email verification', $row['user_id'] ?? null, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
-            }
-        }
-
         // ak po pokusoch neprešiel validátor, považujeme to za neplatný token
         if (!$validatorHashOk) {
             if (class_exists('Logger')) {
-                try { Logger::systemMessage('warning', 'email_verify_validator_mismatch', $row['user_id'] ?? null, ['selector'=>$selector]); } catch (\Throwable $_) {}
+                if (method_exists('Logger', 'verify')) {
+                try { Logger::verify('verify_failure', (int)$row['user_id'], ['selector' => $selector, 'reason' => 'email_verify_validator_mismatch']); } catch (\Throwable $_) {}
+                }
             }
             echo Templates::render('pages/verify.php', ['status' => 'invalid']);
             exit;
         }
     }
-
+    
+    $newsletter = 0;
     // --- všetky kontroly prešli: aktivovať účet a zneplatniť token v jednom kroku ---
     try {
         $pdo->beginTransaction();
@@ -169,30 +153,53 @@ try {
 
         // zneplatniť token: nastaviť used_at a vymazať citlivé údaje (token_hash, validator_hash)
         $updToken = $pdo->prepare('UPDATE email_verifications
-                                  SET used_at = UTC_TIMESTAMP(), token_hash = NULL, validator_hash = NULL, key_version = NULL, updated_at = UTC_TIMESTAMP()
+                                  SET used_at = UTC_TIMESTAMP(), token_hash = NULL, validator_hash = NULL, key_version = NULL, used_at = UTC_TIMESTAMP()
                                   WHERE id = :id');
         $updToken->bindValue(':id', (int)$row['ev_id'], \PDO::PARAM_INT);
         $updToken->execute();
+
+        // --- pokud existuje záznam newsletter_subscribers a ještě nebyl potvrzen ---
+        $updNewsletter = $pdo->prepare('
+            UPDATE newsletter_subscribers
+            SET confirm_selector = NULL,
+                confirm_validator_hash = NULL,
+                confirm_key_version = NULL,
+                confirm_expires = NULL,
+                confirmed_at = UTC_TIMESTAMP(6)
+            WHERE user_id = :uid
+            AND confirmed_at IS NULL
+            AND unsubscribed_at IS NULL
+        ');
+        $updNewsletter->bindValue(':uid', (int)$row['user_id'], \PDO::PARAM_INT);
+        $updNewsletter->execute();
+        if ($updNewsletter->rowCount() > 0) {
+            $newsletter = 1;
+        }
 
         $pdo->commit();
     } catch (\Throwable $e) {
         if ($pdo->inTransaction()) { try { $pdo->rollBack(); } catch (\Throwable $_) {} }
         if (class_exists('Logger')) { try { Logger::systemError($e, $row['user_id'] ?? null); } catch (\Throwable $_) {} }
-        echo Templates::render('pages/verify.php', ['status' => 'error']);
+        echo Templates::render('pages/verify.php', [
+            'status' => 'error',
+            'newsletter' => (int)$newsletter,
+        ]);
         exit;
     }
 
     // logging success
     if (class_exists('Logger')) {
         try {
-            Logger::systemMessage('info', 'user_verified', (int)$row['user_id'], ['selector' => $selector]);
-            if (method_exists('Logger', 'auth')) {
-                try { Logger::auth('verify_success', (int)$row['user_id']); } catch (\Throwable $_) {}
+            if (method_exists('Logger', 'verify')) {
+                try { Logger::verify('verify_success', (int)$row['user_id'], ['selector' => $selector]); } catch (\Throwable $_) {}
             }
         } catch (\Throwable $_) {}
     }
 
-    echo Templates::render('pages/verify.php', ['status' => 'success']);
+    echo Templates::render('pages/verify.php', [
+        'status' => 'success',
+        'newsletter' => (int)$newsletter,
+    ]);
     exit;
 
 } catch (\Throwable $e) {

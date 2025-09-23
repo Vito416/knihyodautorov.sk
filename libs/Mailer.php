@@ -109,7 +109,8 @@ final class Mailer
         }
 
         // --- SPEC. PŘÍPAD: newsletter_subscribe_confirm může mít user_id null ---
-        $allowNoUserId = ($payloadArr['template'] ?? '') === 'newsletter_subscribe_confirm';
+        $template = $payloadArr['template'] ?? '';
+        $allowNoUserId = in_array($template, ['newsletter_subscribe_confirm', 'newsletter_welcome'], true);
 
         if (($userId === null || $userId <= 0) && !$allowNoUserId) {
             Logger::systemMessage('error', 'Mailer enqueue failed: missing/invalid user_id in payload', null, ['template' => $payloadArr['template'] ?? null]);
@@ -395,7 +396,7 @@ final class Mailer
                     $stmt = $pdo->prepare('UPDATE notifications SET status = ?, sent_at = NOW(), error = NULL, last_attempt_at = NOW(), retries = ?, updated_at = NOW() WHERE id = ?');
                     $stmt->execute(['sent', $retries + 1, $id]);
                     $report['sent']++;
-                    Logger::systemMessage('notice', 'Notification sent', null, ['id' => $id, 'to' => $to]);
+                    Logger::systemMessage('notice', 'Notification sent', null, ['id' => $id]);
                     // optional: free large memory buffers explicitly
                     if (isset($payload['__attachments_downloaded'])) {
                         unset($payload['__attachments_downloaded']);

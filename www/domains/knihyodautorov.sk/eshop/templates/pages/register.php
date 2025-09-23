@@ -1,7 +1,6 @@
 <?php
 // templates/pages/register.php
 // TODO: potvrzení newsletteru se objevuje i když už existuje, 
-// při OK se použilo confirmed NOW kvůli testování subscribe.php je to ale špatně má to verify co to tam dá v json má být 1 0 podle volby
 // není nutné obe hesla stejné ani potvrzení hesla není vyžadováno
 // přidat capcha / nechat LoginLimiter záleží...
 // Expects (optional):

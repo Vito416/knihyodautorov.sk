@@ -14,8 +14,7 @@ $pdo = null;
 try {
     if (class_exists('Database') && method_exists('Database', 'getInstance')) {
         $dbWrapper = Database::getInstance();
-    } elseif (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
-        $pdo = $GLOBALS['pdo'];
+        $pdo = $dbWrapper->getPdo();
     } else {
         throw new \RuntimeException('Database pripojenie nedostupné.');
     }

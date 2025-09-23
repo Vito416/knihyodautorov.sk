@@ -217,7 +217,7 @@ try {
         }
 
         if ($decryptedEmail !== null && filter_var($decryptedEmail, FILTER_VALIDATE_EMAIL) && class_exists('Mailer') && method_exists('Mailer', 'enqueue')) {
-            $base = rtrim((string)($_ENV['BASE_URL'] ?? ''), '/');
+            $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
             $payload = [
                 'target' => 'newsletter',
                 'subscriber_id' => (int)$row['id'],
@@ -225,6 +225,14 @@ try {
                 'subject' => 'Vitajte — potvrdenie odberu noviniek',
                 'template' => 'newsletter_welcome',
                 'vars' => [],
+                'attachments' => [
+                    [
+                        'type' => 'inline_remote',
+                        'src'  => 'https://knihyodautorov.sk/assets/logo.png',
+                        'name' => 'logo.png',
+                        'cid'  => 'logo'
+                    ]
+                ],
             ];
             try {
                 $notifId = Mailer::enqueue($payload);
@@ -237,7 +245,7 @@ try {
         // swallow, only log earlier
     }
 
-    echo Templates::render('pages/newsletter_confirm_success.php', ['email_enc' => $row['email_enc'] ?? null]);
+    echo Templates::render('pages/newsletter_confirm.php', ['status' => 'success' ?? null]);
     exit;
 
 } catch (\Throwable $e) {

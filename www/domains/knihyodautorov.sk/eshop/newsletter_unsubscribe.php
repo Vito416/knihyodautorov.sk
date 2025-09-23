@@ -178,7 +178,7 @@ try {
         foreach ($candidateHashes as $c) { try { if (isset($c['hash'])) KeyManager::memzero($c['hash']); } catch (\Throwable $_) {} }
     }
 
-    echo Templates::render('pages/newsletter_unsubscribe_success.php', ['email_enc' => $foundRow['email_enc'] ?? null]);
+    echo Templates::render('pages/newsletter_unsubscribe.php', ['status'=> 'Unsubscribed']);
     exit;
 } catch (\Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (\Throwable $_) {}

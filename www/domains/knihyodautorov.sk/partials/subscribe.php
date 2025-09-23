@@ -16,6 +16,44 @@ require_once realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
  * - memzero sensitive buffers using KeyManager::memzero()
  * - enqueue via Mailer::enqueue with payload.meta containing key versions (validated)
  */
+
+// anonymizace emailu pro logy (neukládej plaintext email do logu)
+function emailHint(string $email): string {
+    $email = trim($email);
+    if ($email === '') return '';
+    $parts = explode('@', $email);
+    if (count($parts) !== 2) return '***';
+    [$local, $domain] = $parts;
+    $localShown = mb_substr($local, 0, 1, 'UTF-8') ?: '*';
+    return $localShown . str_repeat('*', max(0, min(6, mb_strlen($local, 'UTF-8') - 1))) . '@' . $domain;
+}
+
+/**
+ * Loguje (pokud je $e tak systemError, jinak error/notice) a odešle
+ * uživateli bezpečnou zprávu JSON + HTTP status.
+ *
+ * $logCtx - doplňující kontext pro log (nesmí obsahovat raw sensitive values!)
+ */
+function logAndRespond(string $userMsg, int $httpCode = 200, ?\Throwable $e = null, array $logCtx = []) : void {
+    // zkresli citliviny v ctx - uživatelský e-mail by měl být anonymizován dříve
+    if (class_exists('Logger')) {
+        try {
+            if ($e !== null && method_exists('Logger', 'systemError')) {
+                // systemError očekává Throwable (pokud má tvůj Logger jinou signaturu, uprav)
+                Logger::systemError($e, $logCtx['user_id'] ?? null, $logCtx);
+            } else {
+                Logger::error($userMsg, $logCtx['user_id'] ?? null, $logCtx);
+            }
+        } catch (\Throwable $_) {
+            // ignore logger failures
+        }
+    }
+    http_response_code($httpCode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => false, 'message' => $userMsg], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 function subscribeFeedback(string $msg, bool $success = false): void {
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['success' => $success, 'message' => $msg], JSON_UNESCAPED_UNICODE);
@@ -28,17 +66,17 @@ foreach ($required as $c) {
     if (!class_exists($c)) $missing[] = $c;
 }
 if (!empty($missing)) {
-    $msg = 'Interná chyba: chýbajú knižnice: ' . implode(', ', $missing) . '.';
-    if (class_exists('Logger')) { try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    subscribeFeedback($msg);
+$msg = 'Interná chyba: chýbajú knižnice: ' . implode(', ', $missing) . '.';
+    if (class_exists('Logger')) {
+        try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
+    }
+    logAndRespond('Služba momentálne nedostupná. Kontaktujte administrátora.', 503, null, ['missing' => $missing]);
 }
 
 if (!defined('KEYS_DIR') || !is_string(KEYS_DIR) || KEYS_DIR === '') {
     $msg = 'Interná chyba: KEYS_DIR nie je nastavený. Skontrolujte konfiguráciu kľúčov.';
     try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
-    http_response_code(500);
-    subscribeFeedback($msg);
+    logAndRespond('Služba momentálne nedostupná. Kontaktujte administrátora.', 503, null, ['missing' => 'KEYS_DIR']);
 }
 
 // --- EARLY HEALTH-CHECK: require EMAIL_VERIFICATION_KEY and UNSUBSCRIBE_KEY to be present ---
@@ -79,8 +117,8 @@ try {
 
     if (!$haveEmailVer || !$haveUnsub) {
         Logger::error('Subscribe disabled: required key(s) missing', null, ['have_email_ver' => $haveEmailVer, 'have_unsub' => $haveUnsub]);
-        http_response_code(503);
-        subscribeFeedback('Služba dočasne nedostupná. Kontaktujte administrátora.');
+        logAndRespond('Služba momentálne nedostupná. Kontaktujte administrátora.', 503, null,
+            ['have_email_ver'=>$haveEmailVer,'have_unsub'=>$haveUnsub]);
     }
 } catch (\Throwable $_) {
     // fail closed
@@ -187,13 +225,27 @@ $curlErr = curl_errno($ch) ? curl_error($ch) : null;
 curl_close($ch);
 
 if ($response === false || $response === null) {
-    try { Logger::error('reCAPTCHA request failed', null, ['curl_error' => $curlErr]); } catch (\Throwable $_) {}
-    subscribeFeedback('Nepodarilo sa overiť reCAPTCHA.');
+    logAndRespond(
+        'Nepodarilo sa overiť reCAPTCHA.',
+        500,
+        null,
+        ['curl_error' => $curlErr, 'email_hint' => emailHint($email)]
+    );
 }
 
 $respData = json_decode($response, true);
 if (!is_array($respData) || empty($respData['success']) || (($respData['score'] ?? 0) < $recaptchaMinScore)) {
-    subscribeFeedback('Nepodarilo sa overiť reCAPTCHA.');
+    logAndRespond(
+        'Nepodarilo sa overiť reCAPTCHA.',
+        400,
+        null,
+        [
+        'recaptcha_ok' => !empty($respData['success']),
+        'recaptcha_score' => isset($respData['score']) ? (float)$respData['score'] : null,
+        'recaptcha_action' => $respData['action'] ?? null,
+        'email_hint' => emailHint($email)
+        ]
+    );
 }
 
 // -------------------- compute HMAC candidates ONCE (fail-fast, no fallback) --------------------
@@ -208,8 +260,12 @@ try {
         throw new \RuntimeException('No HMAC candidates derived for email; check KEY configuration');
     }
 } catch (\Throwable $e) {
-    try { Logger::error('Email HMAC candidate generation failed (subscribe, fail-fast)', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-    subscribeFeedback('Interná chyba: overovací kľúč nie je k dispozícii. Kontaktujte administrátora.');
+    logAndRespond(
+        'Interná chyba: overovací kľúč nie je k dispozícii. Kontaktujte administrátora.',
+        500,
+        $e,
+        ['stage'=>'derive_email_hmac', 'email_hint'=>emailHint($email)]
+    );
 }
 
 // dedupe candidate hashes (by hex) and build $emailHashes (binary strings)
@@ -244,6 +300,13 @@ try {
     try { Logger::error('User lookup (pouzivatelia) failed (subscribe)', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
     $userId = null; // continue without user id
 }
+// memzero původních kandidátů
+try {
+    foreach ($emailCandidates as $c) {
+        if (isset($c['hash']) && is_string($c['hash'])) KeyManager::memzero($c['hash']);
+    }
+    unset($emailCandidates);
+} catch (\Throwable $_) {}
 
 // -------------------- find existing subscription (newsletter_subscribers) via single IN(...) --------------------
 $existing = null;
@@ -486,7 +549,6 @@ try {
     $pdo->commit();
 } catch (\Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (\Throwable $_) {}
-    try { Logger::systemError($e); } catch (\Throwable $_) {}
 
     // memzero sensitive on error
     try {
@@ -500,8 +562,17 @@ try {
     try { if (isset($unsubscribeTokenHash)) KeyManager::memzero($unsubscribeTokenHash); } catch (\Throwable $_) {}
     try { if (isset($emailHashBin)) KeyManager::memzero($emailHashBin); } catch (\Throwable $_) {}
 
-    http_response_code(500);
-    subscribeFeedback('Chyba pri spracovaní (server). Skúste neskôr.');
+    logAndRespond(
+        'Chyba pri spracovaní (server). Skúste neskôr.',
+        500,
+        $e,
+        [
+            'stage' => 'db_insert_update',
+            'email_hint' => emailHint($email),
+            'user_id' => $userId ?? null,
+            'subscriber_try' => (is_array($existing) && isset($existing['id'])) ? (int)$existing['id'] : null
+        ]
+    );
 }
 
 // -------------------- cleanup sensitive variables (memzero + unset) --------------------
@@ -533,6 +604,14 @@ try {
                 'confirm_url' => $confirmUrl,
                 'unsubscribe_url' => $unsubscribeUrl,
             ],
+            'attachments' => [
+                [
+                    'type' => 'inline_remote',
+                    'src'  => 'https://knihyodautorov.sk/assets/logo.png',
+                    'name' => 'logo.png',
+                    'cid'  => 'logo'
+                ]
+            ],
             // meta for the worker: keep key versions and cipher info
             'meta' => [
                 'email_key_version' => $emailEncKeyVer ?? null,
@@ -556,20 +635,25 @@ try {
         $payloadJson = json_encode($payloadForValidation, JSON_UNESCAPED_UNICODE);
         if ($payloadJson === false || !Validator::validateNotificationPayload($payloadJson, $payloadArr['template'])) {
             try { Logger::error('Notification payload validation failed (subscribe)', $userId ?? null, ['subscriber_id'=>$nsId]); } catch (\Throwable $_) {}
-            // nenahazujeme interní chybu uživateli — uložíme záznam a požádáme admina
+            // nenahazujeme interní chybu uživateli — pošli uživatelskou odpověď
             subscribeFeedback('Záznam uložený, ale overovací e-mail nebol naplánovaný (payload invalid). Kontaktujte podporu.');
         }
 
         $notifId = Mailer::enqueue($payloadArr);
         try { Logger::systemMessage('notice', 'Newsletter confirm enqueued', $userId ?? null, ['subscriber_id' => $nsId, 'notification_id' => $notifId]); } catch (\Throwable $_) {}
-    } else {
-        try { Logger::warn('Mailer::enqueue not available; confirmation email not scheduled', $userId ?? null); } catch (\Throwable $_) {}
+        } else {
+            try { Logger::warn('Mailer::enqueue not available; confirmation email not scheduled', $userId ?? null); } catch (\Throwable $_) {}
             subscribeFeedback('Záznam uložený. Overovací e-mail nebol naplánovaný (Mailer unavailable). Kontaktujte administrátora.');
+        }
+
+    } catch (\Throwable $e) {
+        logAndRespond(
+            'Záznam uložený, ale nepodarilo sa naplánovať overovací e-mail. Kontaktujte podporu.',
+            202,
+            $e,
+            ['stage'=>'mailer_enqueue', 'subscriber_id'=>$nsId ?? null, 'email_hint'=>emailHint($email)]
+        );
     }
-} catch (\Throwable $e) {
-    try { Logger::error('Mailer enqueue failed (subscribe)', $userId ?? null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-    subscribeFeedback('Záznam uložený, ale nepodarilo sa naplánovať overovací e-mail. Kontaktujte podporu.');
-}
 
 // success
-subscribeFeedback('E-mail bol úspešne prihlásený na odber.', true);
+subscribeFeedback('Potvrďte odber kliknutím v e-maile.', true);

@@ -17,17 +17,12 @@ require_once __DIR__ . '/inc/bootstrap.php';
  */
 
 try {
-    $db = Database::getInstance();
+    $db = Database::getInstance()->getPdo();
 } catch (\Throwable $e) {
-    // fallback na globálne PDO ak existuje
-    if (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
-        $db = $GLOBALS['pdo'];
-    } else {
         if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
         http_response_code(500);
         echo 'Interná chyba (DB)';
         exit;
-    }
 }
 
 // valid session

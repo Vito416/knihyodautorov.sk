@@ -434,11 +434,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "INSERT INTO newsletter_subscribers
                         (user_id, email_enc, email_key_version, email_hash, email_hash_key_version,
                         confirm_selector, confirm_validator_hash, confirm_key_version, confirm_expires, confirmed_at,
-                        unsubscribe_token_hash, unsubscribe_token_key_version, origin, ip_hash, ip_hash_key_version, meta, created_at, updated_at)
+                        unsubscribe_token_hash, unsubscribe_token_key_version, unsubscribed_at, origin, ip_hash, ip_hash_key_version, meta, created_at, updated_at)
                     VALUES
                         (:uid, :email_enc, :email_key_version, :email_hash, :email_hash_key_version,
-                        NULL, NULL, NULL, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6),
-                        :unsubscribe_token_hash, :unsubscribe_token_key_version, :origin, :ip_hash, :ip_hash_key_version, :meta, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))"
+                        NULL, NULL, NULL, NULL, NULL,
+                        :unsubscribe_token_hash, :unsubscribe_token_key_version, NULL, :origin, :ip_hash, :ip_hash_key_version, :meta, UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))"
                 );
 
                 $insStmt->bindValue(':uid', $userId, \PDO::PARAM_INT);
@@ -540,7 +540,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // build verify url
             $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
             $verifyUrl = $base . '/verify.php?selector=' . rawurlencode($selector) . '&validator=' . rawurlencode($validatorHex);
-
             $payloadArr = [
                 'user_id' => $userId,
                 'to' => $email,
@@ -550,6 +549,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'given_name' => $givenName ?? '',
                     'family_name' => $familyName ?? '',
                     'verify_url' => $verifyUrl,
+                ],
+                'attachments' => [
+                    [
+                        'type' => 'inline_remote',
+                        'src'  => 'https://knihyodautorov.sk/assets/logo.png',
+                        'name' => 'logo.png',
+                        'cid'  => 'logo'
+                    ]
                 ],
                 'meta' => [
                     'email_key_version' => $emailEncKeyVer ?? null,

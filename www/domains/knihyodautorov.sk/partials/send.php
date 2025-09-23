@@ -164,6 +164,14 @@ $payloadArr = [
     'subject' => $subject,
     'template'=> 'contact_admin', // přizpůsobte podle Vaší šablony
     'vars'    => $vars,
+    'attachments' => [
+        [
+            'type' => 'inline_remote',
+            'src'  => 'https://knihyodautorov.sk/assets/logo.png',
+            'name' => 'logo.png',
+            'cid'  => 'logo'
+        ]
+    ],
     'meta'    => [
         'email_key_version' => $emailEncKeyVer ?? null,
         'email_hash_key_version' => $emailHashVer ?? null,
