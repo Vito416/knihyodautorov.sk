@@ -207,9 +207,10 @@ foreach ($books as &$b) {
     $b['is_available'] = ((int)($b['is_available'] ?? 0) === 1);
     $b['author_name'] = $b['author_name'] ?? '';
     $b['category_name'] = $b['category_name'] ?? '';
-    // prefer storage_path (absolute/internal URL), potom filename fallback
+    // prefer storage_path (absolute/internal path), potom filename fallback
     if (!empty($b['cover_path'])) {
-        $b['cover_url'] = $b['cover_path'];
+        // path bude URL-encoded a předána proxy cover.php
+        $b['cover_url'] = '/cover.php?path=' . rawurlencode($b['cover_path']);
     } elseif (!empty($b['cover_filename'])) {
         $b['cover_url'] = '/files/' . ltrim($b['cover_filename'], '/');
     } else {

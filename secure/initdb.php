@@ -1379,7 +1379,7 @@ if (isset($_POST['insert_demo'])) {
             $filename = "book1.png";
             $stExistAsset->execute([':bid'=>$bid]);
             if (!$stExistAsset->fetchColumn()) {
-                $path = "/storage/books/covers/{$filename}";
+                $path = "storage/books/covers/{$filename}";
                 $hash = hash('sha256', $filename);
                 $stInsAsset->execute([':bid'=>$bid, ':fn'=>$filename, ':size'=>12345, ':path'=>$path, ':hash'=>$hash, ':dl'=>$filename]);
             }

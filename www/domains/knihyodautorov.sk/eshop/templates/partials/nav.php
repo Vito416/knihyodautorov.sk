@@ -1,15 +1,5 @@
 <?php
 declare(strict_types=1);
-/**
- * templates/partials/nav.php
- *
- * Expects in local scope:
- *  - $nav_user (array|null)  (optional alias)
- *  - $nav_navActive (string|null)
- *  - $nav_categories (array)
- *
- * If you prefer to call with $user/$navActive/$categories, ensure those exist or set aliases.
- */
 
 $user = $user ?? ($nav_user ?? null);
 $navActive = $navActive ?? ($nav_navActive ?? 'catalog');
@@ -20,7 +10,7 @@ $activeClass = function(string $k) use ($navActive): string {
 };
 ?>
 <nav id="main-nav" class="main-nav" role="navigation" aria-label="Hlavná navigácia">
-  <div class="container nav-inner">
+  <div class="wrap nav-inner">
     <ul class="nav-list" role="menubar" aria-label="Hlavné menu">
       <li role="none" class="nav-item<?= $activeClass('catalog') ?>">
         <a role="menuitem" href="/eshop/catalog.php" <?= $navActive === 'catalog' ? 'aria-current="page"' : '' ?>>Katalóg</a>
@@ -34,11 +24,16 @@ $activeClass = function(string $k) use ($navActive): string {
         <button aria-haspopup="true" aria-expanded="false" class="dropdown-toggle">Kategórie ▾</button>
         <div class="dropdown" role="menu" aria-label="Kategórie">
           <ul>
-            <?php foreach ($categories as $cat): 
+            <?php foreach ($categories as $cat):
                 $slug = htmlspecialchars((string)($cat['slug'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
                 $name = htmlspecialchars((string)($cat['nazov'] ?? 'Bez názvu'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+                // small icon selection heuristics by slug
+                $icon = '📜';
+                if (strpos($slug, 'beletria') !== false) $icon = '📖';
+                if (strpos($slug, 'detektiv') !== false) $icon = '🕵️';
+                if (strpos($slug, 'non') !== false) $icon = '📚';
             ?>
-            <li role="none"><a role="menuitem" href="/eshop/catalog.php?cat=<?= $slug ?>"><?= $name ?></a></li>
+            <li role="none"><a role="menuitem" href="/eshop/catalog.php?cat=<?= $slug ?>"><?= $icon ?> <?= $name ?></a></li>
             <?php endforeach; ?>
             <?php if (empty($categories)): ?>
             <li role="none" class="muted"><span>Neboli nájdené žiadne kategórie</span></li>
@@ -47,8 +42,12 @@ $activeClass = function(string $k) use ($navActive): string {
         </div>
       </li>
 
-      <li role="none" class="nav-item<?= $activeClass('authors') ?>">
-        <a role="menuitem" href="/eshop/new.php">Novinky</a>
+      <li role="none" class="nav-item<?= $activeClass('new') ?>">
+        <a role="menuitem" href="/eshop/new.php">Novinky <span class="badge badge-new">Nové</span></a>
+      </li>
+
+      <li role="none" class="nav-item<?= $activeClass('events') ?>">
+        <a role="menuitem" href="/eshop/events.php">Súťaže <span class="badge badge-epic">Epické</span></a>
       </li>
 
       <li role="none" class="nav-item<?= $activeClass('cart') ?>">
@@ -73,17 +72,3 @@ $activeClass = function(string $k) use ($navActive): string {
     </ul>
   </div>
 </nav>
-
-<!-- small: ensure dropdown toggle works (no external JS required) -->
-<script>
-(function(){
-  var toggles = document.querySelectorAll('.nav-dropdown > .dropdown-toggle');
-  toggles.forEach(function(btn){
-    btn.addEventListener('click', function(e){
-      var expanded = btn.getAttribute('aria-expanded') === 'true';
-      btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-      btn.parentNode.classList.toggle('open');
-    });
-  });
-})();
-</script>

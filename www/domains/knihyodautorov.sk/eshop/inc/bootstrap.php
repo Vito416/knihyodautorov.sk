@@ -144,7 +144,7 @@ if (!empty($userId) && class_exists('AuditLogger') && method_exists('AuditLogger
     try {
         // prefer Database API
         AuditLogger::log(
-            $database ?? $db,
+            $db,
             (string)$userId,
             'user_session_restore',
             json_encode([
