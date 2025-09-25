@@ -4,133 +4,317 @@ declare(strict_types=1);
 /**
  * cron/Worker.php
  *
- * Univerzální, epický cron worker pro různé úlohy.
- * - Notification queue (Mailer)
- * - Cleanup old records
- * - Report generation
- * - Custom jobs
+ * Production-ready Worker:
+ *  - notification processing (deleguje na Mailer)
+ *  - housekeeping (cleanup, sessions)
+ *  - key rotation job scheduling / execution / forced rotation
+ *  - job registry + simple locking
  *
- * Použití:
- * require_once __DIR__ . '/../bootstrap.php';
- * require_once __DIR__ . '/Worker.php';
- * Worker::init($pdo);
- * Worker::notification();
- * Worker::cleanup();
- * Worker::report();
+ * Prereqs:
+ *  - PDO instance with tables: worker_locks, key_rotation_jobs, key_events, crypto_keys, notifications
+ *  - KeyManager::rotateKey(...) available
+ *  - Logger available
  */
 
 final class Worker
 {
     private static ?PDO $pdo = null;
     private static bool $inited = false;
-
-    /** @var array job registry: name => callable */
     private static array $jobs = [];
+
+    /** lock prefix to avoid colliding with other processes */
+    private const LOCK_PREFIX = 'worker_lock_';
 
     public static function init(PDO $pdo): void
     {
         self::$pdo = $pdo;
         self::$inited = true;
-        Logger::systemMessage('info', 'Worker initialized');
+        if (class_exists('Logger')) {
+            try { Logger::systemMessage('notice', 'Worker initialized'); } catch (\Throwable $_) {}
+        }
+    }
+
+    private static function ensureInited(): void
+    {
+        if (!self::$inited || !self::$pdo) throw new RuntimeException('Worker not initialized.');
     }
 
     // -------------------- Notifications --------------------
-    public static function notification(int $limit = 100, bool $immediate = false): array
+    /**
+     * Process notifications queue via Mailer.
+     * $immediate = true runs Mailer::processPendingNotifications immediately.
+     */
+    public static function notification(int $limit = 100, bool $immediate = true): array
     {
-        if (!self::$inited) throw new RuntimeException('Worker not initialized.');
-        if (!class_exists('Mailer')) throw new RuntimeException('Mailer lib missing.');
+        self::ensureInited();
 
-        $report = [];
-
-        if ($immediate) {
-            try {
-                // Mailer se postará o všechny pending/failed notifikace a locking
-                $report = Mailer::processPendingNotifications($limit);
-            } catch (\Throwable $e) {
-                Logger::systemError($e);
-                $report = ['error' => $e->getMessage()];
-            }
-        } else {
-            $report = ['info' => 'Immediate processing disabled, fallback to queue only'];
+        if (!class_exists('Mailer')) {
+            throw new RuntimeException('Mailer lib missing.');
         }
 
-        Logger::systemMessage('info', 'Notification worker finished', null, $report);
-        return $report;
+        // Acquire short lock so multiple cron runners don't run notifications concurrently
+        $lockName = self::LOCK_PREFIX . 'notifications';
+        if (!self::lock($lockName, 300)) {
+            if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Notification worker already running — skipping'); } catch (\Throwable $_) {}
+            return ['notice' => 'locked'];
+        }
+
+        try {
+            $report = ['processed' => 0, 'sent' => 0, 'failed' => 0, 'skipped' => 0, 'errors' => []];
+            if ($immediate) {
+                try {
+                    $report = Mailer::processPendingNotifications($limit);
+                } catch (\Throwable $e) {
+                    if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+                    $report['errors'][] = $e->getMessage();
+                }
+            } else {
+                $report['notice'] = 'immediate disabled';
+            }
+
+            if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Notification worker finished', null, $report); } catch (\Throwable $_) {}
+            return $report;
+        } finally {
+            self::unlock($lockName);
+        }
     }
 
-    // -------------------- Cleanup old notifications --------------------
-    public static function cleanup(int $days = 30): int
+    // -------------------- Cleanup --------------------
+    public static function cleanupNotifications(int $days = 30): int
     {
-        if (!self::$inited) throw new RuntimeException('Worker not initialized.');
+        self::ensureInited();
         $stmt = self::$pdo->prepare('DELETE FROM notifications WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY) AND status = "sent"');
         $stmt->execute([$days]);
         $count = $stmt->rowCount();
-        Logger::systemMessage('info', 'Cleanup old notifications', null, ['deleted' => $count]);
+        if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Cleanup old notifications', null, ['deleted' => $count]); } catch (\Throwable $_) {}
         return $count;
     }
 
-    // -------------------- Status report --------------------
-    public static function report(): void
+    public static function cleanupSessions(int $graceHours = 24, int $auditDays = 90): array
     {
-        if (!self::$inited) throw new RuntimeException('Worker not initialized.');
-        $stmt = self::$pdo->query('SELECT status, COUNT(*) AS cnt FROM notifications GROUP BY status');
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        Logger::systemMessage('info', 'Notification status report', null, ['report' => $rows]);
+        self::ensureInited();
+        $report = [];
+
+        $stmt = self::$pdo->prepare(
+            'DELETE FROM sessions 
+            WHERE (revoked = 1 OR expires_at < NOW()) 
+            AND last_seen_at < DATE_SUB(NOW(), INTERVAL ? HOUR)'
+        );
+        $stmt->execute([$graceHours]);
+        $report['sessions_deleted'] = $stmt->rowCount();
+
+        $stmt = self::$pdo->prepare(
+            'DELETE FROM session_audit WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)'
+        );
+        $stmt->execute([$auditDays]);
+        $report['session_audit_deleted'] = $stmt->rowCount();
+
+        if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Cleanup sessions finished', null, $report); } catch (\Throwable $_) {}
+        return $report;
     }
 
-    // -------------------- Register custom jobs --------------------
+    // -------------------- Jobs registry --------------------
     public static function registerJob(string $name, callable $callback): void
     {
         self::$jobs[$name] = $callback;
-        Logger::systemMessage('info', "Registered custom job {$name}");
+        if (class_exists('Logger')) try { Logger::systemMessage('notice', "Registered job {$name}"); } catch (\Throwable $_) {}
     }
 
     public static function runJob(string $name, array $args = []): void
     {
         if (!isset(self::$jobs[$name])) {
-            Logger::systemMessage('warning', "Job {$name} not found");
+            if (class_exists('Logger')) try { Logger::systemMessage('warning', "Job {$name} not found"); } catch (\Throwable $_) {}
             return;
         }
-        Logger::systemMessage('info', "Running job {$name}");
         try {
             call_user_func_array(self::$jobs[$name], $args);
-            Logger::systemMessage('info', "Job {$name} finished successfully");
         } catch (\Throwable $e) {
-            Logger::systemError($e);
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
         }
     }
 
-    // -------------------- Utility: atomic lock --------------------
-    public static function lock(string $lockName, int $ttl = 300): bool
+    // -------------------- DB-backed worker locks --------------------
+    public static function lock(string $name, int $ttl = 300): bool
     {
-        $stmt = self::$pdo->prepare('INSERT IGNORE INTO worker_locks (name, locked_until) VALUES (?, DATE_ADD(NOW(), INTERVAL ? SECOND))');
-        $stmt->execute([$lockName, $ttl]);
-        return $stmt->rowCount() > 0;
+        self::ensureInited();
+        // Try atomic insert; if exists, check expiration and try to replace
+        try {
+            $stmt = self::$pdo->prepare('INSERT IGNORE INTO worker_locks (name, locked_until) VALUES (?, DATE_ADD(NOW(), INTERVAL ? SECOND))');
+            $stmt->execute([$name, $ttl]);
+            if ($stmt->rowCount() > 0) return true;
+
+            // if not inserted, maybe existing expired -> try update where expired
+            $upd = self::$pdo->prepare('UPDATE worker_locks SET locked_until = DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE name = ? AND (locked_until IS NULL OR locked_until <= NOW())');
+            $upd->execute([$ttl, $name]);
+            return $upd->rowCount() > 0;
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+            return false;
+        }
     }
 
-    public static function unlock(string $lockName): void
+    public static function unlock(string $name): void
     {
-        $stmt = self::$pdo->prepare('DELETE FROM worker_locks WHERE name = ?');
-        $stmt->execute([$lockName]);
+        self::ensureInited();
+        try {
+            $stmt = self::$pdo->prepare('DELETE FROM worker_locks WHERE name = ?');
+            $stmt->execute([$name]);
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+        }
     }
 
-    // -------------------- Example: full workflow for registration mail --------------------
+    // -------------------- Key rotation API (DB + KeyManager) --------------------
+
+    /**
+     * Schedule a rotation job. Returns inserted job id.
+     *
+     * $when = null -> schedule immediately (pending)
+     * $executedBy = optional actor user id
+     */
+    public static function scheduleKeyRotation(string $basename, ?int $executedBy = null, ?int $targetVersion = null, ?\DateTimeInterface $when = null): int
+    {
+        self::ensureInited();
+        $scheduledAt = $when ? $when->format('Y-m-d H:i:s') : null;
+        $stmt = self::$pdo->prepare('INSERT INTO key_rotation_jobs (basename, target_version, scheduled_at, attempts, status, executed_by, created_at) VALUES (?, ?, ?, 0, "pending", ?, NOW())');
+        $stmt->execute([$basename, $targetVersion, $scheduledAt, $executedBy]);
+        $id = (int) self::$pdo->lastInsertId();
+        if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Scheduled key rotation', $executedBy, ['job_id' => $id, 'basename' => $basename, 'scheduled_at' => $scheduledAt]); } catch (\Throwable $_) {}
+        return $id;
+    }
+
+    /**
+     * Force immediate key rotation (synchronous).
+     * Writes to key_events and crypto_keys (optional) and returns rotation result.
+     * This is intended for admin-invoked rotations.
+     */
+    public static function forceRotateKey(string $basename, ?int $executedBy = null, int $keepVersions = 5, bool $archiveOld = false): array
+    {
+        self::ensureInited();
+
+        if (!class_exists('KeyManager')) throw new RuntimeException('KeyManager missing');
+        $res = null;
+
+        // short lock per basename to avoid concurrent rotations
+        $lockName = self::LOCK_PREFIX . 'rotate_' . $basename;
+        if (!self::lock($lockName, 600)) {
+            throw new RuntimeException('Rotation for this key is already running');
+        }
+
+        try {
+            // run rotation (KeyManager::rotateKey writes file and returns meta)
+            $res = KeyManager::rotateKey($basename, KEYS_DIR, self::$pdo, $keepVersions, $archiveOld);
+
+            // record job entry and mark done
+            $jobId = self::scheduleKeyRotation($basename, $executedBy, null, null);
+            try {
+                $upd = self::$pdo->prepare('UPDATE key_rotation_jobs SET status = ?, started_at = NOW(), finished_at = NOW(), attempts = attempts + 1, result = ? WHERE id = ?');
+                $upd->execute(['done', json_encode($res, JSON_UNESCAPED_UNICODE), $jobId]);
+            } catch (\Throwable $_) { /* non-fatal */ }
+
+            // record event (key_events). Try to link to crypto_keys if you insert one
+            $meta = json_encode(['filename' => basename($res['path'] ?? ''), 'fingerprint' => $res['fingerprint'] ?? null]);
+            $ins = self::$pdo->prepare('INSERT INTO key_events (key_id, basename, event_type, actor_id, job_id, note, meta, source, created_at) VALUES (NULL, ?, "rotated", ?, ?, "rotation forced", ?, "admin", NOW())');
+            $ins->execute([$basename, $executedBy, $jobId, $meta]);
+
+            if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Key rotated (forced)', $executedBy, ['basename' => $basename, 'res' => $res]); } catch (\Throwable $_) {}
+
+            return $res;
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+            throw $e;
+        } finally {
+            self::unlock($lockName);
+        }
+    }
+
+    /**
+     * Run pending scheduled rotation jobs (called by cron). Returns array of job results.
+     */
+    public static function runPendingKeyRotationJobs(int $limit = 5): array
+    {
+        self::ensureInited();
+
+        $out = [];
+        // Process pending jobs ordered by scheduled_at asc (NULL last)
+        $stmt = self::$pdo->prepare("SELECT * FROM key_rotation_jobs WHERE status IN ('pending','failed') ORDER BY scheduled_at IS NULL, scheduled_at ASC, created_at ASC LIMIT ?");
+        $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        foreach ($jobs as $job) {
+            $jobId = (int)$job['id'];
+            $basename = $job['basename'];
+            $attempts = (int)$job['attempts'];
+
+            // Try to atomically claim job (status -> running)
+            try {
+                $upd = self::$pdo->prepare("UPDATE key_rotation_jobs SET status = 'running', started_at = NOW(), attempts = attempts + 1 WHERE id = ? AND status IN ('pending','failed')");
+                $upd->execute([$jobId]);
+                if ($upd->rowCount() === 0) {
+                    $out[$jobId] = 'skipped';
+                    continue;
+                }
+
+                $lockName = self::LOCK_PREFIX . 'rotate_' . $basename;
+                if (!self::lock($lockName, 900)) {
+                    // cannot lock, mark as pending again and skip
+                    $revert = self::$pdo->prepare("UPDATE key_rotation_jobs SET status = 'pending' WHERE id = ?");
+                    $revert->execute([$jobId]);
+                    $out[$jobId] = 'locked';
+                    continue;
+                }
+
+                try {
+                    $keep = (int)($job['target_version'] ?? 5);
+                    $archive = false;
+                    $res = KeyManager::rotateKey($basename, KEYS_DIR, self::$pdo, $keep, $archive);
+
+                    // record success event
+                    $meta = json_encode(['filename' => basename($res['path'] ?? ''), 'fingerprint' => $res['fingerprint'] ?? null]);
+                    $ins = self::$pdo->prepare('INSERT INTO key_events (key_id, basename, event_type, actor_id, job_id, note, meta, source, created_at) VALUES (NULL, ?, "rotated", NULL, ?, "rotation worker", ?, "cron", NOW())');
+                    $ins->execute([$basename, $jobId, $meta]);
+
+                    // mark job done
+                    $done = self::$pdo->prepare("UPDATE key_rotation_jobs SET status = 'done', finished_at = NOW(), result = ? WHERE id = ?");
+                    $done->execute([json_encode($res, JSON_UNESCAPED_UNICODE), $jobId]);
+
+                    $out[$jobId] = ['status' => 'done', 'res' => $res];
+                    if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Key rotation job done', null, ['job' => $jobId, 'basename' => $basename]); } catch (\Throwable $_) {}
+
+                } finally {
+                    self::unlock($lockName);
+                }
+            } catch (\Throwable $e) {
+                // mark failed and increment attempts already done above
+                try {
+                    $err = ['error' => $e->getMessage()];
+                    $fail = self::$pdo->prepare("UPDATE key_rotation_jobs SET status = 'failed', finished_at = NOW(), result = ? WHERE id = ?");
+                    $fail->execute([json_encode($err, JSON_UNESCAPED_UNICODE), $jobId]);
+                } catch (\Throwable $_) {}
+                if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+                $out[$jobId] = ['status' => 'failed', 'error' => $e->getMessage()];
+            }
+        }
+
+        return $out;
+    }
+
+    // -------------------- Example: registration mail helper --------------------
     public static function registrationMail(int $userId, array $payload): void
     {
         if (!class_exists('Mailer')) throw new RuntimeException('Mailer lib missing.');
 
         try {
             $payload['user_id'] = $userId;
-
-            // enqueue mail
             $id = Mailer::enqueue($payload);
-            Logger::systemMessage('info', 'Notification enqueued', $userId, ['notification_id' => $id]);
+            if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Notification enqueued', $userId, ['notification_id' => $id]); } catch (\Throwable $_) {}
 
-            // attempt immediate send (pokud SMTP dostupný)
-            $report = Mailer::processPendingNotifications(1); // limit 1 = aktuální mail
-            Logger::systemMessage('info', 'Immediate send attempt', $userId, $report);
+            // best-effort immediate attempt, non-fatal
+            $report = Mailer::processPendingNotifications(1);
+            if (class_exists('Logger')) try { Logger::systemMessage('notice', 'Immediate send attempt', $userId, $report); } catch (\Throwable $_) {}
         } catch (\Throwable $e) {
-            Logger::systemError($e);
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
         }
     }
 }

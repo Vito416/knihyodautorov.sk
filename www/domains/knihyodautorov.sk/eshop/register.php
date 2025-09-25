@@ -539,7 +539,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // build verify url
             $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
-            $verifyUrl = $base . '/verify.php?selector=' . rawurlencode($selector) . '&validator=' . rawurlencode($validatorHex);
+            $verifyUrl = $base . '/verify?selector=' . rawurlencode($selector) . '&validator=' . rawurlencode($validatorHex);
             $payloadArr = [
                 'user_id' => $userId,
                 'to' => $email,

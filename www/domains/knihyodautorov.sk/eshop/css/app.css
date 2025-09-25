@@ -41,45 +41,10 @@ body{
 /* container */
 .wrap{ max-width: var(--max-width); margin:0 auto; padding: 0 1rem; }
 
-/* header epic */
-.site-header.epic-header{
-  position: sticky; top:0; z-index:1200;
-  height: var(--header-height);
-  display:flex; align-items:center; background: linear-gradient(180deg, rgba(0,0,0,0.02), transparent);
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 6px 20px rgba(8,6,4,0.04);
-  padding: 0.5rem 0;
-}
-.header-inner { display:flex; align-items:center; justify-content:space-between; gap:var(--gap); }
-
-/* brand */
-.brand-logo { height:56px; width:auto; display:block; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.12)); border-radius:6px; }
-.brand-text .app-name { font-weight:700; font-size:1.125rem; letter-spacing:.6px; }
-.brand-text .app-tag { font-size:0.8rem; color:var(--color-muted); margin-top:0.125rem; }
-
-/* header crest decoration */
-.header-crest{ position:absolute; right:1rem; top: calc(var(--header-height)/2 - 40px); width:160px; height:80px; background-image: url('/assets/crest-faint.png'); background-size:contain; background-repeat:no-repeat; opacity:0.08; pointer-events:none; }
-
-/* search */
-.search-wrap { display:flex; gap:.5rem; align-items:center; background: linear-gradient(180deg, rgba(255,255,255,0.6), rgba(250,246,236,0.6)); border:1px solid rgba(0,0,0,0.06); padding:0.25rem; border-radius:8px; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
-.search-wrap input[type="search"]{ border:0; background:transparent; padding:.5rem .6rem; font-size:1rem; width:360px; max-width:40vw; color:var(--color-text); font-family:inherit; }
-.btn-search { border-radius:8px; background:transparent; border:0; cursor:pointer; padding:.4rem .6rem; font-size:1rem; }
-
-/* header actions */
-.header-actions { display:flex; gap:0.5rem; align-items:center; }
-.avatar { height:40px; width:40px; border-radius:6px; object-fit:cover; border:2px solid rgba(0,0,0,0.06); }
-.avatar-initial { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:6px; background:linear-gradient(180deg,#fdeec9,#e8d1a8); color:#6b4b2b; font-weight:700; }
-
-/* nav */
-.main-nav{ display:flex; align-items:center; gap:1rem; position:static; }
-.nav-list{ list-style:none; margin:0; padding:0; display:flex; gap:0.5rem; align-items:center; }
-.nav-item a, .nav-item button { padding:.5rem .75rem; border-radius:8px; font-weight:600; color:var(--color-text); text-decoration:none; background:transparent; }
-.nav-item.active a, .nav-item a[aria-current="page"] { background: linear-gradient(180deg, rgba(217,168,80,0.12), rgba(217,168,80,0.04)); color:var(--color-accent-600); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.02); }
-
-/* badges */
-.badge { display:inline-block; padding:.15rem .45rem; border-radius:999px; font-size:.75rem; font-weight:700; margin-left:.35rem; }
-.badge-new { background: linear-gradient(180deg,#fff8e6,#fff1d0); color:#c26a00; border:1px solid rgba(0,0,0,0.04); }
-.badge-epic { background: linear-gradient(180deg,#2b2b2b,#111); color:#f5e7b0; border:1px solid rgba(0,0,0,0.18); }
+/* === NOTE: header-specific styles removed from here.
+   Put header-only rules into header.css and scope them to:
+   body.epic-theme .site-header.epic-header { ... }
+   === */
 
 /* hero */
 .container-hero-epic{
@@ -130,9 +95,6 @@ body{
 .btn-ghost{ background:transparent; border:1px solid rgba(0,0,0,0.04); color:var(--color-text); }
 .btn-outline{ background:transparent; border:1px solid rgba(0,0,0,0.06); color:var(--color-text); }
 
-/* cart badge */
-.cart-badge{ display:inline-flex; align-items:center; justify-content:center; min-width:1.45rem; height:1.45rem; padding:0 .35rem; font-size:0.85rem; border-radius:999px; background:var(--color-accent); color:#fff; margin-left:.4rem; }
-
 /* modal preview */
 .modal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:1600; }
 .modal.open{ display:flex; }
@@ -167,4 +129,16 @@ a:focus, button:focus, .dropdown-toggle:focus { outline: 3px solid rgba(217,168,
 @media print {
   .nav-toggle, .main-nav, .flash-messages, .site-footer, .modal { display:none !important; }
   body { background:#fff; color:#000; font-family: serif; }
+}
+
+.flash-info,
+.flash-success,
+.flash-warning,
+.flash-error {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.flash-hide {
+  opacity: 0;
+  transform: translateY(-10px);
 }

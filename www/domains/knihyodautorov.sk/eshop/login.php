@@ -155,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try { Logger::auth('login_success', $userId); } catch (\Throwable $_) {}
 
         // redirect (relative)
-        header('Location: index.php', true, 302);
+        header('Location: /eshop', true, 302);
         exit;
 
     } catch (\Throwable $e) {

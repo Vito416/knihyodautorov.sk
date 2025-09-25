@@ -21,7 +21,9 @@ $debug = isset($_GET['debug']) && $_GET['debug'] == '1';
 $response = [
     'lock' => null,
     'notifications' => null,
-    'cleanup_deleted' => null,
+    'rotation_jobs' => null,
+    'cleanup_notifications_deleted' => null,
+    'cleanup_sessions_deleted' => null,
     'report' => null,
     'errors' => [],
     'logs' => [],
@@ -128,23 +130,30 @@ try {
 }
 
 // -------------------------------------------------
-// CLEANUP old notifications (sent > 30d)
+// RUN NOTIFICATIONS
 // -------------------------------------------------
 try {
-    $response['cleanup_deleted'] = Worker::cleanup(30);
+    $response['rotation_jobs'] = Worker::runPendingKeyRotationJobs(5);
 } catch (\Throwable $e) {
-    $response['errors'][] = 'Cleanup failed: ' . $e->getMessage();
+    $response['errors'][] = 'RotationJobs failed: ' . $e->getMessage();
 }
 
 // -------------------------------------------------
-// STATUS REPORT
+// CLEANUP old notifications (sent > 30d)
 // -------------------------------------------------
 try {
-    ob_start();
-    Worker::report();
-    $response['report'] = ob_get_clean();
+    $response['cleanup_notifications_deleted'] = Worker::cleanupNotifications(30);
 } catch (\Throwable $e) {
-    $response['errors'][] = 'Report failed: ' . $e->getMessage();
+    $response['errors'][] = 'Cleanup of notifications failed: ' . $e->getMessage();
+}
+
+// -------------------------------------------------
+// CLEANUP old sessions
+// -------------------------------------------------
+try {
+    $response['cleanup_sessions_deleted'] = Worker::cleanupSessions(24, 90);
+} catch (\Throwable $e) {
+    $response['errors'][] = 'Cleanup of sessions failed: ' . $e->getMessage();
 }
 
 // -------------------------------------------------

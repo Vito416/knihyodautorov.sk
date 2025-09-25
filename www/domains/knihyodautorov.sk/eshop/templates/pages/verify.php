@@ -7,7 +7,6 @@
 //   $sent (bool|int)          - ak resend prebehol, môžete nastaviť true/1
 //   $newsletter (int|string)  - voliteľný flag (0/1) ak chcete zobraziť extra hlášku pre newsletter
 $title = $title ?? 'Overenie e-mailu';
-include __DIR__ . '/../partials/header.php';
 
 ?>
 <section class="auth-card verify-card">
@@ -46,7 +45,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="notice">
           <strong>Účet je už aktívny</strong>
           <p>Váš účet je už aktivovaný. Prosím prihláste sa.</p>
-          <p><a class="btn" href="/login.php">Prejsť na prihlásenie</a></p>
+          <p><a class="btn" href="/login">Prejsť na prihlásenie</a></p>
         </div>
   <?php
         break;
@@ -55,12 +54,12 @@ include __DIR__ . '/../partials/header.php';
         <div class="success">
           <strong>Ďakujeme — e-mail overený</strong>
           <p>Váš e-mail bol úspešne overený a účet aktivovaný.</p>
-          <p><a class="btn" href="/login.php">Prejsť na prihlásenie</a></p>
+          <p><a class="btn" href="/login">Prejsť na prihlásenie</a></p>
 
           <?php if ((int)($newsletter ?? 0) === 1): ?>
               <p class="small">Ďakujeme — vaša žiadosť o zasielanie noviniek bola zaznamenaná.</p>
           <?php else: ?>
-              <p class="small">Chcete dostávať novinky? <a href="/newsletter/subscribe.php">Prihlásiť sa na odber</a>.</p>
+              <p class="small">Chcete dostávať novinky? <a href="/newsletter/subscribe">Prihlásiť sa na odber</a>.</p>
           <?php endif; ?>
         </div>
   <?php
@@ -84,7 +83,7 @@ include __DIR__ . '/../partials/header.php';
         <div class="notice">Na váš e-mail sme odoslali nový overovací odkaz. Skontrolujte si prosím schránku (vrátane priečinka spam).</div>
       <?php else: ?>
         <p>Ak ste overovací e-mail neobdržali, môžete si nechať odkaz poslať znova.</p>
-        <form method="post" action="/eshop/actions/resend_verify.php" class="resend-form">
+        <form method="post" action="/eshop/actions/resend_verify" class="resend-form">
           <?= CSRF::hiddenInput('csrf') ?>
           <button type="submit" class="btn">Znova odoslať overovací e-mail</button>
         </form>
@@ -92,7 +91,7 @@ include __DIR__ . '/../partials/header.php';
     </div>
   <?php endif; ?>
 
-  <p class="small muted">Máte problém? <a href="/contact.php">Kontaktujte nás</a>.</p>
+  <p class="small muted">Máte problém? <a href="/contact">Kontaktujte nás</a>.</p>
 </section>
 
 <style>
@@ -108,5 +107,3 @@ include __DIR__ . '/../partials/header.php';
 .small { font-size:0.9rem; }
 .muted { color:#666; }
 </style>
-
-<?php include __DIR__ . '/../partials/footer.php'; ?>

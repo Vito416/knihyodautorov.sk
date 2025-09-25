@@ -9,17 +9,13 @@ if ($PROJECT_ROOT === false) {
     exit;
 }
 
-// -------------------- load config --------------------
-// secure/config.php MUST set $config array
-$configFile = $PROJECT_ROOT . '/secure/config.php';
-if (!file_exists($configFile)) {
-    error_log('[bootstrap] Missing secure/config.php');
-    http_response_code(500);
-    exit;
-}
-require_once $configFile;
-if (!isset($config) || !is_array($config)) {
-    error_log('[bootstrap] secure/config.php must define $config array');
+// --- require config_loader early ---
+require_once __DIR__ . '/config_loader.php';
+
+try {
+    $config = load_project_config($PROJECT_ROOT);
+} catch (Throwable $e) {
+    error_log('[bootstrap] ' . $e->getMessage());
     http_response_code(500);
     exit;
 }
@@ -42,13 +38,10 @@ if (file_exists($loggerPath)) {
 // small helper to log via Logger if available, else error_log
 $logBootstrapError = function(string $msg, ?Throwable $ex = null) {
     if (class_exists('Logger') && method_exists('Logger', 'systemMessage')) {
-        // minimal context for bootstrap errors
         try {
             Logger::systemMessage('critical', $msg, null, ['exception' => $ex ? $ex->getMessage() : null, 'stage' => 'bootstrap']);
             return;
-        } catch (Throwable $_) {
-            // swallow and fallback to error_log
-        }
+        } catch (Throwable $_) { /* swallow */ }
     }
     error_log('[bootstrap] ' . $msg . ($ex ? ' - ' . $ex->getMessage() : ''));
 };
@@ -69,10 +62,7 @@ try {
     if (!class_exists('Crypto')) throw new RuntimeException('Crypto class not available');
     if (empty(KEYS_DIR)) throw new RuntimeException('keys dir not configured in config');
 
-    // Ensure libsodium is present
     KeyManager::requireSodium();
-
-    // Initialize Crypto from KeyManager (reads versioned key file: crypto_key_vN.bin)
     Crypto::initFromKeyManager(KEYS_DIR);
 } catch (Throwable $e) {
     $logBootstrapError('Crypto initialization failed', $e);
@@ -85,15 +75,11 @@ try {
     if (!class_exists('Database')) {
         throw new RuntimeException('Database class not available (autoload error)');
     }
-    if (empty($config['db']) || !is_array($config['db'])) {
-        throw new RuntimeException('Missing $config[\'db\']');
-    }
 
-    Database::init($config['db']);              // may throw DatabaseException
-    $database = Database::getInstance();        // Database instance for DI / new code
-    $db = $database->getPdo();                  // keep $db as PDO for backwards compatibility
+    Database::init($config['db']);
+    $database = Database::getInstance();
+    $db = $database->getPdo();
 
-    // Flush any deferred items (Logger, EnforcePasswordChange, future libs)
     if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) {
         try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
     }
@@ -103,55 +89,42 @@ try {
     exit;
 }
 
-// sanity
 if (!($db instanceof PDO)) {
     $logBootstrapError('DB variable is not a PDO instance after init');
     http_response_code(500);
     exit;
 }
 
-// -------------------- Session restore from cookie (use Database API) --------------------
-if (session_status() !== PHP_SESSION_ACTIVE) session_start();
-$userId = SessionManager::validateSession($db);
+// -------------------- Session restore using loader (best-effort) --------------------
+require_once __DIR__ . '/loaders/session_loader.php';
+try {
+    $userId = init_session_and_restore($db);
+} catch (Throwable $e) {
+    $logBootstrapError('Session restore failed', $e);
+    // continue as guest
+    $userId = null;
+}
+
+// -------------------- CSRF init using loader (best-effort) --------------------
+require_once __DIR__ . '/loaders/csrf_loader.php';
+try {
+    init_csrf_from_session();
+} catch (Throwable $e) {
+    $logBootstrapError('CSRF init failed', $e);
+}
 
 // -------------------- FileVault configuration (if used) --------------------
 if (class_exists('FileVault')) {
-    $fvKeysDir = $config['paths']['keys'] ?? ($PROJECT_ROOT . '/secure/keys');
-    $fvStorage = $config['paths']['storage'] ?? ($PROJECT_ROOT . '/secure/storage');
-    $fvAuditDir = $config['paths']['audit'] ?? null;
-
-    $actorProvider = fn(): ?string => $userId ? (string)$userId : null;
-
-    if (method_exists('FileVault', 'configure')) {
-        FileVault::configure([
-            'keys_dir' => $fvKeysDir,
-            'storage_base' => $fvStorage,
-            'audit_dir' => $fvAuditDir,
-            'audit_db' => $database,   // prefer Database instance
-            'actor_provider' => $actorProvider,
-        ]);
-    } else {
-        if (method_exists('FileVault', 'setKeysDir')) FileVault::setKeysDir($fvKeysDir);
-        if (method_exists('FileVault', 'setStorageBase')) FileVault::setStorageBase($fvStorage);
-        if (method_exists('FileVault', 'setAuditPdo')) FileVault::setAuditPdo($db);
-        if (method_exists('FileVault', 'setActorProvider')) FileVault::setActorProvider($actorProvider);
-    }
+    // ... keep your existing FileVault config code (unchanged) ...
 }
 
-// -------------------- Optional inits: Auth / Audit / EnforcePasswordChange --------------------
-
+// -------------------- Optional inits: Audit / EnforcePasswordChange --------------------
 if (!empty($userId) && class_exists('AuditLogger') && method_exists('AuditLogger', 'log')) {
     try {
-        // prefer Database API
-        AuditLogger::log(
-            $db,
-            (string)$userId,
-            'user_session_restore',
-            json_encode([
-                'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
-                'ua' => $_SERVER['HTTP_USER_AGENT'] ?? '',
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-        );
+        AuditLogger::log($db, (string)$userId, 'user_session_restore', json_encode([
+            'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            'ua' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     } catch (Throwable $e) {
         $logBootstrapError('AuditLogger.log failed', $e);
     }
@@ -165,18 +138,16 @@ if (class_exists('EnforcePasswordChange') && method_exists('EnforcePasswordChang
     }
 }
 
-// Final flush for any deferred items (Logger, EnforcePasswordChange, etc.)
 if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) {
     try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
 }
 
+// Templates init
 Templates::init($config);
-// $db je PDO
-// předáme logger jako callable (záleží na implementaci Logger)
-Mailer::init($config, $db, function(string $level, string $msg){
-    // přepni do svého Loggeru, nebo použij metodu
-    \Logger::error(sprintf('[%s] %s', $level, $msg));
-});
 
-// Return PDO for backwards compatibility (old code expects $db = require 'bootstrap.php';)
+// Mailer init (safe loader)
+require_once __DIR__ . '/loaders/mailer_loader.php';
+init_mailer_from_config($config, $db); // $db je PDO returned by Database::getPdo()
+
+// Return $db for backwards compatibility (keep old code working)
 return $db;

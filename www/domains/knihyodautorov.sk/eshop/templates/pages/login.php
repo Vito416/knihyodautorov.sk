@@ -6,15 +6,11 @@
 //  - $navActive (string|null)
 //  - $error (string|null)         // chybová zpráva nebo null
 //  - $csrf_token (string|null)
-// Uses partials: header.php, flash.php, footer.php
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Přihlášení';
 $navActive = $navActive ?? 'account';
 $csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
 
-$partialsDir = __DIR__ . '/../partials';
-include $partialsDir . '/header.php';
-include $partialsDir . '/flash.php';
 ?>
 <article class="auth-page login-page">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -25,7 +21,7 @@ include $partialsDir . '/flash.php';
         </div>
     <?php endif; ?>
 
-    <form method="post" action="/eshop/login.php" class="form form-login" autocomplete="off" novalidate>
+    <form method="post" action="/eshop/login" class="form form-login" autocomplete="off" novalidate>
         <div class="form-row">
             <label for="email">E-mail</label>
             <input id="email" name="email" type="email" required autocomplete="email" value="<?= htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
@@ -36,21 +32,16 @@ include $partialsDir . '/flash.php';
             <input id="password" name="password" type="password" required autocomplete="current-password" value="">
         </div>
 
-        <?php if ($csrf !== null): ?>
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-        <?php endif; ?>
+        <?= CSRF::hiddenInput('csrf') ?>
 
         <div class="form-row">
             <button type="submit" class="btn btn-primary">Přihlásit</button>
         </div>
 
         <div class="form-row form-links">
-            <a href="/eshop/password_reset.php">Zapomněli jste heslo?</a>
+            <a href="/eshop/password_reset">Zapomněli jste heslo?</a>
             <span> | </span>
-            <a href="/eshop/register.php">Registrovat se</a>
+            <a href="/eshop/register">Registrovat se</a>
         </div>
     </form>
 </article>
-
-<?php
-include $partialsDir . '/footer.php';

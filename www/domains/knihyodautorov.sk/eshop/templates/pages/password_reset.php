@@ -4,15 +4,11 @@
 //  - $pageTitle, $navActive, $csrf_token
 //  - $message (string|null) : informačná správa po odoslaní formulára
 //
-// Uses partials: header.php, flash.php, footer.php
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Obnovenie hesla';
 $navActive = $navActive ?? 'account';
 $message = isset($message) ? (string)$message : null;
 
-$partialsDir = __DIR__ . '/../partials';
-include $partialsDir . '/header.php';
-include $partialsDir . '/flash.php';
 ?>
 <article class="auth-page password-reset-page">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -24,7 +20,7 @@ include $partialsDir . '/flash.php';
     <?php else: ?>
         <p>Zadajte e-mailovú adresu priradenú k vášmu účtu. Ak účet existuje, pošleme vám odkaz na obnovenie hesla.</p>
 
-        <form method="post" action="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/eshop/password_reset.php', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+        <form method="post" action="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? '/eshop/password_reset', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
               class="form form-password-reset">
             <div class="form-row">
                 <label for="email">E-mail</label>
@@ -50,11 +46,8 @@ include $partialsDir . '/flash.php';
             </div>
 
             <div class="form-row form-links">
-                <a href="/eshop/login.php" rel="noopener noreferrer">Späť na prihlásenie</a>
+                <a href="/eshop/login" rel="noopener noreferrer">Späť na prihlásenie</a>
             </div>
         </form>
     <?php endif; ?>
 </article>
-
-<?php
-include $partialsDir . '/footer.php';

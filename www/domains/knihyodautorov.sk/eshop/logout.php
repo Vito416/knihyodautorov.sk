@@ -28,5 +28,5 @@ try {
 }
 
 // redirect na login nebo homepage
-header('Location: index.php');
+header('Location: /eshop');
 exit;

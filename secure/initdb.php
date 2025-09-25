@@ -635,6 +635,9 @@ if (isset($_POST['create_db'])) {
         payment_method VARCHAR(100) NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_orders_user_id (user_id),
+        INDEX idx_orders_status (status),
+        INDEX idx_orders_user_status (user_id, status),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
     ) ENGINE=InnoDB;";
     createTable($pdo, $sql, "orders");
@@ -649,6 +652,8 @@ if (isset($_POST['create_db'])) {
         quantity INT NOT NULL,
         tax_rate DECIMAL(5,2) NOT NULL,
         currency CHAR(3) NOT NULL,
+        INDEX idx_order_items_order_id (order_id),
+        INDEX idx_order_items_book_id (book_id),
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
         FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE RESTRICT
     ) ENGINE=InnoDB;";

@@ -12,10 +12,6 @@
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Registrácia';
 $navActive = $navActive ?? 'account';
 
-$partialsDir = __DIR__ . '/../partials';
-include $partialsDir . '/header.php';
-include $partialsDir . '/flash.php';
-
 // safe prefill from previous POST (controllers may pass explicit values instead)
 $pref_given  = htmlspecialchars($_POST['given_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 $pref_family = htmlspecialchars($_POST['family_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -28,7 +24,7 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
         <div class="form-error" role="alert"><?= htmlspecialchars((string)$error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
     <?php endif; ?>
 
-    <form method="post" action="/eshop/register.php" class="form form-register" autocomplete="off" novalidate>
+    <form method="post" action="/eshop/register" class="form form-register" autocomplete="off" novalidate>
         <div class="form-row">
             <label for="given_name">Meno</label>
             <input id="given_name" name="given_name" type="text" required maxlength="100" value="<?= $pref_given ?>">
@@ -65,7 +61,7 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
         </div>
 
         <div class="form-row form-links">
-            <a href="/eshop/login.php">Už mám účet — prihlásiť sa</a>
+            <a href="/eshop/login">Už mám účet — prihlásiť sa</a>
         </div>
     </form>
 <?php if (empty($existingNewsletter) || !$existingNewsletter): ?>
@@ -84,6 +80,3 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
     </script>
 <?php endif; ?>
 </article>
-
-<?php
-include $partialsDir . '/footer.php';

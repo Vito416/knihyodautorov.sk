@@ -8,7 +8,6 @@
 //  - $error (string|null)
 //  - $selector (string|null)
 //  - $validator (string|null)
-// Uses partials: header.php, flash.php, footer.php
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Nastavenie nového hesla';
 $navActive = $navActive ?? 'account';
@@ -18,9 +17,6 @@ $error = isset($error) ? (string)$error : null;
 $selector = isset($selector) ? (string)$selector : null;
 $validator = isset($validator) ? (string)$validator : null;
 
-$partialsDir = __DIR__ . '/../partials';
-include $partialsDir . '/header.php';
-include $partialsDir . '/flash.php';
 ?>
 <article class="auth-page password-reset-confirm">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -35,7 +31,7 @@ include $partialsDir . '/flash.php';
 
         <p>Zadajte nové heslo pre váš účet. Heslo musí mať aspoň 10 znakov.</p>
 
-        <form method="post" action="/eshop/password_reset_confirm.php" class="form form-password-reset-confirm" novalidate>
+        <form method="post" action="/eshop/password_reset_confirm" class="form form-password-reset-confirm" novalidate>
             <div class="form-row">
                 <label for="password">Nové heslo</label>
                 <input id="password" name="password" type="password" required autocomplete="new-password" minlength="10">
@@ -62,7 +58,7 @@ include $partialsDir . '/flash.php';
             </div>
 
             <div class="form-row form-links">
-                <a href="/eshop/login.php">Späť na prihlásenie</a>
+                <a href="/eshop/login">Späť na prihlásenie</a>
             </div>
         </form>
 
@@ -72,7 +68,7 @@ include $partialsDir . '/flash.php';
             <strong>Heslo bolo úspešne zmenené</strong>
             <p>Môžete sa teraz prihlásiť s novým heslom.</p>
             <p style="margin-top:.6rem;">
-                <a class="btn" href="/eshop/login.php">Prihlásiť sa</a>
+                <a class="btn" href="/eshop/login">Prihlásiť sa</a>
                 <a class="btn alt" href="/" style="margin-left:.5rem;">Domov</a>
             </p>
         </div>
@@ -83,8 +79,8 @@ include $partialsDir . '/flash.php';
             <strong>Odkaz už bol použitý</strong>
             <p>Tento odkaz na obnovenie hesla už bol použitý. Ak stále potrebujete pomoc, požiadajte o nové obnovenie hesla.</p>
             <p style="margin-top:.6rem;">
-                <a class="btn" href="/eshop/password_reset.php">Požiadať znovu</a>
-                <a class="btn alt" href="/eshop/login.php" style="margin-left:.5rem;">Prihlásiť sa</a>
+                <a class="btn" href="/eshop/password_reset">Požiadať znovu</a>
+                <a class="btn alt" href="/eshop/login" style="margin-left:.5rem;">Prihlásiť sa</a>
             </p>
         </div>
 
@@ -94,8 +90,8 @@ include $partialsDir . '/flash.php';
             <strong>Platnosť odkazu vypršala</strong>
             <p>Platnosť odkazu na obnovenie hesla už uplynula. Požiadajte, prosím, o nový odkaz.</p>
             <p style="margin-top:.6rem;">
-                <a class="btn" href="/eshop/password_reset.php">Požiadať nový odkaz</a>
-                <a class="btn alt" href="/eshop/login.php" style="margin-left:.5rem;">Prihlásiť sa</a>
+                <a class="btn" href="/eshop/password_reset">Požiadať nový odkaz</a>
+                <a class="btn alt" href="/eshop/login" style="margin-left:.5rem;">Prihlásiť sa</a>
             </p>
         </div>
 
@@ -105,8 +101,8 @@ include $partialsDir . '/flash.php';
             <strong>Neplatný odkaz</strong>
             <p>Odkaz na obnovenie hesla je neplatný. Skontrolujte, či máte správny odkaz, alebo požiadajte o nový.</p>
             <p style="margin-top:.6rem;">
-                <a class="btn" href="/eshop/password_reset.php">Požiadať o obnovenie hesla</a>
-                <a class="btn alt" href="/eshop/login.php" style="margin-left:.5rem;">Prihlásiť sa</a>
+                <a class="btn" href="/eshop/password_reset">Požiadať o obnovenie hesla</a>
+                <a class="btn alt" href="/eshop/login" style="margin-left:.5rem;">Prihlásiť sa</a>
             </p>
         </div>
 
@@ -116,7 +112,7 @@ include $partialsDir . '/flash.php';
             <strong>Nastala chyba</strong>
             <p><?= htmlspecialchars($error ?? 'Vyskytla sa neočakávaná chyba. Skúste to, prosím, neskôr.', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>
             <p style="margin-top:.6rem;">
-                <a class="btn" href="/eshop/password_reset.php">Požiadať o obnovenie hesla</a>
+                <a class="btn" href="/eshop/password_reset">Požiadať o obnovenie hesla</a>
                 <a class="btn alt" href="/" style="margin-left:.5rem;">Domov</a>
             </p>
         </div>
@@ -124,6 +120,3 @@ include $partialsDir . '/flash.php';
     <?php endif; ?>
 
 </article>
-
-<?php
-include $partialsDir . '/footer.php';
