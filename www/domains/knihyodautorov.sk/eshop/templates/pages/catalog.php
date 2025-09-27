@@ -41,9 +41,9 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
                     $name = $cat['nazov'] ?? ($cat['name'] ?? '');
                 ?>
                     <li<?= $currentCategory === $slug ? ' class="active"' : '' ?>>
-                        <a href="<?= $baseUrl ?>/catalog?cat=<?= rawurlencode($slug) ?>">
-                            <?= htmlspecialchars($name, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>
-                        </a>
+                    <a href="<?= $baseUrl ?>/catalog?cat=<?= rawurlencode($slug) ?>">
+                        <?= htmlspecialchars(html_entity_decode($name), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>
+                    </a>
                     </li>
                 <?php endforeach; ?>
             </ul>
@@ -53,8 +53,16 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
             <div class="catalog-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
                 <div>
                     <strong><?= number_format($total, 0, ',', ' ') ?></strong> výsledkov
-                    <?php if ($currentCategory): ?>
-                        pre kategóriu <em><?= htmlspecialchars($currentCategory, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></em>
+                    <?php if ($currentCategory): 
+                        $catName = '';
+                        foreach ($categories as $cat) {
+                            if (($cat['slug'] ?? '') === $currentCategory) {
+                                $catName = $cat['nazov'] ?? $currentCategory;
+                                break;
+                            }
+                        }
+                    ?>
+                        pre kategóriu <em><?= htmlspecialchars($catName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></em>
                     <?php endif; ?>
                 </div>
             </div>
@@ -65,7 +73,7 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
                 <div class="grid">
                     <?php foreach ($books as $b):
                         $bookSlug = $b['slug'] ?? $b['id'];
-                        $bookUrl = $baseUrl . '/book?slug=' . rawurlencode($bookSlug);
+                        $bookUrl = $baseUrl . '/detail?slug=' . rawurlencode($bookSlug);
                         $title = $b['title'] ?? 'Kniha';
                         $author = $b['author_name'] ?? '';
                         $cover = $b['cover_url'] ?? '/assets/book-placeholder-epic.png';
@@ -73,14 +81,18 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
                         $available = (int)($b['is_available'] ?? 0) === 1;
                         $short = $b['description'] ?? '';
                         $isPdf = !empty($b['is_pdf']) || (!empty($b['asset_types']) && in_array('pdf', $b['asset_types'] ?? [], true));
-                        $isOwned = !empty($user['purchased_books']) && in_array((int)($b['id'] ?? 0), $user['purchased_books'] ?? [], true);
+                        $isOwned = isset($user['purchased_books']) && in_array((int)($b['id'] ?? 0), $user['purchased_books'], true);
                         $badges = [];
                         if ($isPdf) $badges[] = ['label'=>'PDF','class'=>'badge-digital'];
                         if (!empty($b['is_new'])) $badges[] = ['label'=>'Nové','class'=>'badge-new'];
                         if (!empty($b['is_epic'])) $badges[] = ['label'=>'Legendárne','class'=>'badge-epic'];
                     ?>
                         <article class="book-card" itemtype="http://schema.org/Book" itemscope data-book-id="<?= (int)($b['id'] ?? 0) ?>">
-                            <a class="cover" href="<?= htmlspecialchars($bookUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($title . ' — ' . $author, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                            <a class="cover openDetail"
+                                href="<?= htmlspecialchars($bookUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                data-slug="<?= htmlspecialchars($bookSlug, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                data-id="<?= (int)($b['id'] ?? 0) ?>"
+                                aria-label="<?= htmlspecialchars($title . ' — ' . $author, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                                 <img src="<?= htmlspecialchars($cover, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" alt="<?= htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                                 <?php if ($isOwned): ?><span class="ribbon ribbon-owned" aria-hidden="true">Vlastníte</span><?php endif; ?>
                                 <?php foreach ($badges as $bd): ?>
@@ -90,7 +102,12 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
 
                             <div class="card-body">
                                 <h3 class="title" itemprop="name">
-                                    <a href="<?= htmlspecialchars($bookUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"><?= htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></a>
+                                    <a class="openDetail"
+                                    href="<?= htmlspecialchars($bookUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                    data-slug="<?= htmlspecialchars($bookSlug, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>"
+                                    data-id="<?= (int)($b['id'] ?? 0) ?>">
+                                    <?= htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>
+                                    </a>
                                 </h3>
                                 <div class="author small" itemprop="author"><?= htmlspecialchars($author, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
                                 <p class="small excerpt"><?= htmlspecialchars(mb_strimwidth(strip_tags($short), 0, 160, '...'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></p>

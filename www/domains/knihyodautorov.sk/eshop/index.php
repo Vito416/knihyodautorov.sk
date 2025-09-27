@@ -1,36 +1,40 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/inc/bootstrap.php'; // vrací $db (PDO) + session + CSRF init
+require_once __DIR__ . '/inc/bootstrap.php'; // bootstrap by měl inicializovat Database::init(...) + session + CSRF apod.
 
-// --- Database wrapper pro starší kód (fetchOne / fetchAll) ---
-$database = Database::getInstance(); // singleton
-$dbWrapper = new class($database) {
-    private Database $db;
-    public function __construct(Database $db) { $this->db = $db; }
-    public function fetchOne(string $sql, array $params = []): ?array { return $this->db->fetch($sql, $params); }
-    public function fetchAll(string $sql, array $params = []): array { return $this->db->fetchAll($sql, $params); }
-};
+// --- Acquire Database singleton (expect Database::init() was volané v bootstrapu) ---
+try {
+    $database = Database::getInstance();
+} catch (Throwable $e) {
+    // pokud DB není inicializovaná, zkusíme logovat a ukončit s užitečnou stránkou
+    try { if (class_exists('Logger')) Logger::error('Database not initialized in index.php', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
+    http_response_code(500);
+    echo (class_exists('Templates') ? Templates::render('pages/error.php', ['message' => 'Database not available', 'user' => null]) : '<h1>Internal server error</h1><p>Database not available.</p>');
+    exit;
+}
 
-// --- current user (z bootstrapu může přijít $userId / $user) ---
+// --- current user (bootstrap může nastavit $userId / $user) ---
 $currentUserId = $userId ?? null;
-$user = null;
+$user = $user ?? null;
+
 if ($currentUserId !== null) {
     try {
-        $user = $dbWrapper->fetchOne('SELECT * FROM pouzivatelia WHERE id=:id LIMIT 1', ['id' => $currentUserId]);
+        $user = $database->fetch('SELECT * FROM pouzivatelia WHERE id = :id LIMIT 1', ['id' => $currentUserId]);
         if ($user) {
-            $pbooks = $dbWrapper->fetchAll(
+            // získat id zakoupených knih jako pole integerů
+            $pbooks = $database->fetchColumn(
                 'SELECT DISTINCT oi.book_id
                  FROM orders o
                  INNER JOIN order_items oi ON oi.order_id = o.id
                  WHERE o.user_id = :uid
-                 AND o.status = "paid"',
-                ['uid' => $currentUserId]
+                 AND o.status = :paid_status',
+                ['uid' => $currentUserId, 'paid_status' => 'paid']
             );
-            $user['purchased_books'] = array_map(fn($b) => (int)$b['book_id'], $pbooks);
+            $user['purchased_books'] = array_map('intval', $pbooks);
         }
-    } catch (\Throwable $_) {
-        try { if (class_exists('Logger')) Logger::error('Failed to fetch user in index', $currentUserId ?? null, ['exception'=> (string)$_]); } catch (\Throwable $_) {}
+    } catch (Throwable $e) {
+        try { if (class_exists('Logger')) Logger::error('Failed to fetch user in index.php', $currentUserId ?? null, ['exception' => (string)$e]); } catch (Throwable $_) {}
         $user = null;
     }
 }
@@ -52,6 +56,16 @@ $route = preg_replace('#^' . preg_quote($base, '#') . '/?#i', '', $uri);
 $route = $route ?: 'catalog';
 $route = preg_replace('/[^a-z0-9_\-]/i', '', $route);
 
+// --- detect fragment/ajax request (to return only content without header/footer) ---
+$isFragmentRequest = false;
+// explicit query param ?ajax=1 or ?fragment=1
+if (isset($_GET['ajax']) && (string)$_GET['ajax'] === '1') $isFragmentRequest = true;
+if (isset($_GET['fragment']) && (string)$_GET['fragment'] === '1') $isFragmentRequest = true;
+// X-Requested-With header (classic AJAX)
+if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') $isFragmentRequest = true;
+// optional: accept header asking HTML fragment (not required)
+if (isset($_SERVER['HTTP_ACCEPT']) && stripos($_SERVER['HTTP_ACCEPT'], 'text/html') !== false && isset($_GET['ajax'])) $isFragmentRequest = true;
+
 // --- Routes: string = handler file (default share true), array = ['file'=>..., 'share'=> true|false|[keys]] ---
 $routes = [
     'catalog'        => 'catalog.php',
@@ -67,7 +81,7 @@ $routes = [
     'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
     'google'         => 'google_auth.php',
-    'profile'           => 'profile.php',
+    'profile'        => 'profile.php',
     'download'       => 'download.php',
 ];
 
@@ -81,9 +95,10 @@ if (!isset($routes[$route])) {
 // --- Prepare trusted shared vars for header/footer ---
 $categories = [];
 try {
-    $categories = $dbWrapper->fetchAll('SELECT * FROM categories ORDER BY nazov ASC');
-} catch (\Throwable $_) {
-    try { if (class_exists('Logger')) Logger::warn('Failed to fetch categories for header'); } catch (\Throwable $_) {}
+    // použijeme per-request cache helper; krátká TTL (2s) je default v cachedFetchAll
+    $categories = $database->cachedFetchAll('SELECT * FROM categories ORDER BY nazov ASC');
+} catch (Throwable $e) {
+    try { if (class_exists('Logger')) Logger::warn('Failed to fetch categories for header', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
     $categories = [];
 }
 
@@ -92,7 +107,7 @@ $trustedShared = [
     'user'       => $user,
     'csrfToken'  => $csrfToken,
     'categories' => $categories,
-    'db'         => $dbWrapper, // dostupné skrze shared
+    'db'         => $database, // přímo Database instance — handlery a šablony mohou volat ->fetch/->execute/...
 ];
 
 // --- Normalize route config ---
@@ -124,7 +139,7 @@ if ($shareSpec === true) {
 // --- Handler include in isolated scope, with selected shared vars extracted (EXTR_SKIP) ---
 $handlerResult = (function(string $handlerPath, array $sharedVars) {
     if (!empty($sharedVars) && is_array($sharedVars)) {
-        // EXTR_SKIP: local handler variables override extracted values if handler defines same name
+        // EXTR_SKIP: extracted vars nebudou přepsat existující lokální proměnné v handleru
         extract($sharedVars, EXTR_SKIP);
     }
 
@@ -133,9 +148,9 @@ $handlerResult = (function(string $handlerPath, array $sharedVars) {
         // include handler (may echo, redirect+exit, or return array)
         $ret = include $handlerPath;
         $out = (string) ob_get_clean();
-    } catch (\Throwable $e) {
+    } catch (Throwable $e) {
         if (ob_get_length() !== false) @ob_end_clean();
-        try { if (class_exists('Logger')) Logger::systemError($e); } catch (\Throwable $_) {}
+        try { if (class_exists('Logger')) Logger::systemError($e); } catch (Throwable $_) {}
         $errHtml = Templates::render('pages/error.php', ['message' => 'Internal server error', 'user' => null]);
         return ['ret' => ['content' => $errHtml], 'content' => $errHtml];
     }
@@ -179,9 +194,6 @@ if ($shareSpec === true) {
 // so we merge handler vars first, then sharedForTemplate (shared wins).
 $contentVars = array_merge($result['vars'], $sharedForTemplate);
 
-// OPTIONAL debug:
-// error_log('contentVars keys: ' . implode(',', array_keys($contentVars)));
-
 // --- Render selection logic ---
 $contentHtml = '';
 
@@ -190,13 +202,13 @@ if (!empty($result['template'])) {
 
     // Prevent path traversal and absolute paths.
     if (strpos($template, '..') !== false || strpos($template, "\0") !== false || (isset($template[0]) && $template[0] === '/')) {
-        try { if (class_exists('Logger')) Logger::warn('Invalid template path returned by handler', null, ['template' => $template]); } catch (\Throwable $_) {}
+        try { if (class_exists('Logger')) Logger::warn('Invalid template path returned by handler', null, ['template' => $template]); } catch (Throwable $_) {}
         $contentHtml = Templates::render('pages/error.php', ['message' => 'Invalid template', 'user' => $user]);
     } else {
         // Resolve to templates directory: templates/<template>
         $tplPath = __DIR__ . '/templates/' . ltrim($template, '/');
         if (!is_file($tplPath) || !is_readable($tplPath)) {
-            try { if (class_exists('Logger')) Logger::warn('Template file missing', null, ['template' => $template, 'path' => $tplPath]); } catch (\Throwable $_) {}
+            try { if (class_exists('Logger')) Logger::warn('Template file missing', null, ['template' => $template, 'path' => $tplPath]); } catch (Throwable $_) {}
             $contentHtml = Templates::render('pages/error.php', ['message' => 'Template not found', 'user' => $user]);
         } else {
             // Call renderer with final vars so template receives db, categories, user, etc.
@@ -216,10 +228,15 @@ if (!empty($result['template'])) {
 // --- ensure content-type header ---
 if (!headers_sent()) header('Content-Type: text/html; charset=utf-8');
 
-// --- Render full page: header + content + footer ---
-// header/footer always get full trustedShared (independent of shareSpec)
+// If fragment request — return only content (no header/footer)
+if (!empty($isFragmentRequest)) {
+    if (!headers_sent()) header('Content-Type: text/html; charset=utf-8');
+    echo $contentHtml;
+    return; // nebo exit;
+}
+
+// otherwise render full page as before
 echo Templates::render('partials/header.php', $trustedShared);
 echo $contentHtml;
 echo Templates::render('partials/footer.php', $trustedShared);
-
 // done

@@ -36,7 +36,7 @@
     <li><a href="#booksPromo"><i class="fas fa-book-open"></i> Vzorky kníh</a></li>
     <li><a href="#fauthorsSection"><i class="fas fa-pen-nib"></i> Autori</a></li>
     <li><a href="#about-us"><i class="fas fa-info-circle"></i> O nás</a></li>
-    <li><a href="/eshop.php"><i class="fas fa-shopping-bag"></i> E-shop</a></li>
+    <li><a href="/eshop"><i class="fas fa-shopping-bag"></i> E-shop</a></li>
     <li><a href="#kontaktujtenas"><i class="fas fa-envelope"></i> Kontakt</a></li>
   </ul>
 </nav>

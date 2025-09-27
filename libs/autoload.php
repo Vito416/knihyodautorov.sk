@@ -101,10 +101,11 @@ $require_first([
 ]);
 
 $require_first([
-    // nejdřív interfaces pro PSR Log
-    'psr-log/src/LoggerInterface.php',
-    'psr-log/src/LoggerAwareInterface.php',
+    'guzzlehttp/guzzle/src/functions_include.php',
+]);
 
+$require_first([
+    'gopay/factory.php',
 ]);
 
 $path = realpath(__DIR__ . '/htmlpurifier/library/HTMLPurifier.auto.php');
@@ -129,6 +130,7 @@ $prefixes = [
 
     // PSR interfaces
     'Psr\\Http\\Message\\' => __DIR__ . '/psr-http-message/src/',
+    'Psr\\Http\\Client\\' => __DIR__ . '/psr-http-client/src/',
     'Psr\\Log\\' => __DIR__ . '/psr-log/src/',
 
     // PhpSpreadsheet
@@ -151,6 +153,16 @@ $prefixes = [
     'ZipStream\\' => __DIR__ . '/ZipStream-PHP-main/src/',
 
     'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
+
+    'GuzzleHttp\\Promise\\' => __DIR__ . '/guzzlehttp/promises/src/',
+
+    'GuzzleHttp\\Psr7\\' => __DIR__ . '/guzzlehttp/psr7/src/',
+
+    'GuzzleHttp\\' => __DIR__ . '/guzzlehttp/guzzle/src/',
+
+   /* 'Symfony\\Contracts\\Deprecation\\' => __DIR__ . '/symfony/deprecation-contracts/src/',*/
+
+    'GoPay\\' => __DIR__ . '/gopay/src/',
 
     'Cron\\' => __DIR__ . '/../cron/',
 ];

@@ -40,7 +40,7 @@
     <a href="#booksPromo" class="cta-button sample">
       <i class="fas fa-book-open"></i> Ukážka zdarma
     </a>
-    <a href="/eshop.php" class="cta-button shop">
+    <a href="/eshop" class="cta-button shop">
       <i class="fas fa-shopping-cart"></i> Navštíviť e-shop
     </a>
   </div>

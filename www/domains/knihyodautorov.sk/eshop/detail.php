@@ -1,171 +1,191 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/inc/bootstrap.php';
-
 /**
- * Detail produktu (knihy)
+ * detail.php
+ * Params:
+ *  - ?slug=book-slug   (preferované)
+ *  - ?id=123           (fallback)
  *
- * - očekává GET param id (integer)
- * - kompatibilní s DB: books, authors, categories, book_assets
- * - neprovádí žádné autorizace (download/checkout je zvlášť)
+ * Returns to index.php:
+ *  - template: stránka nebo partial
+ *  - vars: book, assets, relatedBooks, user, hasPurchased
+ *
+ * Pokud router zjistí AJAX/fragment request, renderuje se jen `partials/book_detail_modal.php`.
  */
 
-// DB getter: prefer Database wrapper, jinak použij PDO z bootstrapu / global
-$dbWrapper = null;
-$pdo = null;
+/** @var Database $db */
+/** @var array|null $user */
+/** @var bool $isFragmentRequest */
+
+$slug = isset($_GET['slug']) ? trim((string)$_GET['slug']) : null;
+$idParam = isset($_GET['id']) ? (int)$_GET['id'] : null;
+$isFragmentRequest = isset($_GET['ajax']) || isset($_GET['fragment']);
+
+if ($slug === '') $slug = null;
+if ($slug !== null && !preg_match('/^[a-z0-9\-_]+$/i', $slug)) {
+    $slug = null;
+}
+
+/* --- fetch book --- */
 try {
-    if (class_exists('Database') && method_exists('Database', 'getInstance')) {
-        $dbWrapper = Database::getInstance();
-    } elseif (isset($pdo) && $pdo instanceof \PDO) {
-        $pdo = $pdo;
-    } elseif (isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
-        $pdo = $GLOBALS['pdo'];
+    if ($slug !== null) {
+        $book = $db->fetch(
+            "SELECT
+                b.*, 
+                a.id AS author_id, a.meno AS author_name, a.slug AS author_slug,
+                c.id AS category_id, c.nazov AS category_name, c.slug AS category_slug
+             FROM books b
+             LEFT JOIN authors a ON a.id = b.author_id
+             LEFT JOIN categories c ON c.id = b.main_category_id
+             WHERE b.slug = :slug AND b.is_active = 1
+             LIMIT 1",
+            ['slug' => $slug]
+        );
+    } elseif ($idParam) {
+        $book = $db->fetch(
+            "SELECT
+                b.*, 
+                a.id AS author_id, a.meno AS author_name, a.slug AS author_slug,
+                c.id AS category_id, c.nazov AS category_name, c.slug AS category_slug
+             FROM books b
+             LEFT JOIN authors a ON a.id = b.author_id
+             LEFT JOIN categories c ON c.id = b.main_category_id
+             WHERE b.id = :id AND b.is_active = 1
+             LIMIT 1",
+            ['id' => $idParam]
+        );
     } else {
-        throw new \RuntimeException('Database connection not available.');
+        return [
+            'template' => 'pages/404.php',
+            'vars' => ['route' => 'detail', 'user' => $user ?? null]
+        ];
     }
 } catch (\Throwable $e) {
-    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Internal server error (DB).']);
-    exit;
+    if (class_exists('Logger')) { try { Logger::systemError($e, null, ['phase' => 'book.fetch']); } catch (\Throwable $_) {} }
+    return [
+        'template' => 'pages/error.php',
+        'vars' => ['message' => 'Internal server error (fetch book).', 'user' => $user ?? null]
+    ];
 }
 
-// helper fetchOne (Database wrapper or PDO)
-$fetchOne = function(string $sql, array $params = []) use ($dbWrapper, $pdo): ?array {
-    if ($dbWrapper !== null && method_exists($dbWrapper, 'fetch')) {
-        try { $r = $dbWrapper->fetch($sql, $params); return $r === false ? null : $r; }
-        catch (\Throwable $e) { if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} } return null; }
-    }
-    $stmt = $pdo->prepare($sql);
-    if ($stmt === false) { if (class_exists('Logger')) { try { Logger::systemMessage('error','PDO prepare failed', null, ['sql'=>$sql]); } catch (\Throwable $_) {} } return null; }
-    foreach ($params as $k => $v) {
-        $name = (strpos((string)$k, ':') === 0) ? $k : ':' . $k;
-        if (is_int($v)) $stmt->bindValue($name, $v, \PDO::PARAM_INT);
-        elseif (is_bool($v)) $stmt->bindValue($name, $v ? 1 : 0, \PDO::PARAM_INT);
-        elseif ($v === null) $stmt->bindValue($name, null, \PDO::PARAM_NULL);
-        else $stmt->bindValue($name, (string)$v, \PDO::PARAM_STR);
-    }
-    $stmt->execute();
-    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-    return $row === false ? null : $row;
-};
-
-// helper fetchAll
-$fetchAll = function(string $sql, array $params = []) use ($dbWrapper, $pdo): array {
-    if ($dbWrapper !== null && method_exists($dbWrapper, 'fetchAll')) {
-        try { return (array)$dbWrapper->fetchAll($sql, $params); }
-        catch (\Throwable $e) { if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} } return []; }
-    }
-    $stmt = $pdo->prepare($sql);
-    if ($stmt === false) { if (class_exists('Logger')) { try { Logger::systemMessage('error','PDO prepare failed', null, ['sql'=>$sql]); } catch (\Throwable $_) {} } return []; }
-    foreach ($params as $k => $v) {
-        $name = (strpos((string)$k, ':') === 0) ? $k : ':' . $k;
-        if (is_int($v)) $stmt->bindValue($name, $v, \PDO::PARAM_INT);
-        elseif (is_bool($v)) $stmt->bindValue($name, $v ? 1 : 0, \PDO::PARAM_INT);
-        elseif ($v === null) $stmt->bindValue($name, null, \PDO::PARAM_NULL);
-        else $stmt->bindValue($name, (string)$v, \PDO::PARAM_STR);
-    }
-    $stmt->execute();
-    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-    return $rows === false ? [] : $rows;
-};
-
-// read and validate id
-$idRaw = $_GET['id'] ?? null;
-if ($idRaw === null) {
-    http_response_code(404);
-    echo Templates::render('pages/404.php');
-    exit;
-}
-$id = (int)$idRaw;
-if ($id <= 0) {
-    http_response_code(404);
-    echo Templates::render('pages/404.php');
-    exit;
-}
-// optional stricter validator
-if (class_exists('Validator') && method_exists('Validator', 'validateNumberInRange')) {
-    if (!Validator::validateNumberInRange((string)$id, 1, PHP_INT_MAX)) {
-        http_response_code(404);
-        echo Templates::render('pages/404.php');
-        exit;
-    }
+if (empty($book)) {
+    return [
+        'template' => 'pages/404.php',
+        'vars' => ['route' => 'book_not_found', 'user' => $user ?? null]
+    ];
 }
 
-// fetch book (ensure active)
-$sql = "
-SELECT b.*, a.meno AS author_name, c.nazov AS category_name, c.slug AS category_slug
-FROM books b
-LEFT JOIN authors a ON a.id = b.author_id
-LEFT JOIN categories c ON c.id = b.main_category_id
-WHERE b.id = :id AND b.is_active = 1
-LIMIT 1
-";
-$book = $fetchOne($sql, ['id' => $id]);
-if ($book === null) {
-    // not found or inactive
-    http_response_code(404);
-    echo Templates::render('pages/404.php');
-    exit;
-}
+$bookId = (int)$book['id'];
 
-// fetch assets (pdf, cover, sample, etc.)
-$assets = $fetchAll('SELECT id, asset_type, filename, storage_path, mime_type, is_encrypted, download_filename, key_id FROM book_assets WHERE book_id = :book_id', ['book_id' => $id]);
-
-// normalize types & prepare flags
-$hasPdf = false;
-$pdfAsset = null;
-$cover = null;
-$samples = [];
-foreach ($assets as $a) {
-    $a['id'] = isset($a['id']) ? (int)$a['id'] : null;
-    $a['is_encrypted'] = ((int)($a['is_encrypted'] ?? 0) === 1);
-    if ($a['asset_type'] === 'pdf') {
-        $hasPdf = true;
-        $pdfAsset = $a;
-    } elseif ($a['asset_type'] === 'cover') {
-        $cover = $a;
-    } elseif ($a['asset_type'] === 'sample') {
-        $samples[] = $a;
-    }
-}
-
-// prepare data for template (do not expose internal file system path)
-// for downloads we expose download endpoint with asset id; endpoint will verify ownership/rights
-$bookForTpl = [
-    'id' => (int)$book['id'],
-    'title' => $book['title'] ?? '',
-    'slug' => $book['slug'] ?? '',
-    'description' => $book['description'] ?? '',
-    'price' => isset($book['price']) ? (float)$book['price'] : 0.0,
-    'currency' => $book['currency'] ?? '',
-    'is_available' => ((int)($book['is_available'] ?? 0) === 1),
-    'stock_quantity' => isset($book['stock_quantity']) ? (int)$book['stock_quantity'] : 0,
-    'author_name' => $book['author_name'] ?? '',
-    'category_name' => $book['category_name'] ?? '',
-    'category_slug' => $book['category_slug'] ?? null,
-    'cover_url' => $cover['storage_path'] ?? ($cover['filename'] ?? null),
-];
-
-// For security, do not include raw storage_path in template for direct download; instead link to download handler:
-$downloadLink = null;
-if ($pdfAsset !== null) {
-    // link example: ?route=download&asset_id=123
-    $downloadLink = '?route=download&asset_id=' . (int)$pdfAsset['id'];
-}
-
+/* --- fetch assets --- */
 try {
-    echo Templates::render('pages/detail.php', [
-        'book' => $bookForTpl,
-        'hasPdf' => $hasPdf,
-        'pdfAsset' => $pdfAsset ? ['id' => (int)$pdfAsset['id'], 'is_encrypted' => $pdfAsset['is_encrypted'], 'download_url' => $downloadLink, 'download_filename' => $pdfAsset['download_filename'] ?? null] : null,
-        'samples' => $samples,
-        'cover' => $cover,
-    ]);
+    $assets = $db->fetchAll(
+        "SELECT id, asset_type, filename, mime_type, size_bytes, storage_path, download_filename, created_at
+         FROM book_assets
+         WHERE book_id = :bid
+         ORDER BY asset_type ASC, id ASC",
+        ['bid' => $bookId]
+    );
 } catch (\Throwable $e) {
-    if (class_exists('Logger')) { try { Logger::systemError($e, $bookForTpl['id'] ?? null); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Unable to render product detail']);
-    exit;
+    if (class_exists('Logger')) { try { Logger::warn('Failed to fetch assets for book', $bookId, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
+    $assets = [];
 }
+
+/* --- related books --- */
+try {
+    $relatedBooks = $db->fetchAll(
+        "SELECT
+            b.id, b.title, b.slug, b.price, b.currency,
+            (
+              SELECT ba.storage_path FROM book_assets ba WHERE ba.book_id = b.id AND ba.asset_type = 'cover' ORDER BY ba.id ASC LIMIT 1
+            ) AS cover_path,
+            (
+              SELECT ba.filename FROM book_assets ba WHERE ba.book_id = b.id AND ba.asset_type = 'cover' ORDER BY ba.id ASC LIMIT 1
+            ) AS cover_filename
+         FROM books b
+         WHERE b.is_active = 1
+           AND b.id <> :bid
+           AND (b.author_id = :author_id OR b.main_category_id = :category_id)
+         ORDER BY b.created_at DESC
+         LIMIT 6",
+        [
+            'bid' => $bookId,
+            'author_id' => $book['author_id'] ?? 0,
+            'category_id' => $book['category_id'] ?? 0,
+        ]
+    );
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) { try { Logger::warn('Failed to fetch related books', $bookId, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
+    $relatedBooks = [];
+}
+
+/* --- normalize data --- */
+$book['price'] = (float)($book['price'] ?? 0.0);
+$book['stock_quantity'] = (int)($book['stock_quantity'] ?? 0);
+$book['is_available'] = ((int)($book['is_available'] ?? 0) === 1);
+
+$makeAssetUrl = function (?string $storagePath, ?string $filename) {
+    if (!empty($storagePath)) {
+        return '/cover.php?path=' . rawurlencode($storagePath);
+    } elseif (!empty($filename)) {
+        return '/files/' . ltrim($filename, '/');
+    }
+    return null;
+};
+
+foreach ($assets as &$asset) {
+    $asset['url'] = $makeAssetUrl($asset['storage_path'] ?? null, $asset['filename'] ?? null);
+}
+unset($asset);
+
+$book['cover_url'] = null;
+foreach ($assets as $a) {
+    if (($a['asset_type'] ?? '') === 'cover') {
+        $book['cover_url'] = $a['url'];
+        break;
+    }
+}
+
+foreach ($relatedBooks as &$rb) {
+    $rb['id'] = (int)($rb['id'] ?? 0);
+    $rb['price'] = (float)($rb['price'] ?? 0.0);
+    $rb['cover_url'] = $makeAssetUrl($rb['cover_path'] ?? null, $rb['cover_filename'] ?? null);
+}
+unset($rb);
+
+/* --- purchased? --- */
+$hasPurchased = false;
+try {
+    if (isset($user['id'])) {
+        $p = $db->fetchValue(
+            'SELECT 1 FROM orders o 
+             JOIN order_items oi ON oi.order_id = o.id 
+             WHERE o.user_id = :uid 
+               AND oi.book_id = :bid 
+               AND o.status = :paid 
+             LIMIT 1',
+            ['uid' => (int)$user['id'], 'bid' => $bookId, 'paid' => 'paid'],
+            null
+        );
+        $hasPurchased = $p !== null;
+    }
+} catch (\Throwable $_) {
+    $hasPurchased = false;
+}
+
+/* --- choose template --- */
+$template = $isFragmentRequest
+    ? 'partials/book_detail_modal.php'
+    : 'pages/detail.php';
+
+return [
+    'template' => $template,
+    'vars' => [
+        'book'         => $book,
+        'assets'       => $assets,
+        'relatedBooks' => $relatedBooks,
+        'user'         => $user ?? null,
+        'hasPurchased' => $hasPurchased,
+    ],
+];

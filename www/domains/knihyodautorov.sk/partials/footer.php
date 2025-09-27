@@ -137,7 +137,7 @@
         </a>
       </li>
       <li class="footer-link-item" role="listitem">
-        <a href="/eshop.php" class="footer-link footer-eshop" title="E-shop" aria-label="E-shop">
+        <a href="/eshop" class="footer-link footer-eshop" title="E-shop" aria-label="E-shop">
           <span class="link-text">E-shop</span>
         </a>
       </li>

@@ -1,0 +1,107 @@
+/* --- MODAL --- */
+.modal {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 800px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #111;
+  padding: 1rem;
+  color: #fff;
+  box-shadow: 0 0 50px gold;
+  z-index: 9999;
+}
+
+.modal.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 9998;
+}
+
+/* Modal inner box */
+.modal-box {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow: auto;
+  background: #111;
+  padding: 1rem;
+  border-radius: 10px;
+  box-shadow: 0 0 50px gold;
+}
+
+/* Close button */
+.modal-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 2rem;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+/* Content inside modal */
+.book-detail h2 { margin-top: 0; }
+.book-cover img { max-width: 150px; display: block; }
+
+/* Related books */
+.related-list { list-style: none; padding: 0; display: flex; gap: 1rem; }
+.related-list li img { width: 60px; display: block; }
+
+/* --- EPIC OVERLAY (zoom image) --- */
+.epic-overlay {
+  position: fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.9);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  cursor: pointer;
+}
+
+/* --- BOOK CARD HOVER & ZOOM --- */
+.book-card .cover {
+  position: relative; /* pro případný overlay */
+  display: block;
+}
+
+.book-card .cover img {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: block;
+}
+
+.book-card .cover:hover img {
+  transform: scale(1.25) rotate(-1deg);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 20px gold;
+  cursor: zoom-in;
+  position: relative;
+  z-index: 10;
+}
+
+/* --- CARD HOVER (celá karta je klikací) --- */
+.book-card {
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.book-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}

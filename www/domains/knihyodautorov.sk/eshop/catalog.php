@@ -3,106 +3,21 @@ declare(strict_types=1);
 
 $perPageDefault = 20;
 
-// get DB: prefer Database wrapper, otherwise PDO from bootstrap (named $pdo)
-$dbWrapper = null;
-$pdo = null;
 try {
-    if (class_exists('Database') && method_exists('Database', 'getInstance')) {
-        $dbWrapper = Database::getInstance();
-        $pdo = $dbWrapper->getPdo();
-    } else {
-        throw new \RuntimeException('Database connection not available.');
-    }
+    $database = Database::getInstance();
 } catch (\Throwable $e) {
-    if (class_exists('Logger') && method_exists('Logger', 'systemError')) {
-        try { Logger::systemError($e); } catch (\Throwable $_) {}
-    }
+    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
     http_response_code(500);
     echo Templates::render('pages/error.php', ['message' => 'Internal server error (DB).']);
     exit;
 }
 
-/* --- fetch helpers (kopírované / kompatibilné s vaším prostredím) --- */
-$fetchAll = function(string $sql, array $params = []) use ($dbWrapper, $pdo) : array {
-    if ($dbWrapper !== null && method_exists($dbWrapper, 'fetchAll')) {
-        try {
-            return (array) $dbWrapper->fetchAll($sql, $params);
-        } catch (\Throwable $e) {
-            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
-            return [];
-        }
-    }
-
-    $stmt = $pdo->prepare($sql);
-    if ($stmt === false) {
-        if (class_exists('Logger')) { try { Logger::systemMessage('error', 'PDO prepare failed', null, ['sql' => $sql]); } catch (\Throwable $_) {} }
-        return [];
-    }
-    foreach ($params as $k => $v) {
-        $name = (strpos((string)$k, ':') === 0) ? $k : ':' . $k;
-        if (is_int($v)) {
-            $stmt->bindValue($name, $v, \PDO::PARAM_INT);
-        } elseif (is_bool($v)) {
-            $stmt->bindValue($name, $v ? 1 : 0, \PDO::PARAM_INT);
-        } elseif ($v === null) {
-            $stmt->bindValue($name, null, \PDO::PARAM_NULL);
-        } else {
-            $stmt->bindValue($name, (string)$v, \PDO::PARAM_STR);
-        }
-    }
-
-    $stmt->execute();
-    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-    return $rows === false ? [] : $rows;
-};
-
-$fetchOne = function(string $sql, array $params = []) use ($dbWrapper, $pdo) : ?array {
-    if ($dbWrapper !== null && method_exists($dbWrapper, 'fetch')) {
-        try {
-            $r = $dbWrapper->fetch($sql, $params);
-            return $r === false ? null : $r;
-        } catch (\Throwable $e) {
-            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
-            return null;
-        }
-    }
-
-    $stmt = $pdo->prepare($sql);
-    if ($stmt === false) {
-        if (class_exists('Logger')) { try { Logger::systemMessage('error', 'PDO prepare failed', null, ['sql' => $sql]); } catch (\Throwable $_) {} }
-        return null;
-    }
-    foreach ($params as $k => $v) {
-        $name = (strpos((string)$k, ':') === 0) ? $k : ':' . $k;
-        if (is_int($v)) {
-            $stmt->bindValue($name, $v, \PDO::PARAM_INT);
-        } elseif (is_bool($v)) {
-            $stmt->bindValue($name, $v ? 1 : 0, \PDO::PARAM_INT);
-        } elseif ($v === null) {
-            $stmt->bindValue($name, null, \PDO::PARAM_NULL);
-        } else {
-            $stmt->bindValue($name, (string)$v, \PDO::PARAM_STR);
-        }
-    }
-    $stmt->execute();
-    $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-    return $row === false ? null : $row;
-};
-
-/* --- čítanie a validácia vstupov --- */
+/* --- input validation --- */
 $page = (int)($_GET['p'] ?? 1);
-if (class_exists('Validator') && method_exists('Validator', 'validateNumberInRange')) {
-    if (!Validator::validateNumberInRange((string)$page, 1, 1000000)) {
-        $page = 1;
-    }
-} else {
-    if ($page < 1) $page = 1;
-}
+if ($page < 1) $page = 1;
 
 $perPage = (int)($_GET['per'] ?? $perPageDefault);
 if ($perPage < 1 || $perPage > 200) $perPage = $perPageDefault;
-
-$offset = ($page - 1) * $perPage;
 
 $categorySlug = isset($_GET['cat']) ? trim((string)$_GET['cat']) : null;
 $categoryId = null;
@@ -110,7 +25,7 @@ if ($categorySlug !== null && $categorySlug !== '') {
     if (!preg_match('/^[a-z0-9\-\_]+$/i', $categorySlug)) {
         $categorySlug = null;
     } else {
-        $catRow = $fetchOne('SELECT id, nazov FROM categories WHERE slug = :slug LIMIT 1', ['slug' => $categorySlug]);
+        $catRow = $database->fetch('SELECT id, nazov FROM categories WHERE slug = :slug LIMIT 1', ['slug' => $categorySlug]);
         if (is_array($catRow)) {
             $categoryId = (int)$catRow['id'];
         } else {
@@ -120,54 +35,49 @@ if ($categorySlug !== null && $categorySlug !== '') {
     }
 }
 
-// search 'q' (title, short_description, author name)
 $q = isset($_GET['q']) ? trim((string)$_GET['q']) : '';
 $hasSearch = $q !== '';
-$searchParam = '%' . str_replace('%', '\\%', $q) . '%';
 
-// sort
+// escape LIKE-special characters (%) and (_)
+if ($hasSearch) {
+    $esc = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+    $searchParam = '%' . $esc . '%';
+}
+
+/* --- sorting --- */
 $sort = $_GET['sort'] ?? '';
 $sortSql = 'b.title ASC';
 if ($sort === 'price_asc') $sortSql = 'b.price ASC, b.title ASC';
 elseif ($sort === 'price_desc') $sortSql = 'b.price DESC, b.title ASC';
 elseif ($sort === 'newest') $sortSql = 'b.created_at DESC, b.title ASC';
 
-/* --- načítanie kategórií pre sidebar --- */
-$categories = $fetchAll('SELECT id, nazov, slug FROM categories ORDER BY nazov ASC', []);
+/* --- categories for sidebar (cached per-request) --- */
+try {
+    $categories = $database->cachedFetchAll('SELECT id, nazov, slug FROM categories ORDER BY nazov ASC');
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) { try { Logger::warn('Failed to fetch categories for catalog', null, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
+    $categories = [];
+}
 
-/* --- zostavenie WHERE --- */
+/* --- build WHERE + params --- */
 $whereParts = ['b.is_active = 1'];
 $params = [];
 
 if ($categoryId !== null) {
-    // Podporujeme filtering podľa hlavnej kategórie (main_category_id) alebo cez book_categories (ak chcete)
     $whereParts[] = 'b.main_category_id = :category_id';
     $params['category_id'] = $categoryId;
 }
 
 if ($hasSearch) {
-    // hľadaj v názve knihy, krátky popis alebo v mene autora
-    $whereParts[] = '(b.title LIKE :q OR b.short_description LIKE :q OR a.meno LIKE :q)';
+    // použijeme ESCAPE '\' a vázaný parametr
+    $whereParts[] = '(b.title LIKE :q ESCAPE \'\\\' OR b.short_description LIKE :q ESCAPE \'\\\' OR a.meno LIKE :q ESCAPE \'\\\')';
     $params['q'] = $searchParam;
 }
 
 $where = implode(' AND ', $whereParts);
 
-/* --- total count pre stránkovanie --- */
-$countSql = "SELECT COUNT(DISTINCT b.id) AS cnt
-             FROM books b
-             LEFT JOIN authors a ON a.id = b.author_id
-             WHERE {$where}";
-$countRow = $fetchOne($countSql, $params);
-$total = isset($countRow['cnt']) ? (int)$countRow['cnt'] : 0;
-$totalPages = (int) max(1, ceil($total / max(1, $perPage)));
-
-/* --- hlavný SQL: vyber knihy + autor + (primárna) kategória + cover (vyberie sa MIN(id) pre cover) --- */
-/**
- * Poznámka:
- * - subquery v LEFT JOIN pre ba zabezpečí, že ak existuje viacero cover záznamov,
- *   použije sa ten s najmenším id (stabilný deterministický výber).
- */
+/* --- hlavní SQL bez LIMIT --- */
+/* Subquery v JOIN vybírá jediné cover asset (MIN(id)). Bez GROUP BY. */
 $sql = "
 SELECT
   b.id, b.title, b.slug,
@@ -179,25 +89,27 @@ SELECT
 FROM books b
 LEFT JOIN authors a ON a.id = b.author_id
 LEFT JOIN categories c ON c.id = b.main_category_id
--- pick single cover per book using MIN(id)
 LEFT JOIN book_assets ba ON ba.id = (
     SELECT MIN(id) FROM book_assets WHERE book_id = b.id AND asset_type = 'cover'
 )
 WHERE {$where}
-GROUP BY b.id
 ORDER BY {$sortSql}
-LIMIT :limit OFFSET :offset
 ";
 
-/* bind params + pagination (limit/offset must be integers) */
-$paramsWithLimit = $params;
-$paramsWithLimit['limit'] = $perPage;
-$paramsWithLimit['offset'] = $offset;
+/* --- použijeme Database::paginate (automatické COUNT + LIMIT/OFFSET) --- */
+try {
+    $pageData = $database->paginate($sql, $params, $page, $perPage, null);
+    $books = $pageData['items'];
+    $total = $pageData['total'];
+    $totalPages = (int) max(1, ceil($total / max(1, $perPage)));
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) { try { Logger::systemError($e, null, ['phase' => 'catalog.fetch']); } catch (\Throwable $_) {} }
+    http_response_code(500);
+    echo Templates::render('pages/error.php', ['message' => 'Internal server error (catalog).']);
+    exit;
+}
 
-/* execute */
-$books = $fetchAll($sql, $paramsWithLimit);
-
-/* normalize & build cover_url */
+/* --- normalize & build cover_url (bez posílání surových filesystem cest tam, kde to není safe) --- */
 foreach ($books as &$b) {
     $b['id'] = (int)($b['id'] ?? 0);
     $b['price'] = isset($b['price']) ? (float)$b['price'] : 0.0;
@@ -205,9 +117,10 @@ foreach ($books as &$b) {
     $b['is_available'] = ((int)($b['is_available'] ?? 0) === 1);
     $b['author_name'] = $b['author_name'] ?? '';
     $b['category_name'] = $b['category_name'] ?? '';
-    // prefer storage_path (absolute/internal path), potom filename fallback
+
+    // doporučení: místo storage_path posílat ID assetu nebo podepsaný token. Tady jen fallback:
     if (!empty($b['cover_path'])) {
-        // path bude URL-encoded a předána proxy cover.php
+        // pokud opravdu používáš path proxy, ověř ji v cover.php (sandbox) a nechej cover.php najít podle ID nebo mapy
         $b['cover_url'] = '/cover.php?path=' . rawurlencode($b['cover_path']);
     } elseif (!empty($b['cover_filename'])) {
         $b['cover_url'] = '/files/' . ltrim($b['cover_filename'], '/');
@@ -217,9 +130,10 @@ foreach ($books as &$b) {
 }
 unset($b);
 
-/* render via Templates (vaša šablóna pages/catalog.php) */
-try {
-    echo Templates::render('pages/catalog.php', [
+/* --- return template + vars to index.php (index will render header/footer) --- */
+return [
+    'template' => 'pages/catalog.php',
+    'vars' => [
         'books' => $books,
         'page' => $page,
         'perPage' => $perPage,
@@ -227,12 +141,5 @@ try {
         'totalPages' => $totalPages,
         'currentCategory' => $categorySlug,
         'categories' => $categories,
-    ]);
-} catch (\Throwable $e) {
-    if (class_exists('Logger') && method_exists('Logger', 'systemError')) {
-        try { Logger::systemError($e); } catch (\Throwable $_) {}
-    }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Unable to render catalog']);
-    exit;
-}
+    ],
+];

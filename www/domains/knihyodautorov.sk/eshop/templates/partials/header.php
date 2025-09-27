@@ -142,7 +142,7 @@ $mobile_nav_id = 'header_nav_mobile';
             <?php if(!empty($categories)): foreach($categories as $cat):
               $slugRaw = (string)($cat['slug'] ?? '');
               $slug = htmlspecialchars($slugRaw, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-              $name = htmlspecialchars((string)($cat['nazov'] ?? 'Bez názvu'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+              $name = htmlspecialchars(html_entity_decode((string)($cat['nazov'] ?? 'Bez názvu')), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
               $icon='📜'; $slugLower=strtolower($slugRaw);
               if(strpos($slugLower,'beletria')!==false)$icon='📖';
               if(strpos($slugLower,'detektiv')!==false||strpos($slugLower,'krimi')!==false)$icon='🕵️';
