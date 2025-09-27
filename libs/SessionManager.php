@@ -388,109 +388,337 @@ final class SessionManager
     public static function validateSession($db): ?int
     {
         if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
         $cookie = $_COOKIE[self::COOKIE_NAME] ?? null;
         if (!$cookie || !is_string($cookie)) return null;
 
         $rawToken = self::base64url_decode($cookie);
-        if ($rawToken === null || strlen($rawToken) !== self::TOKEN_BYTES) {
-            return null;
+        if ($rawToken === null || strlen($rawToken) !== self::TOKEN_BYTES) return null;
+
+        // per-request cache (vyřeší opakované volání v rámci jednoho requestu)
+        static $validateCache = [];
+        $cacheKey = bin2hex($rawToken);
+        if (array_key_exists($cacheKey, $validateCache)) {
+            return $validateCache[$cacheKey]; // může být int userId nebo null
         }
 
         $keysDir = self::getKeysDir();
+
+        // nastavení: limit kandidátů (newest->oldest) — uprav dle potřeby
+        $maxCandidates = 10;
+
+        // 1) derive candidates (ordered newest -> oldest)
         try {
             $candidates = KeyManager::deriveHmacCandidates('SESSION_KEY', $keysDir, 'session_key', $rawToken);
-            if (empty($candidates)) return null;
-        } catch (\Throwable $e) {
-            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
-            return null;
-        }
-
-        $row = null;
-        $candidate = null;
-        $candidateVersion = null;
-        foreach ($candidates as $c) {
-            // $c = ['version'=>'vN','hash'=>binary]
-            $candidate = $c['hash'];
-            $candidateVersion = $c['version'] ?? null;
-
-            try {
-                $sql = 'SELECT user_id, ip_hash, ip_hash_key, user_agent, expires_at, revoked, session_blob
-                        FROM sessions
-                        WHERE token_hash = :token_hash
-                        LIMIT 1';
-                $row = self::fetchOne($db, $sql, [':token_hash' => $candidate]);
-            } catch (\Throwable $e) {
-                if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+            if (empty($candidates)) {
+                $validateCache[$cacheKey] = null;
                 return null;
             }
-            if ($row !== null) break;
+            // oříznout na maxCandidates (nejnovější první)
+            if (count($candidates) > $maxCandidates) {
+                $candidates = array_slice($candidates, 0, $maxCandidates);
+            }
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+            $validateCache[$cacheKey] = null;
+            return null;
         }
 
-        if ($row === null) return null;
-        if ((int)($row['revoked'] ?? 0) === 1) return null;
+        // připravíme seznam hashů pro jediný SELECT
+        $hashes = [];
+        foreach ($candidates as $c) {
+            if (!empty($c['hash'])) $hashes[] = $c['hash'];
+        }
+        if (empty($hashes)) {
+            $validateCache[$cacheKey] = null;
+            return null;
+        }
 
+        // vytvoříme placeholdery a parametry (PDO)
+        $placeholders = [];
+        $params = [];
+        foreach ($hashes as $i => $h) {
+            $ph = ":h{$i}";
+            $placeholders[] = $ph;
+            $params[$ph] = $h;
+        }
+
+        // 2) Načteme všechny odpovídající řádky jedním dotazem
         try {
-            $expiresAt = new \DateTimeImmutable($row['expires_at'], new \DateTimeZone('UTC'));
-            if ($expiresAt < new \DateTimeImmutable('now', new \DateTimeZone('UTC'))) return null;
-        } catch (\Throwable $_) {
+            $sql = 'SELECT id, token_hash, user_id, ip_hash, ip_hash_key, user_agent, expires_at, revoked, session_blob, failed_decrypt_count
+                    FROM sessions
+                    WHERE token_hash IN (' . implode(',', $placeholders) . ')';
+            $stmt = $db->prepare($sql);
+            foreach ($params as $ph => $val) {
+                // binární data (PDO driver může vyžadovat PARAM_STR u některých driverů)
+                $stmt->bindValue($ph, $val, \PDO::PARAM_LOB);
+            }
+            $stmt->execute();
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+            $validateCache[$cacheKey] = null;
             return null;
         }
 
-        $ipRaw = $_SERVER['REMOTE_ADDR'] ?? null;
-        if ($ipRaw !== null && isset($row['ip_hash']) && $row['ip_hash'] !== null) {
-            try {
-                $ipRes = Logger::getHashedIp($ipRaw);
-                $curBin = $ipRes['hash'] ?? null;
-                if ($curBin !== null && $row['ip_hash'] !== null) {
-                    // timing-safe comparison if both are strings
-                    if (is_string($curBin) && is_string($row['ip_hash'])) {
-                        if (!hash_equals($row['ip_hash'], $curBin)) return null;
-                    } else {
-                        // fallback conservative check
-                        if ($curBin !== $row['ip_hash']) return null;
-                    }
-                }
-            } catch (\Throwable $_) {}
+        // mapujeme výsledky podle hex(token_hash) pro rychlé vyhledání
+        $rowsMap = [];
+        foreach ($rows as $r) {
+            if (!isset($r['token_hash'])) continue;
+            $rowsMap[bin2hex($r['token_hash'])] = $r;
         }
 
-        $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
-        $normalizedUa = self::truncateUserAgent($ua);
-        // DB obsahuje already-sanitized UA (uloženo při createSession)
-        if (($row['user_agent'] ?? null) !== null) {
-            if ($row['user_agent'] !== $normalizedUa) return null;
-        }
+        $validRow = null;
+        $usedCandidate = null;
+        $usedCandidateVersion = null;
 
-        // populate session from encrypted blob; if decryption fails -> treat session as invalid
-        $decryptedOk = self::loadSessionBlobAndPopulate($db, $row, $candidate);
-        if ($decryptedOk === false) {
-            // revoke session to be safe
+        // práh pro revokaci po opakovaných chybách
+        $failThreshold = 3;
+
+        foreach ($candidates as $c) {
+            $candidate = $c['hash'];
+            $candidateVersion = $c['version'] ?? null;
+            $candidateHex = bin2hex($candidate);
+
+            if (!isset($rowsMap[$candidateHex])) {
+                // není v DB — pokračovat
+                continue;
+            }
+
+            $row = $rowsMap[$candidateHex];
+
+            if ((int)($row['revoked'] ?? 0) === 1) {
+                continue;
+            }
+
+            // pokus o dešifrování / naplnění session
+            $decryptedOk = false;
             try {
-                $sql = 'UPDATE sessions SET revoked = 1 WHERE token_hash = :token_hash';
-                self::executeDb($db, $sql, [':token_hash' => $candidate]);
-                if (class_exists('Logger')) {
+                $decryptedOk = self::loadSessionBlobAndPopulate($db, $row, $candidate, $candidateVersion);
+            } catch (\Throwable $e) {
+                if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+                $decryptedOk = false;
+            }
+
+            if ($decryptedOk === false) {
+                // Bezpečná transakční inkrementace + audit + případná revokace
+                try {
+                    $db->beginTransaction();
+
+                    // 1) zamknout řádek pro update
+                    $sqlSel = 'SELECT id, failed_decrypt_count FROM sessions WHERE token_hash = :token_hash FOR UPDATE';
+                    $stmtSel = $db->prepare($sqlSel);
+                    $stmtSel->bindValue(':token_hash', $candidate, \PDO::PARAM_LOB);
+                    $stmtSel->execute();
+                    $sel = $stmtSel->fetch(\PDO::FETCH_ASSOC);
+
+                    $sessionId = $sel['id'] ?? null;
+                    $cnt = isset($sel['failed_decrypt_count']) ? (int)$sel['failed_decrypt_count'] : 0;
+                    $cnt++;
+
+                    // 2) aktualizovat counter + last_failed_decrypt_at
+                    $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
+                    $sqlUpd = 'UPDATE sessions
+                            SET failed_decrypt_count = :cnt,
+                                last_failed_decrypt_at = :now
+                            WHERE token_hash = :token_hash';
+                    $stmtUpd = $db->prepare($sqlUpd);
+                    $stmtUpd->bindValue(':cnt', $cnt, \PDO::PARAM_INT);
+                    $stmtUpd->bindValue(':now', $nowUtc);
+                    $stmtUpd->bindValue(':token_hash', $candidate, \PDO::PARAM_LOB);
+                    $stmtUpd->execute();
+
+                    // připravíme hodnoty pro audit (dbIpHash definujeme z $row)
+                    $dbIpHash = $row['ip_hash'] ?? null;
+                    $ipHashKey = $row['ip_hash_key'] ?? null;
+                    $uaForAudit = $row['user_agent'] ?? null;
+
+                    // 3) audit záznam (použijeme stejné sloupce jako schema)
                     try {
-                        Logger::systemMessage('warning', 'session revoked after decrypt failure', null, [
-                            'stage'=>'validateSession',
-                            'token_hash_hex' => is_string($candidate) ? bin2hex($candidate) : null
-                        ]);
-                    } catch (\Throwable $_) {}
+                        $sqlAudit = 'INSERT INTO session_audit (
+                                        session_token, session_token_key_version, csrf_key_version, session_id,
+                                        event, user_id, ip_hash, ip_hash_key, ua, meta_json, outcome, created_at
+                                    ) VALUES (
+                                        :session_token, :session_token_key_version, :csrf_key_version, :session_id,
+                                        :event, :user_id, :ip_hash, :ip_hash_key, :ua, :meta, :outcome, :created_at
+                                    )';
+                        $stmtAudit = $db->prepare($sqlAudit);
+                        $stmtAudit->bindValue(':session_token', $candidate, \PDO::PARAM_LOB);
+                        $stmtAudit->bindValue(':session_token_key_version', $candidateVersion);
+                        $stmtAudit->bindValue(':csrf_key_version', null);
+                        $stmtAudit->bindValue(':session_id', $sessionId, \PDO::PARAM_INT);
+                        $stmtAudit->bindValue(':event', 'decrypt_failed', \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':user_id', $row['user_id'] ?? null, \PDO::PARAM_INT);
+                        $stmtAudit->bindValue(':ip_hash', $dbIpHash, \PDO::PARAM_LOB);
+                        $stmtAudit->bindValue(':ip_hash_key', $ipHashKey, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':ua', $uaForAudit, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':meta', json_encode(['candidate_version' => $candidateVersion]), \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':outcome', null, \PDO::PARAM_NULL);
+                        $stmtAudit->bindValue(':created_at', $nowUtc);
+                        $stmtAudit->execute();
+                    } catch (\Throwable $_) {
+                        // audit není kritický — ignorujeme chybu v auditu
+                    }
+
+                    // 4) pokud přesáhnut práh, revokuj a zapiš audit revokace (stejný sloupcový rozvrh)
+                    if ($cnt >= $failThreshold) {
+                        // 1) označit session jako revoked
+                        $sqlRev = 'UPDATE sessions SET revoked = 1 WHERE token_hash = :token_hash';
+                        $stmtRev = $db->prepare($sqlRev);
+                        $stmtRev->bindValue(':token_hash', $candidate, \PDO::PARAM_STR); // oprava zde
+                        $stmtRev->execute();
+
+                        // 2) zapsat audit
+                        $stmtAudit = $db->prepare($sqlAudit);
+                        $stmtAudit->bindValue(':session_token', $candidate, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':session_token_key_version', $candidateVersion);
+                        $stmtAudit->bindValue(':csrf_key_version', null);
+                        $stmtAudit->bindValue(':session_id', $sessionId, \PDO::PARAM_INT);
+                        $stmtAudit->bindValue(':event', 'revoked', \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':user_id', $row['user_id'] ?? null, \PDO::PARAM_INT);
+                        $stmtAudit->bindValue(':ip_hash', $dbIpHash, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':ip_hash_key', $ipHashKey, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':ua', $uaForAudit, \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':meta', json_encode([
+                            'reason' => 'failed_decrypt_threshold',
+                            'fail_count' => $cnt
+                        ]), \PDO::PARAM_STR);
+                        $stmtAudit->bindValue(':outcome', null, \PDO::PARAM_NULL);
+                        $stmtAudit->bindValue(':created_at', $nowUtc);
+                        $stmtAudit->execute();
+
+                        if (class_exists('Logger')) {
+                            Logger::systemMessage(
+                                'warning',
+                                'Session revoked after repeated decrypt failures',
+                                null,
+                                ['candidate_version' => $candidateVersion, 'fail_count' => $cnt]
+                            );
+                        }
+                    }
+
+                    $db->commit(); // commit až po všem
+                } catch (\Throwable $e) {
+                    try { $db->rollBack(); } catch (\Throwable $_) {}
+                    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
                 }
-            } catch (\Throwable $_) {}
+                // pokračuj na dalšího kandidáta
+                continue;
+            }
+
+            // IP check (explicitní verze z DB -> fallback na derive candidates)
+            $ipRaw = $_SERVER['REMOTE_ADDR'] ?? null;
+            $ipMismatch = true;
+            if ($ipRaw !== null && isset($row['ip_hash']) && $row['ip_hash'] !== null) {
+                try {
+                    $dbIpHash = $row['ip_hash'];
+                    $ipHashKeyVersion = $row['ip_hash_key'] ?? null;
+
+                    if (!empty($ipHashKeyVersion)) {
+                        try {
+                            $info = KeyManager::getRawKeyBytesByVersion('IP_HASH_KEY', $keysDir, 'ip_hash_key', $ipHashKeyVersion);
+                            $key = $info['raw'];
+                            $calc = hash_hmac('sha256', $ipRaw, $key, true);
+                            if (is_string($dbIpHash) && is_string($calc) && hash_equals($dbIpHash, $calc)) {
+                                $ipMismatch = false;
+                            } else {
+                                $ipMismatch = true;
+                            }
+                            try { KeyManager::memzero($key); } catch (\Throwable $_) {}
+                        } catch (\Throwable $_) {
+                            $ipHashKeyVersion = null;
+                        }
+                    }
+
+                    if ($ipHashKeyVersion === null) {
+                        try {
+                            $ipCandidates = KeyManager::deriveHmacCandidates('IP_HASH_KEY', $keysDir, 'ip_hash_key', $ipRaw);
+                            $matched = false;
+                            foreach ($ipCandidates as $ipc) {
+                                $iph = $ipc['hash'] ?? null;
+                                if ($iph !== null && is_string($dbIpHash) && is_string($iph) && hash_equals($dbIpHash, $iph)) {
+                                    $matched = true;
+                                    break;
+                                }
+                            }
+                            $ipMismatch = $matched ? false : true;
+                        } catch (\Throwable $_) {
+                            $ipMismatch = true;
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+                    $ipMismatch = true;
+                }
+            } else {
+                // pokud v DB není uložen ip_hash, považujeme to za match (podle vaší politiky)
+                $ipMismatch = false;
+            }
+
+            if ($ipMismatch) {
+                self::destroySession($db); // tady se provede revoke+audit centralizovaně
+                return null;
+            }
+
+            // User-agent check
+            $ua = $_SERVER['HTTP_USER_AGENT'] ?? null;
+            $normalizedUa = self::truncateUserAgent($ua);
+            if (($row['user_agent'] ?? null) !== null && $row['user_agent'] !== $normalizedUa) {
+                if (class_exists('Logger')) {
+                    try { Logger::systemMessage('warning', 'Candidate rejected: UA mismatch', null, ['candidate_version' => $candidateVersion]); } catch (\Throwable $_) {}
+                }
+                continue;
+            }
+
+            // vše OK -> použijeme tento kandidát
+            $validRow = $row;
+            $usedCandidate = $candidate;
+            $usedCandidateVersion = $candidateVersion;
+            break;
+        }
+
+        if ($validRow === null) {
+            $validateCache[$cacheKey] = null;
             return null;
         }
 
-        $userId = (int)$row['user_id'];
+        // expiration
+        try {
+            $expiresAt = new \DateTimeImmutable($validRow['expires_at'], new \DateTimeZone('UTC'));
+            if ($expiresAt < new \DateTimeImmutable('now', new \DateTimeZone('UTC'))) {
+                $validateCache[$cacheKey] = null;
+                return null;
+            }
+        } catch (\Throwable $_) {
+            if (class_exists('Logger')) {
+                try { Logger::systemError('[validateSession] Invalid expires_at value'); } catch (\Throwable $_) {}
+            }
+            $validateCache[$cacheKey] = null;
+            return null;
+        }
+
+        $userId = (int)$validRow['user_id'];
         $_SESSION['user_id'] = $userId;
 
-        // update last_seen
+        // update last_seen + reset failed_decrypt_count po úspěchu
         try {
             $nowUtc = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
-            $sql = 'UPDATE sessions SET last_seen_at = :last_seen_at WHERE token_hash = :token_hash';
-            self::executeDb($db, $sql, [':last_seen_at' => $nowUtc, ':token_hash' => $candidate]);
+            $sql = 'UPDATE sessions
+                    SET last_seen_at = :last_seen_at,
+                        failed_decrypt_count = 0,
+                        last_failed_decrypt_at = NULL
+                    WHERE token_hash = :token_hash';
+            $stmt = $db->prepare($sql);
+            $stmt->bindValue(':last_seen_at', $nowUtc);
+            $stmt->bindValue(':token_hash', $usedCandidate, \PDO::PARAM_LOB);
+            $stmt->execute();
+
         } catch (\Throwable $e) {
-            if (class_exists('Logger')) { try { Logger::systemError($e, $userId); } catch (\Throwable $_) {} }
+            if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
         }
 
+        // uložit do per-request cache a vrátit
+        $validateCache[$cacheKey] = $userId;
         return $userId;
     }
 

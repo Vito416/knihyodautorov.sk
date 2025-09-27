@@ -302,27 +302,23 @@ final class KeyManager
         }
 
         $wantedLen = $expectedByteLen ?? self::keyByteLen();
-        $cacheKey = 'key_' . $envName . '_' . ($basename ?: 'env') . '_len' . (string)$wantedLen . '_' . md5((string)$keysDir);
 
-        if (isset(self::$cache[$cacheKey])) {
-            return self::$cache[$cacheKey];
-        }
-
+        // Získáme base64 reprezentaci (soubory/ENV) — getBase64Key je bezpečné
         $b64 = self::getBase64Key($envName, $keysDir, $basename, $generateIfMissing, $wantedLen);
         $raw = base64_decode($b64, true);
         if ($raw === false) {
             throw new KeyManagerException('Base64 decode failed in KeyManager for ' . $envName);
         }
 
+        // Zjistíme verzi (metadata) bez ukládání raw do cache
         $ver = null;
         if ($keysDir !== null && $basename !== '') {
             $info = self::locateLatestKeyFile($keysDir, $basename);
             if ($info !== null) $ver = $info['version'];
         }
 
-        $res = ['raw' => $raw, 'version' => $ver ?? 'v1'];
-        self::$cache[$cacheKey] = $res;
-        return $res;
+        // VRATÍ raw — caller JE POVINEN memzero + unset po použití
+        return ['raw' => $raw, 'version' => $ver ?? 'v1'];
     }
 
     /**
@@ -342,10 +338,9 @@ final class KeyManager
         if ($raw === false || strlen($raw) !== $wantedLen) {
             throw new KeyManagerException('Key file invalid or wrong length: ' . $path);
         }
-        $cacheKey = 'key_' . $envName . '_' . $basename . '_' . $verStr . '_len' . (string)$wantedLen;
-        $res = ['raw' => $raw, 'version' => $verStr];
-        self::$cache[$cacheKey] = $res;
-        return $res;
+
+        // NECACHEUJ raw v self::$cache ani v jiném statickém poli.
+        return ['raw' => $raw, 'version' => $verStr];
     }
 
     /**
@@ -450,35 +445,67 @@ final class KeyManager
     }
 
     /**
-     * Produce array of candidate HMACs (binary) computed with all available keys (newest -> oldest).
+     * Produce array of candidate HMACs (binary) computed with available keys (newest -> oldest).
      * Returns array of ['version'=>'vN','hash'=>binary] entries.
-     * This is used for validation (try all keys for rotation support).
+     *
+     * Added:
+     *  - per-request cache (static)
+     *  - optional $maxCandidates limit (newest first)
+     *  - safer handling of listKeyVersions return types
+     *
+     * @param string $envName
+     * @param string|null $keysDir
+     * @param string $basename
+     * @param string $data
+     * @param int|null $maxCandidates  Max number of candidate hashes to produce (null = no limit)
+     * @param bool $useEnvFallback    Whether to attempt ENV fallback if no file keys found
+     * @return array
      */
-    public static function deriveHmacCandidates(string $envName, ?string $keysDir, string $basename, string $data): array
+    public static function deriveHmacCandidates(string $envName, ?string $keysDir, string $basename, string $data, ?int $maxCandidates = 20, bool $useEnvFallback = true): array
     {
+        static $cache = []; // per-request cache for hashes (we store only result hashes)
+        $cacheKey = $envName . '|' . $basename . '|' . hash('sha256', $data);
+        if (isset($cache[$cacheKey])) {
+            return $cache[$cacheKey];
+        }
+
         $out = [];
-        // prefer versioned files order -> listKeyVersions gives versions
         $expectedLen = self::keyByteLen();
+
         if ($keysDir !== null && $basename !== '') {
-            $versions = self::listKeyVersions($keysDir, $basename);
-            // versions are sorted oldest->newest; iterate newest->oldest
+            $versions = [];
+            try {
+                $versions = self::listKeyVersions($keysDir, $basename);
+            } catch (\Throwable $_) {
+                $versions = [];
+            }
+
+            if (!is_array($versions)) $versions = [];
             $vers = array_keys($versions);
+            $count = 0;
             for ($i = count($vers) - 1; $i >= 0; $i--) {
+                if ($maxCandidates !== null && $count >= $maxCandidates) break;
                 $ver = $vers[$i];
                 try {
+                    // načteme raw přímo (NECACHEJME ho)
                     $info = self::getRawKeyBytesByVersion($envName, $keysDir, $basename, $ver, $expectedLen);
                     $key = $info['raw'];
+                    // spočteme HMAC
                     $h = hash_hmac('sha256', $data, $key, true);
                     $out[] = ['version' => $ver, 'hash' => $h];
+                    $count++;
+                    // bezpečně vymažeme raw v paměti
                     try { self::memzero($key); } catch (\Throwable $_) {}
+                    unset($key, $info);
                 } catch (\Throwable $_) {
-                    // skip invalid version
+                    // skip invalid/errored version
                     continue;
                 }
             }
         }
-        // fallback to ENV-only (if no files)
-        if (empty($out)) {
+
+        // fallback to ENV-only (if no files and useEnvFallback is true)
+        if (empty($out) && $useEnvFallback) {
             $envVal = $_ENV[$envName] ?? '';
             if ($envVal !== '') {
                 $raw = base64_decode($envVal, true);
@@ -486,9 +513,12 @@ final class KeyManager
                     $h = hash_hmac('sha256', $data, $raw, true);
                     $out[] = ['version' => 'env', 'hash' => $h];
                     try { self::memzero($raw); } catch (\Throwable $_) {}
+                    unset($raw);
                 }
             }
         }
+
+        $cache[$cacheKey] = $out;
         return $out;
     }
 

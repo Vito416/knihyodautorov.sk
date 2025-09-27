@@ -312,12 +312,25 @@ final class Logger
         });
     }
 
-    // -------------------------
-    // SESSION AUDIT
-    // -------------------------
+    /**
+     * Zaznamená událost do session_audit.
+     *
+     * @param string $event          event key (validated against allow-list)
+     * @param int|null $userId
+     * @param array|null $meta       asociativní pole (sensitive fields budou filtrovány)
+     * @param string|null $ip
+     * @param string|null $userAgent
+     * @param string|null $outcome
+     * @param string|null $tokenHashBin  binární token_hash (BINARY(32)) - pokud dostupné
+     */
     public static function session(string $event, ?int $userId = null, ?array $meta = null, ?string $ip = null, ?string $userAgent = null, ?string $outcome = null, ?string $tokenHashBin = null): void
     {
-        $allowed = ['session_created','session_destroyed','session_regenerated','csrf_valid','csrf_invalid','session_expired','session_activity'];
+        // Rozšířený allow-list (přidej další interní eventy, které používáš)
+        $allowed = [
+            'session_created','session_destroyed','session_regenerated',
+            'csrf_valid','csrf_invalid','session_expired','session_activity',
+            'decrypt_failed','revoked','revoked_manual','session_login','session_logout','audit'
+        ];
         $event = in_array($event, $allowed, true) ? $event : 'session_activity';
 
         $ipResult = self::getHashedIp($ip);
@@ -327,6 +340,7 @@ final class Logger
 
         $ua = self::truncateUserAgent($userAgent ?? self::getUserAgent());
         $filteredMeta = self::filterSensitive($meta) ?? [];
+        // doplníme info do meta (neobsahuje raw sensitive data)
         $filteredMeta['_ip_hash_used'] = $ipUsed;
         if ($ipKeyId !== null) $filteredMeta['_ip_hash_key'] = $ipKeyId;
         $json = self::safeJsonEncode($filteredMeta);
@@ -370,7 +384,7 @@ final class Logger
                 )";
 
         $params = [
-            ':session_token' => $tokenHashBin,
+            ':session_token' => $tokenHashBin, // necháváme binární data (Database wrapper musí to umět)
             ':session_token_key_version' => $sessionTokenKeyVersion,
             ':csrf_key_version' => $csrfKeyVersion,
             ':session_id' => $sessId,
@@ -383,11 +397,14 @@ final class Logger
             ':outcome' => $outcome,
         ];
 
+        // Pokud máš vlastní Database wrapper, který správně váže nibinární hodnoty – ok.
+        // Jinak níže nabízím přímý PDO fallback.
         if (\Database::isInitialized()) {
             DeferredHelper::flush();
             try {
                 \Database::getInstance()->execute($sql, $params);
             } catch (\Throwable $e) {
+                // silent fail — nechceme shodit aplikaci kvůli auditu
                 return;
             }
             return;

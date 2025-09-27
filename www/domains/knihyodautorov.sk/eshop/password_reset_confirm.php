@@ -231,9 +231,10 @@ try {
             $pdo->beginTransaction();
 
             $updUser = $pdo->prepare("UPDATE pouzivatelia
-                                     SET heslo_hash = :hash, must_change_password = 0, updated_at = UTC_TIMESTAMP(6)
+                                     SET heslo_hash = :hash, heslo_key_version = :key_ver, must_change_password = 0, updated_at = UTC_TIMESTAMP(6)
                                      WHERE id = :uid");
             $updUser->bindValue(':hash', $hash, \PDO::PARAM_STR);
+            $updUser->bindValue(':key_ver', $pepVer, \PDO::PARAM_STR);
             $updUser->bindValue(':uid', (int)$row['user_id'], \PDO::PARAM_INT);
             $updUser->execute();
 

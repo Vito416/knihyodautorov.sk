@@ -138,6 +138,10 @@ try {
     $response['errors'][] = 'RotationJobs failed: ' . $e->getMessage();
 }
 
+//$keys = [    'password_pepper',    'app_salt',    'session_key',    'ip_hash_key',    'csrf_key',    'jwt_key',    'email_key',    'email_hash_key',    'email_verification_key',    'unsubscribe_key',    'profile_crypto',];
+
+//foreach ($keys as $basename) {    $jobId = Worker::scheduleKeyRotation($basename);    echo "Scheduled rotation for {$basename}, job ID: {$jobId}\n";}
+
 // -------------------------------------------------
 // CLEANUP old notifications (sent > 30d)
 // -------------------------------------------------
