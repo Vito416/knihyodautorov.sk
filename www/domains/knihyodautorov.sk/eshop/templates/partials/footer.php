@@ -26,12 +26,13 @@ $appName = $_ENV['APP_NAME'] ?? 'Knižnica Stratégov';
     </div>
     <div style="clear:both;"></div>
   </div>
-  <div id="bookModal" class="modal">
-  <div class="modal-content">
-    <button class="modal-close" onclick="document.getElementById('bookModal').classList.remove('open')">×</button>
-    <div class="modal-body">
+<div id="bookModal" class="modal" aria-hidden="true">
+  <div class="modal-overlay" aria-hidden="true"></div>
+  <div class="panel" role="dialog" aria-modal="true" aria-label="Detail knihy">
+    <button class="modal-close" aria-label="Zavřít">&times;</button>
+    <div class="modal-inner"><div class="modal-body">
       <!-- AJAX detail se sem načte -->
-    </div>
+    </div></div>
   </div>
 </div>
 </footer>

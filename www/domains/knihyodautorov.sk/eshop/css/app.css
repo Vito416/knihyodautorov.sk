@@ -162,46 +162,6 @@ body{
 .meta{ padding:.75rem; display:flex; gap:.5rem; justify-content:space-between; border-top:1px solid rgba(0,0,0,0.03);}
 .card-actions{ display:flex; gap:.5rem; align-items:center; }
 
-/* ---------- MODAL ---------- */
-.modal{
-  display:none;
-  position:fixed;
-  top:50%; left:50%;
-  transform:translate(-50%,-50%);
-  max-width:800px;
-  width:90%;
-  max-height:90vh;
-  overflow:auto;
-  border-radius:12px;
-  background:#111;
-  padding:1rem;
-  color:#fff;
-  box-shadow:0 0 50px gold;
-  z-index:9999;
-}
-.modal.open{ display:flex; align-items:center; justify-content:center;}
-.modal-overlay{
-  position:fixed; top:0; left:0; right:0; bottom:0;
-  background: rgba(0,0,0,0.7); z-index:9998;
-}
-.modal-box{
-  position:relative;
-  width:100%;
-  max-width:800px;
-  max-height:90vh;
-  overflow:auto;
-  background:#111;
-  padding:1rem;
-  border-radius:12px;
-  box-shadow:0 0 50px gold;
-}
-.modal-close{ position:absolute; top:.5rem; right:.5rem; font-size:2rem; background:transparent; border:none; color:#fff; cursor:pointer; }
-.modal-inner{ display:flex; gap:1rem; align-items:flex-start; }
-.modal-cover img{ width:220px; height:auto; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,0.12);}
-.modal-info{ max-width: calc(100% - 240px);}
-.modal-title{ font-size:1.4rem; margin:0 0 .5rem; font-weight:800;}
-.modal-author{ color:var(--color-muted); margin-bottom:.5rem; }
-
 /* ---------- EPIC OVERLAY (IMAGE ZOOM) ---------- */
 .epic-overlay{
   position:fixed; top:0; left:0; width:100%; height:100%;
@@ -230,13 +190,10 @@ body{
 /* ---------- RESPONSIVE ---------- */
 @media (max-width:900px){
   .catalog-layout{ grid-template-columns:1fr;}
-  .modal-panel, .modal-inner{ flex-direction:column; align-items:center; text-align:center;}
-  .modal-info{ max-width:100%; }
-  .modal-cover img{ width:180px; }
 }
 
 /* ---------- MISC ---------- */
-a:focus, button:focus, .dropdown-toggle:focus{ outline:3px solid rgba(217,168,80,0.18); outline-offset:2px; border-radius:8px; }
+a:focus, button:focus, .dropdown-toggle:focus{ outline:3px solid rgba(217,168,80,0.18); outline-offset:2px; }
 .small{ font-size:.9rem; color:var(--color-muted);}
 .muted{ color:var(--color-muted);}
 
