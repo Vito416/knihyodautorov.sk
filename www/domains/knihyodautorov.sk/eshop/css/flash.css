@@ -1,0 +1,218 @@
+/* /eshop/css/flash.css
+   EPIC FLASH / NOTIFICATION STYLES
+   Works with:
+     - JS widget classes: .flash-widget-container .flash-widget .flash-success/.flash-error/.flash-info
+     - Server-side fallback block: .flash-messages .flash-success/.flash-error/.flash-info
+*/
+
+:root{
+  --flash-z: 99999;
+  --flash-gap: .6rem;
+  --flash-min-w: 260px;
+  --flash-max-w: 420px;
+  --flash-padding: 1rem 1.15rem;
+  --flash-radius: 14px;
+  --flash-shadow: 0 10px 40px rgba(6,6,6,.55);
+  --flash-font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  --flash-accent: rgba(255, 215, 0, 0.12);
+}
+
+/* Container fixed bottom-right */
+.flash-widget-container {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: var(--flash-z);
+  display: flex;
+  flex-direction: column;
+  gap: var(--flash-gap);
+  align-items: flex-end;
+  pointer-events: none; /* allow clicks through except children */
+  max-width: calc(100% - 2.5rem);
+  box-sizing: border-box;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Each flash: card */
+.flash-widget {
+  pointer-events: auto;
+  min-width: var(--flash-min-w);
+  max-width: var(--flash-max-w);
+  background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(12,12,12,0.95));
+  color: #fff;
+  border-radius: var(--flash-radius);
+  box-shadow: var(--flash-shadow);
+  padding: var(--flash-padding);
+  font-family: var(--flash-font-family);
+  font-size: 0.98rem;
+  line-height: 1.25;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  transform-origin: 100% 100%;
+  opacity: 0;
+  transform: translateY(10px) scale(.98) rotateX(1deg);
+  transition: transform .24s cubic-bezier(.15,.9,.25,1), opacity .18s ease;
+  border: 1px solid rgba(255,255,255,0.03);
+  overflow: hidden;
+  backdrop-filter: blur(6px) saturate(110%);
+}
+
+/* show state */
+.flash-widget.show {
+  opacity: 1;
+  transform: translateY(0) scale(1) rotateX(0);
+}
+
+/* icon area (optional) */
+.flash-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+  box-shadow: inset 0 -4px 12px rgba(0,0,0,0.25);
+}
+
+/* body and dismiss */
+.flash-body {
+  flex: 1;
+  display: block;
+  color: rgba(255,255,255,0.97);
+  font-weight: 500;
+  margin: 0;
+  /* clamp to max 3 lines */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+/* small detail line (subtotal etc) */
+.flash-meta {
+  display: block;
+  font-size: .85rem;
+  color: rgba(255,255,255,0.78);
+  margin-top: .35rem;
+  line-height: 1.1;
+}
+
+/* dismiss button */
+.flash-dismiss {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.92);
+  font-size: 1.05rem;
+  cursor: pointer;
+  padding: 0.15rem 0.4rem;
+  line-height: 1;
+  border-radius: 7px;
+  align-self: start;
+}
+
+/* subtle hover for dismiss */
+.flash-dismiss:hover { background: rgba(255,255,255,0.04); }
+
+/* progress bar (thin epic) */
+.flash-progress {
+  width: 100%;
+  height: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+.flash-progress > i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(255,255,255,0.18), rgba(255,255,255,0.06));
+  transform: scaleX(1);
+  transition: transform linear;
+}
+
+/* color themes (epic accents) */
+.flash-success {
+  background: linear-gradient(180deg, #0b7a3e, #0a6a35);
+  box-shadow: 0 12px 40px rgba(7,120,55,0.28);
+  border: none;
+}
+
+.flash-error {
+  background: linear-gradient(180deg, #a1272b, #7f1f22);
+  box-shadow: 0 12px 40px rgba(161,33,44,0.28);
+  border: none;
+}
+
+.flash-info {
+  background: linear-gradient(180deg, #222, #111);
+  box-shadow: 0 12px 40px rgba(34,34,34,0.24);
+  border: none;
+}
+
+/* server-side inline block fallback */
+.flash-messages {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: var(--flash-z);
+  display: flex;
+  flex-direction: column;
+  gap: var(--flash-gap);
+  align-items: flex-end;
+  pointer-events: none;
+  max-width: calc(100% - 2.5rem);
+}
+.flash-messages .flash-success,
+.flash-messages .flash-error,
+.flash-messages .flash-info {
+  pointer-events: auto;
+  padding: var(--flash-padding);
+  border-radius: var(--flash-radius);
+  color: #fff;
+  min-width: var(--flash-min-w);
+  max-width: var(--flash-max-w);
+  box-shadow: var(--flash-shadow);
+  border: 1px solid rgba(255,255,255,0.03);
+}
+
+/* dismiss button for server block */
+.flash-messages .flash-dismiss {
+  float: right;
+  margin-left: 0.6rem;
+}
+
+/* small-screen behavior */
+@media (max-width: 600px) {
+  .flash-widget, .flash-messages .flash-success, .flash-messages .flash-error, .flash-messages .flash-info {
+    min-width: calc(100% - 2rem);
+    max-width: calc(100% - 2rem);
+    right: 1rem;
+    left: 1rem;
+  }
+  .flash-widget-container {
+    left: 1rem;
+    right: 1rem;
+    align-items: center;
+  }
+  .flash-body { -webkit-line-clamp: 4; line-clamp: 4;}
+}
+
+/* reduced motion accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .flash-widget,
+  .flash-widget.show {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+  .flash-progress > i { transition: none; transform: scaleX(0); }
+}

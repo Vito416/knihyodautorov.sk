@@ -15,6 +15,14 @@ declare(strict_types=1);
 // cesta k bootstrapu (upravit dle projektu)
 $bootstrapPath = __DIR__ . '/../eshop/inc/bootstrap.php';
 
+// ===== bootstrap (autoloader) =====
+if (file_exists($bootstrapPath)) {
+    require_once $bootstrapPath;
+} else {
+    echo "<p><strong>Bootstrap nenalezen:</strong> " . htmlspecialchars($bootstrapPath) . "</p>";
+    echo "<p>Uprav \$bootstrapPath v " . htmlspecialchars(__FILE__) . "</p>";
+    exit;
+}
 // cesta k testům (upravit dle struktury projektu)
 $testsDir = realpath(dirname(__DIR__, 4)) . '/libs/gopay/tests/integration';
 
@@ -22,7 +30,6 @@ $testsDir = realpath(dirname(__DIR__, 4)) . '/libs/gopay/tests/integration';
 $shim = __DIR__ . '/phpunit_shim.php';
 
 $expectedToken = $_ENV['GOPAYTEST_TOKEN'] ?? '';
-
 // -------------------------------------------------
 // VALIDATE TOKEN
 // -------------------------------------------------
@@ -30,15 +37,6 @@ $token = $_GET['token'] ?? null;
 if ($token === null || !hash_equals($expectedToken, $token)) {
     http_response_code(403);
     echo json_encode(['error' => 'Invalid token'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
-    exit;
-}
-
-// ===== bootstrap (autoloader) =====
-if (file_exists($bootstrapPath)) {
-    require_once $bootstrapPath;
-} else {
-    echo "<p><strong>Bootstrap nenalezen:</strong> " . htmlspecialchars($bootstrapPath) . "</p>";
-    echo "<p>Uprav \$bootstrapPath v " . htmlspecialchars(__FILE__) . "</p>";
     exit;
 }
 

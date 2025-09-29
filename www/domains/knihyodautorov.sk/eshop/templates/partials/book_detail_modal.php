@@ -1,6 +1,6 @@
 <?php
 /**
- * Partial: only the modal inner content (no .modal wrapper, no .modal-close)
+ * Partial: len vnútorný obsah modalu (bez .modal wrapperu, bez .modal-close)
  *
  * @var array $book
  * @var array $assets
@@ -37,7 +37,7 @@
 
         <?php if (!empty($book['category_name'])): ?>
             <p class="modal-category">
-                Kategorie:
+                Kategória:
                 <a href="/category.php?slug=<?= urlencode($book['category_slug'] ?? '') ?>">
                     <?= htmlspecialchars(html_entity_decode($book['category_name']), ENT_QUOTES, 'UTF-8') ?>
                 </a>
@@ -49,16 +49,24 @@
                 <?= number_format((float)($book['price'] ?? 0), 2, ',', ' ') ?>
                 <?= htmlspecialchars($book['currency'] ?? '', ENT_QUOTES, 'UTF-8') ?>
             </p>
-            <form method="post" action="/cart/add.php" class="modal-add-to-cart-form" novalidate>
+            <form method="post" action="/eshop/cart_add" class="modal-add-to-cart-form" novalidate>
                 <input type="hidden" name="book_id" value="<?= (int)($book['id'] ?? 0) ?>">
-                <button type="submit" class="btn btn-primary">Přidat do košíku</button>
+                <?= CSRF::hiddenInput('csrf') ?>
+                <button type="submit" class="btn btn-primary">Pridať do košíka</button>
+            </form>
+
+            <!-- priame kúpenie -->
+            <form method="post" action="/eshop/checkout" class="modal-buy-now-form" novalidate style="margin-top:0.5rem;">
+                <input type="hidden" name="book_id" value="<?= (int)($book['id'] ?? 0) ?>">
+                <?= CSRF::hiddenInput('csrf') ?>
+                <button type="submit" class="btn btn-success">Kúpiť</button>
             </form>
         <?php else: ?>
-            <p class="modal-unavailable">Momentálně není skladem</p>
+            <p class="modal-unavailable">Momentálne nie je skladom</p>
         <?php endif; ?>
 
         <?php if (!empty($hasPurchased)): ?>
-            <p class="modal-purchased" aria-hidden="false">✔ Již zakoupeno</p>
+            <p class="modal-purchased" aria-hidden="false">✔ Už zakúpené</p>
         <?php endif; ?>
 
         <?php if (!empty($book['description'])): ?>
@@ -70,7 +78,7 @@
 
         <?php if (!empty($relatedBooks)): ?>
             <div class="modal-related-books">
-                <h3>Další knihy</h3>
+                <h3>Ďalšie knihy</h3>
                 <ul class="modal-related-list">
                     <?php foreach ($relatedBooks as $rb): ?>
                         <li>

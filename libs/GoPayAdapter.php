@@ -20,7 +20,7 @@ final class GoPayAdapter
 
     public function __construct(
         Database $db,
-        object $gopayClient,
+        PaymentGatewayInterface $gopayClient,
         object $logger,
         ?object $mailer = null,
         string $notificationUrl = '',
@@ -34,6 +34,64 @@ final class GoPayAdapter
         $this->returnUrl = $returnUrl;
     }
 
+    /*
+    Notes:
+    - $gopayClient must implement PaymentGatewayInterface (the wrapper above does).
+    - If your existing adapter still typehints `object`, it's fine — this snippet is optional but improves static checks.
+    */
+    
+    /**
+     * Fetch order items and normalise structure for payment payload.
+     *
+     * Returns array of items like:
+     *  [
+     *    ['title' => '...', 'price_snapshot' => 12.34, 'qty' => 1],
+     *    ...
+     *  ]
+     */
+    private function fetchOrderItemsForPayload(int $orderId): array
+    {
+        try {
+            // join na books pokud existuje pro hezčí název, fallback na order_items sloupce
+            $sql = 'SELECT oi.*, b.title AS book_title
+                    FROM order_items oi
+                    LEFT JOIN books b ON b.id = oi.book_id
+                    WHERE oi.order_id = :oid';
+            $rows = $this->db->fetchAll($sql, [':oid' => $orderId]);
+
+            $out = [];
+            foreach ($rows as $r) {
+                $title = $r['book_title'] 
+                        ?? $r['title'] 
+                        ?? $r['name'] 
+                        ?? ($r['product_name'] ?? 'item');
+
+                // možná máš ukládáno jako string decimal nebo integer (cents) — snažíme se být tolerantní
+                $price = 0.0;
+                if (isset($r['price_snapshot']) && $r['price_snapshot'] !== null) {
+                    $price = (float)$r['price_snapshot'];
+                } elseif (isset($r['unit_price']) && $r['unit_price'] !== null) {
+                    $price = (float)$r['unit_price'];
+                } elseif (isset($r['price']) && $r['price'] !== null) {
+                    $price = (float)$r['price'];
+                }
+
+                $qty = (int)($r['qty'] ?? $r['quantity'] ?? 1);
+
+                $out[] = [
+                    'title' => (string)$title,
+                    'price_snapshot' => $price,
+                    'qty' => max(1, $qty),
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            // non-fatal: loguj a vrať prázdné pole
+            try { $this->logger->systemError($e, null, null, ['phase' => 'fetchOrderItemsForPayload', 'order_id' => $orderId]); } catch (\Throwable $_) {}
+            return [];
+        }
+    }
     /**
      * Create a payment for an existing order (order must be created and reservations attached).
      * Returns ['payment_id'=>int, 'redirect_url'=>string, 'gopay'=>mixed]
@@ -65,17 +123,61 @@ final class GoPayAdapter
             'amount' => $amountCents,
             'currency' => $order['currency'] ?? 'EUR',
             'order_number' => $order['uuid'] ?? (string)$order['id'],
-            'return_url' => $this->returnUrl,
-            'notification_url' => $this->notificationUrl,
+            // GoPay SDK expects callback subobject
+            'callback' => [
+                'return_url' => $this->returnUrl,
+                'notification_url' => $this->notificationUrl,
+            ],
+            // volitelné: popis/položky
+            'order_description' => 'Objednávka ' . ($order['uuid'] ?? $order['id']),
+            'items' => array_map(function($it){
+                return ['name' => $it['title'] ?? 'item', 'amount' => (int)round(((float)($it['price_snapshot'] ?? 0.0))*100), 'count' => (int)($it['qty'] ?? 1)];
+            }, $this->fetchOrderItemsForPayload($orderId) ), // implementuj pomocník, nebo vynech
         ];
 
         // try creating GoPay payment (outside DB transaction)
         try {
-            try { $this->logger->info('Calling GoPay createPayment', null, ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]); } catch (\Throwable $_) {}
-            // adapt the next line to your GoPay client method name if different
+            try { 
+                $this->logger->info(
+                    'Calling GoPay createPayment', 
+                    null, 
+                    ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]
+                ); 
+            } catch (\Throwable $_) {}
+
+            // GoPay SDK call
             $gopayResponse = $this->gopayClient->createPayment($payload);
+
+            // SDK returns GoPay\Http\Response
+            if (is_object($gopayResponse) && method_exists($gopayResponse, 'hasSucceed')) {
+                if (!$gopayResponse->hasSucceed()) {
+                    $body = $gopayResponse->json ?? null;
+                    try { 
+                        $this->logger->systemError(
+                            new \RuntimeException('GoPay createPayment failed'), 
+                            null, 
+                            null, 
+                            ['response' => $body]
+                        ); 
+                    } catch (\Throwable $_) {}
+                    throw new \RuntimeException('Payment gateway error');
+                }
+                $gopayJson = $gopayResponse->json;
+            } else {
+                $gopayJson = is_array($gopayResponse) 
+                    ? $gopayResponse 
+                    : (is_object($gopayResponse) ? get_object_vars($gopayResponse) : []);
+            }
+
         } catch (\Throwable $e) {
-            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.createPayment', 'order_id' => $orderId]); } catch (\Throwable $_) {}
+            try { 
+                $this->logger->systemError(
+                    $e, 
+                    null, 
+                    null, 
+                    ['phase' => 'gopay.createPayment', 'order_id' => $orderId]
+                ); 
+            } catch (\Throwable $_) {}
             throw $e;
         }
 

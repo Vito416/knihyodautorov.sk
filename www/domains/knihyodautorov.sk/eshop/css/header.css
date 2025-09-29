@@ -367,3 +367,38 @@ body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-
 :root[data-theme="dark"] .header_btn{ background:rgba(255,255,255,0.03); color:var(--ink); border:1px solid rgba(255,255,255,0.04); box-shadow:0 8px 24px rgba(0,0,0,0.5); }
 :root[data-theme="dark"] .header_btn--ghost:hover{ background:rgba(255,255,255,0.02); }
 :root[data-theme="dark"] .header_link-register{ background:linear-gradient(90deg, rgba(227,191,107,0.14), rgba(125,211,252,0.03)); color:var(--ink); border:1px solid rgba(227,191,107,0.06); box-shadow:0 12px 30px rgba(0,0,0,0.6); }
+
+/* Robustní pravidla pro badge vytvořený JSem (data-header-badge),
+   a pro případ, kdy používáme aria-hidden místo třídy --empty */
+[data-header-link="cart"] .header_cart-badge {
+  z-index: 3;                     /* překrývá lehce jiné prvky */
+  transition: transform var(--duration-med) var(--ease-quick), opacity var(--duration-fast);
+}
+
+/* Pokud atribut ukazuje 0 -> považujeme za prázdné */
+[data-header-link="cart"] .header_cart-badge[data-header-badge="0"],
+[data-header-link="cart"] .header_cart-badge[aria-hidden="true"] {
+  opacity: 0;
+  transform: scale(.95);
+  pointer-events: none;
+}
+
+/* Pokud atribut existuje a není 0, ukážeme ho */
+[data-header-link="cart"] .header_cart-badge[data-header-badge]:not([data-header-badge="0"]) {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* Pulse efekt (použítelný po přidání položky) */
+.header_cart-badge.pulse {
+  animation: header-badge-pulse 720ms cubic-bezier(.2,.9,.3,1) both;
+}
+
+/* Lepší fokus pro celý cart-link (přístupnost klávesnicí) */
+[data-header-link="cart"]:focus,
+[data-header-link="cart"]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 6px rgba(125,211,252,0.12);
+  border-radius: 10px;
+}

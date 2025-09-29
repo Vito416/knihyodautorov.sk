@@ -160,6 +160,8 @@ $prefixes = [
 
     'GuzzleHttp\\' => __DIR__ . '/guzzlehttp/guzzle/src/',
 
+    'GuzzleHttp\\Stream\\' => __DIR__ . '/guzzlehttp/streams/src/',
+
    /* 'Symfony\\Contracts\\Deprecation\\' => __DIR__ . '/symfony/deprecation-contracts/src/',*/
 
     'GoPay\\' => __DIR__ . '/gopay/src/',

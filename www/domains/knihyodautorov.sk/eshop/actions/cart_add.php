@@ -2,225 +2,336 @@
 declare(strict_types=1);
 
 /**
- * actions/cart_add.php
+ * cart_add.php
  *
- * Pridanie položky do košíka (DB-backed).
+ * Endpoint: POST /eshop/cart_add
+ * Requires: Database instance available as $db (injected by index.php),
+ *           optional $user (injected by index.php), optional $csrfToken.
  *
- * Predpoklady bootstrapu:
- *  - require_once __DIR__ . '/../../bootstrap.php' (alebo uprav podľa svojej štruktúry)
- *  - Database::getInstance()->getPdo() alebo $pdo dostupné
- *  - voliteľne CSRF::validate() alebo CSRF::check() pre validáciu CSRF tokenu
- *  - tabuľky: carts (id CHAR(36), user_id), cart_items (cart_id, book_id, quantity, price_snapshot, currency)
- *
- * Vstup (POST):
- *  - product_id (int) REQUIRED
- *  - quantity (int) optional, default 1
- *  - csrf (string) optional - kontrola ak CSRF helper existuje
- *
- * Vracia JSON: { success: bool, message: string, cart_id?: string }
+ * Behavior:
+ * - Accepts JSON or form input: { book_id | slug, qty, sku?, variant? }
+ * - Validates CSRF if possible, validates payload.
+ * - Creates a carts row if none in session, or reuses existing cart.
+ * - Upserts cart_items (increase qty if item exists).
+ * - Returns JSON summary of cart.
  */
 
-header('Content-Type: application/json; charset=utf-8');
-try {
-    // --- bootstrap ---
-    // uprav cestu ak potrebné
-    require_once __DIR__ . '/../../bootstrap.php';
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    header('Allow: POST');
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['ok' => false, 'error' => 'method_not_allowed']);
+    exit;
+}
 
-    // získať PDO
-    if (class_exists('Database') && method_exists('Database', 'getInstance')) {
-        $pdo = Database::getInstance()->getPdo();
-    } elseif (isset($pdo) && $pdo instanceof PDO) {
-        // ak už v scope
-        // nop
-    } else {
-        throw new RuntimeException('Databáza nie je inicializovaná (Database::getInstance()).');
+// --- helpers ---
+function respondJson(array $data, int $status = 200): void {
+    http_response_code($status);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function uuidv4(): string {
+    $data = random_bytes(16);
+    $data[6] = chr((ord($data[6]) & 0x0f) | 0x40); // version 4
+    $data[8] = chr((ord($data[8]) & 0x3f) | 0x80); // variant
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+// CSRF validation
+function validateCsrfToken(?string $csrfTokenShared, array $parsedInput = []): bool {
+    // 1) get provided token from common places (header, form, parsed JSON)
+    $provided = null;
+
+    // header: X-CSRF-Token (PHP exposes as HTTP_X_CSRF_TOKEN)
+    if (!empty($_SERVER['HTTP_X_CSRF_TOKEN'])) {
+        $provided = (string) $_SERVER['HTTP_X_CSRF_TOKEN'];
+    } elseif (!empty($_SERVER['HTTP_X_CSRF'])) {
+        $provided = (string) $_SERVER['HTTP_X_CSRF'];
+    } elseif (isset($_POST['csrf'])) {
+        $provided = (string) $_POST['csrf'];
+    } elseif (isset($parsedInput['csrf'])) {
+        $provided = (string) $parsedInput['csrf'];
     }
 
-    // --- jednoduchá CSRF kontrola (voliteľne) ---
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Nepovolená metóda.']);
-        exit;
+    // nothing provided -> invalid
+    if ($provided === null || $provided === '') {
+        return false;
     }
 
-    // načítaj vstupy
-    $productId = isset($_POST['product_id']) ? (int)$_POST['product_id'] : 0;
-    $quantity = isset($_POST['quantity']) ? (int)$_POST['quantity'] : 1;
-    if ($quantity < 1) $quantity = 1;
-    if ($productId <= 0) {
-        echo json_encode(['success' => false, 'message' => 'Neplatné ID produktu.']);
-        exit;
-    }
-
-    // CSRF: ak existuje tvoje CSRF riešenie, použij ho
+    // prefer class validator if exists
     if (class_exists('CSRF') && method_exists('CSRF', 'validate')) {
         try {
-            CSRF::validate(); // nechá vyhodiť výnimku pri chybe
+            return (bool) CSRF::validate($provided);
         } catch (\Throwable $e) {
-            echo json_encode(['success' => false, 'message' => 'CSRF token neplatný.']);
-            exit;
-        }
-    } elseif (class_exists('CSRF') && method_exists('CSRF', 'check')) {
-        if (!CSRF::check($_POST['csrf'] ?? null)) {
-            echo json_encode(['success' => false, 'message' => 'CSRF token neplatný.']);
-            exit;
-        }
-    } // inak nevyžadujeme CSRF (ale odporúčame ho mať)
-
-    // optional: jednoduché rate limit / bruteforce ochrana (ľahká ochrana)
-    // (tu ju nepovinne pridávam len ako comment; implementuj podľa infraštruktúry)
-
-    // --- overenie produktu a cena ---
-    $stmt = $pdo->prepare('SELECT id, title, price, currency, stock_quantity, is_available FROM books WHERE id = :id AND is_active = 1 LIMIT 1');
-    $stmt->execute([':id' => $productId]);
-    $book = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$book) {
-        echo json_encode(['success' => false, 'message' => 'Produkt neexistuje alebo je neaktívny.']);
-        exit;
-    }
-    if (!(int)$book['is_available']) {
-        echo json_encode(['success' => false, 'message' => 'Produkt momentálne nie je dostupný.']);
-        exit;
-    }
-    $stock = (int)$book['stock_quantity'];
-    if ($stock > 0 && $quantity > $stock) {
-        // ak skladové množstvo >0 a požadované množstvo je väčšie
-        echo json_encode(['success' => false, 'message' => 'Nedostatok na sklade. Dostupné: ' . $stock]);
-        exit;
-    }
-
-    // --- zisti current user (ak existuje) ---
-    $userId = null;
-    if (class_exists('Auth') && method_exists('Auth', 'currentUserId')) {
-        $userId = Auth::currentUserId(); // môže vrátiť null
-    } elseif (class_exists('SessionManager') && method_exists('SessionManager', 'getUserId')) {
-        $userId = SessionManager::getUserId();
-    } elseif (function_exists('get_current_user_id')) {
-        $userId = get_current_user_id();
-    }
-    if ($userId !== null) {
-        $userId = (int)$userId;
-        if ($userId <= 0) $userId = null;
-    }
-
-    // --- zisti alebo vytvor cart_id ---
-    // preferujeme cart via user_id ak prihlásený, inak cookie-based cart id (CHAR(36))
-    $cartId = null;
-
-    if ($userId !== null) {
-        // hľadaj existujúci active cart pre usera (najnovší)
-        $stmt = $pdo->prepare('SELECT id FROM carts WHERE user_id = :uid LIMIT 1');
-        $stmt->execute([':uid' => $userId]);
-        $cartId = $stmt->fetchColumn();
-    }
-
-    if (!$cartId) {
-        // skús cookie
-        $existingCartCookie = $_COOKIE['eshop_cart'] ?? '';
-        if ($existingCartCookie && preg_match('/^[a-f0-9\-]{36}$/i', $existingCartCookie)) {
-            // overit v DB
-            $stmt = $pdo->prepare('SELECT id FROM carts WHERE id = :id LIMIT 1');
-            $stmt->execute([':id' => $existingCartCookie]);
-            $found = $stmt->fetchColumn();
-            if ($found) $cartId = $existingCartCookie;
+            // if CSRF::validate throws, treat as invalid (logger optional)
+            try { if (class_exists('Logger')) Logger::warn('CSRF.validate threw', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+            return false;
         }
     }
 
-    // ak ešte nemáme cartId -> vytvoríme nový
-    if (!$cartId) {
-        // vygenerujeme UUID v4 (bez externých dependencií)
-        $cartId = bin2hex(random_bytes(16));
-        // pre lepšiu čitateľnosť môžeme vložiť pomlčky (36 chars) alebo ponechať 32 hex
-        // schéma má CHAR(36), preto pridáme pomlčky do UUIDv4
-        $cartId = substr($cartId,0,8) . '-' . substr($cartId,8,4) . '-' . substr($cartId,12,4) . '-' . substr($cartId,16,4) . '-' . substr($cartId,20,12);
+    // fallback: compare with server-side shared token (if available)
+    if ($csrfTokenShared !== null && $csrfTokenShared !== '') {
+        // use timing-safe comparison
+        return hash_equals((string)$csrfTokenShared, (string)$provided);
+    }
 
-        // vlož do DB
-        $ins = $pdo->prepare('INSERT INTO carts (id, user_id, created_at, updated_at) VALUES (:id, :uid, NOW(), NOW())');
-        $ins->execute([':id' => $cartId, ':uid' => $userId]);
-        // nastav cookie pre guest (30 dní)
-        if ($userId === null) {
-            $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['SERVER_PORT'] ?? 0) == 443;
-            // setcookie s modernými flagmi (PHP 7.3+ podporuje array options)
-            $cookieOptions = [
-                'expires' => time() + 60*60*24*30,
-                'path' => '/eshop',
-                'domain' => $_SERVER['HTTP_HOST'] ?? '',
-                'secure' => $secure,
-                'httponly' => true,
-                'samesite' => 'Lax',
-            ];
-            // bezpečný fallback
-            if (PHP_VERSION_ID >= 70300) {
-                setcookie('eshop_cart', $cartId, $cookieOptions);
+    // no validator and no shared token -> invalid
+    return false;
+}
+
+// sanitize integers
+function toInt(mixed $v, int $default = 0): int {
+    if (is_int($v)) return $v;
+    if (is_string($v) && preg_match('/^-?\d+$/', $v)) return (int)$v;
+    return $default;
+}
+
+// --- begin handler ---
+// očekáváme, že index.php injektuje $db (Database instance) a volitelně $user, $csrfToken
+/** @var Database $db */
+if (!isset($db) || !($db instanceof Database)) {
+    // nemáme přístup k DB - fatal
+    try { if (class_exists('Logger')) Logger::error('cart_add: Database not injected'); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'server_error'], 500);
+}
+
+// ensure session started (bootstrap should start session, ale pojistíme se)
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
+// parse input (JSON body preferred)
+$input = [];
+$contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+if (stripos((string)$contentType, 'application/json') !== false) {
+    $raw = file_get_contents('php://input');
+    $decoded = json_decode($raw, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        $input = $decoded;
+    } else {
+        respondJson(['ok' => false, 'error' => 'invalid_json'], 400);
+    }
+} else {
+    // form-encoded
+    $input = $_POST;
+}
+
+// CSRF
+try {
+    $csrfShared = $csrfToken ?? null;
+    if (!validateCsrfToken($csrfShared, $input)) {
+        respondJson(['ok' => false, 'error' => 'csrf_invalid'], 403);
+    }
+} catch (\Throwable $e) {
+    // bezpečnostní fallback - považovat za neautorizované
+    try { if (class_exists('Logger')) Logger::warn('cart_add: CSRF validation threw', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'csrf_error'], 403);
+}
+
+// extract and validate payload
+$bookId = isset($input['book_id']) ? toInt($input['book_id'], 0) : 0;
+$slug = isset($input['slug']) ? trim((string)$input['slug']) : null;
+$qty = max(1, toInt($input['qty'] ?? 1, 1));
+if ($qty > 999) $qty = 999; // sanity cap
+$sku = isset($input['sku']) ? (string)$input['sku'] : null;
+$variant = null;
+if (isset($input['variant'])) {
+    if (is_string($input['variant'])) {
+        // try decode JSON variant or keep raw string
+        $maybe = json_decode($input['variant'], true);
+        $variant = (json_last_error() === JSON_ERROR_NONE) ? $maybe : $input['variant'];
+    } else {
+        $variant = $input['variant'];
+    }
+}
+
+// identify book row either by id or slug
+try {
+    if ($bookId > 0) {
+        $book = $db->fetch('SELECT id, price, currency, is_available, stock_quantity FROM books WHERE id = :id LIMIT 1', ['id' => $bookId]);
+    } elseif ($slug) {
+        $book = $db->fetch('SELECT id, price, currency, is_available, stock_quantity FROM books WHERE slug = :slug LIMIT 1', ['slug' => $slug]);
+    } else {
+        respondJson(['ok' => false, 'error' => 'invalid_payload', 'message' => 'book_id or slug required'], 400);
+    }
+} catch (\Throwable $e) {
+    try { if (class_exists('Logger')) Logger::systemError($e, null, ['phase' => 'cart_add.book_fetch']); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'server_error'], 500);
+}
+
+if (!$book) {
+    respondJson(['ok' => false, 'error' => 'invalid_book'], 400);
+}
+
+// check availability (we don't reserve stock here; just inform user)
+if (isset($book['is_available']) && !$book['is_available']) {
+    respondJson(['ok' => false, 'error' => 'out_of_stock', 'available' => 0], 409);
+}
+if (isset($book['stock_quantity']) && is_numeric($book['stock_quantity'])) {
+    $available = (int)$book['stock_quantity'];
+    if ($available <= 0) {
+        respondJson(['ok' => false, 'error' => 'out_of_stock', 'available' => 0], 409);
+    }
+    // optionally, cap requested qty to available (but better to inform)
+    if ($qty > $available) {
+        respondJson(['ok' => false, 'error' => 'insufficient_stock', 'available' => $available], 409);
+    }
+}
+
+// Prepare cart (session-backed)
+$sessionCartId = $_SESSION['cart_id'] ?? null;
+$cartId = null;
+$userId = $user['id'] ?? null;
+
+try {
+    $cartId = $db->transaction(function(Database $dbtx) use (&$sessionCartId, $userId) {
+        // Reuse existing session cart if present and exists
+        if (!empty($sessionCartId)) {
+            $exists = $dbtx->fetch('SELECT id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
+            if ($exists) {
+                // Optionally attach to user if user is logged in and cart.user_id IS NULL
+                return $sessionCartId;
             } else {
-                // fallback pre staršie PHP (nie ideálne, ale pracujúce)
-                setcookie('eshop_cart', $cartId, time() + 60*60*24*30, '/eshop', $cookieOptions['domain'] ?: '', $cookieOptions['secure'], $cookieOptions['httponly']);
+                // session cart id invalid -> clear session key and create new
+                unset($_SESSION['cart_id']);
+                $sessionCartId = null;
             }
         }
-    }
 
-    // --- vlož alebo aktualizuj položku v cart_items ---
-    $pdo->beginTransaction();
-    try {
-        // najprv skontrolujeme či už existuje položka pre daný cart/product
-        $sel = $pdo->prepare('SELECT quantity FROM cart_items WHERE cart_id = :cart_id AND book_id = :book_id LIMIT 1');
-        $sel->execute([':cart_id' => $cartId, ':book_id' => $productId]);
-        $existingQty = $sel->fetchColumn();
-
-        // price snapshot a currency z books
-        $priceSnapshot = (float)$book['price'];
-        $currency = (string)$book['currency'];
-
-        if ($existingQty !== false && $existingQty !== null) {
-            $newQty = (int)$existingQty + $quantity;
-            // ak stock je >0, obmedz množstvo
-            if ($stock > 0 && $newQty > $stock) {
-                $newQty = $stock;
+        // Try to find an active cart for user (if user logged in)
+        if ($userId !== null) {
+            $row = $dbtx->fetch('SELECT id FROM carts WHERE user_id = :uid ORDER BY updated_at DESC LIMIT 1', ['uid' => $userId]);
+            if ($row && !empty($row['id'])) {
+                $_SESSION['cart_id'] = $row['id'];
+                return $row['id'];
             }
-            $upd = $pdo->prepare('UPDATE cart_items SET quantity = :qty, price_snapshot = :price, currency = :cur WHERE cart_id = :cart_id AND book_id = :book_id');
-            $upd->execute([
-                ':qty' => $newQty,
-                ':price' => $priceSnapshot,
-                ':cur' => $currency,
-                ':cart_id' => $cartId,
-                ':book_id' => $productId,
+        }
+
+        // create new cart
+        $newId = uuidv4();
+        $dbtx->execute('INSERT INTO carts (id, user_id, created_at, updated_at) VALUES (:id, :uid, NOW(6), NOW(6))', [
+            'id' => $newId,
+            'uid' => $userId,
+        ]);
+        $_SESSION['cart_id'] = $newId;
+        return $newId;
+    });
+} catch (\Throwable $e) {
+    try { if (class_exists('Logger')) Logger::systemError($e, null, ['phase' => 'cart_add.create_cart']); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'server_error'], 500);
+}
+
+// Upsert cart_items (transactional)
+try {
+    $db->transaction(function(Database $dbtx) use ($cartId, $book, $qty, $sku, $variant) {
+        // find existing line for same cart + book + sku (sku can be NULL)
+        $sql = 'SELECT id, quantity FROM cart_items WHERE cart_id = :cart_id AND book_id = :book_id';
+        $params = ['cart_id' => $cartId, 'book_id' => $book['id']];
+        if ($sku !== null) {
+            $sql .= ' AND sku = :sku';
+            $params['sku'] = $sku;
+        } else {
+            $sql .= ' AND (sku IS NULL OR sku = \'\')';
+        }
+
+        $existing = $dbtx->fetch($sql . ' LIMIT 1', $params);
+
+        $unitPrice = isset($book['price']) ? number_format((float)$book['price'], 2, '.', '') : '0.00';
+        $priceSnapshot = $unitPrice;
+        $currency = $book['currency'] ?? 'EUR';
+
+        if ($existing) {
+            // update quantity (increment)
+            $newQty = max(1, (int)$existing['quantity'] + (int)$qty);
+            $dbtx->execute('UPDATE cart_items SET quantity = :qty, unit_price = :unit_price, price_snapshot = :price_snapshot, currency = :currency, meta = JSON_MERGE_PATCH(COALESCE(meta, JSON_OBJECT()), JSON_OBJECT()) , sku = :sku WHERE id = :id', [
+                'qty' => $newQty,
+                'unit_price' => $unitPrice,
+                'price_snapshot' => $priceSnapshot,
+                'currency' => $currency,
+                'sku' => $sku,
+                'id' => $existing['id'],
             ]);
         } else {
-            // vlož novú položku
-            $ins = $pdo->prepare('INSERT INTO cart_items (cart_id, book_id, quantity, price_snapshot, currency) VALUES (:cart_id, :book_id, :qty, :price, :cur)');
-            $ins->execute([
-                ':cart_id' => $cartId,
-                ':book_id' => $productId,
-                ':qty' => $quantity,
-                ':price' => $priceSnapshot,
-                ':cur' => $currency,
+            // insert new line
+            $dbtx->execute('INSERT INTO cart_items (cart_id, book_id, sku, variant, quantity, unit_price, price_snapshot, currency, meta) VALUES (:cart_id, :book_id, :sku, :variant, :quantity, :unit_price, :price_snapshot, :currency, :meta)', [
+                'cart_id' => $cartId,
+                'book_id' => $book['id'],
+                'sku' => $sku,
+                'variant' => $variant !== null ? json_encode($variant, JSON_UNESCAPED_UNICODE) : null,
+                'quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'price_snapshot' => $priceSnapshot,
+                'currency' => $currency,
+                'meta' => null,
             ]);
         }
+    });
+} catch (\Throwable $e) {
+    try { if (class_exists('Logger')) Logger::systemError($e, null, ['phase' => 'cart_add.upsert']); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'server_error'], 500);
+}
 
-        // aktualizovať updated_at v carts
-        $u = $pdo->prepare('UPDATE carts SET updated_at = NOW(), user_id = COALESCE(user_id, :uid) WHERE id = :id');
-        $u->execute([':uid' => $userId, ':id' => $cartId]);
+// Build cart snapshot to return
+try {
+    $cartRows = $db->fetchAll('
+        SELECT ci.id, ci.book_id, ci.sku, ci.variant, ci.quantity, ci.unit_price, ci.price_snapshot, ci.currency, b.title, b.slug
+        FROM cart_items ci
+        LEFT JOIN books b ON b.id = ci.book_id
+        WHERE ci.cart_id = :cart_id
+        ORDER BY ci.id ASC
+    ', ['cart_id' => $cartId]);
 
-        $pdo->commit();
-
-        echo json_encode(['success' => true, 'message' => 'Produkt pridaný do košíka.', 'cart_id' => $cartId]);
-        exit;
-    } catch (\Throwable $e) {
-        $pdo->rollBack();
-        // logni chybu ak Logger existuje
-        if (class_exists('Logger') && method_exists('Logger','systemError')) {
-            Logger::systemError($e);
+    $items = [];
+    $itemsCountDistinct = 0;
+    $itemsTotalQty = 0;
+    $subtotal = 0.0;
+    foreach ($cartRows as $r) {
+        $itemsCountDistinct++;
+        $qtyLine = (int)$r['quantity'];
+        $itemsTotalQty += $qtyLine;
+        $linePrice = (float)$r['price_snapshot'] * $qtyLine;
+        $subtotal += $linePrice;
+        $variantDecoded = null;
+        if (!empty($r['variant'])) {
+            $decoded = json_decode((string)$r['variant'], true);
+            $variantDecoded = json_last_error() === JSON_ERROR_NONE ? $decoded : $r['variant'];
         }
-        echo json_encode(['success' => false, 'message' => 'Chyba pri ukladaní položky do košíka.']);
-        exit;
+        $items[] = [
+            'id' => (int)$r['id'],
+            'book_id' => (int)$r['book_id'],
+            'slug' => $r['slug'] ?? null,
+            'title' => $r['title'] ?? null,
+            'sku' => $r['sku'] ?? null,
+            'variant' => $variantDecoded,
+            'qty' => $qtyLine,
+            'unit_price' => number_format((float)$r['unit_price'], 2, '.', ''),
+            'line_price' => number_format($linePrice, 2, '.', ''),
+            'currency' => $r['currency'] ?? null,
+        ];
     }
 
-} catch (\Throwable $outer) {
-    // globálna chyba
-    if (class_exists('Logger') && method_exists('Logger','systemError')) {
-        Logger::systemError($outer);
-    }
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Internal server error.']);
-    exit;
+    $cartSummary = [
+        'cart_id' => $cartId,
+        'items_count' => $itemsCountDistinct,
+        'items_total_qty' => $itemsTotalQty,
+        'subtotal' => number_format($subtotal, 2, '.', ''),
+        'currency' => $cartRows[0]['currency'] ?? ($book['currency'] ?? 'EUR'),
+        'items' => $items,
+    ];
+
+    // optional analytics/logging
+    try {
+        if (class_exists('Logger')) {
+            Logger::info('cart_add.success', $cartId, [
+                'user_id' => $user['id'] ?? null,
+                'added_book_id' => $book['id'],
+                'qty' => $qty,
+                'cart_summary' => $cartSummary,
+            ]);
+        }
+    } catch (\Throwable $_) {}
+    respondJson(['ok' => true, 'cart' => $cartSummary]);
+} catch (\Throwable $e) {
+    try { if (class_exists('Logger')) Logger::systemError($e, null, ['phase' => 'cart_add.summary']); } catch (\Throwable $_) {}
+    respondJson(['ok' => false, 'error' => 'server_error'], 500);
 }

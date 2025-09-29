@@ -117,6 +117,36 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
                                 <div class="price"><?= $price ?></div>
                                 <div class="availability"><?= $available ? 'Skladom' : 'Nedostupné' ?></div>
                             </div>
+
+                            <?php
+                            // v loopu nadále dostupné: $b, $baseUrl, případně $csrf_token, případně CSRF helper
+                            $bookId = (int)($b['id'] ?? 0);
+                            ?>
+                            <form method="post"
+                                action="<?= $baseUrl ?>/cart_add"
+                                class="modal-add-to-cart-form inline-add-to-cart"
+                                data-ajax="cart"
+                                novalidate>
+                            <input type="hidden" name="book_id" value="<?= $bookId ?>">
+                            <input type="hidden" name="qty" value="1">
+                            <?php
+                                // vloží CSRF pole pokud je k dispozici
+                                if (class_exists('CSRF') && method_exists('CSRF', 'hiddenInput')) {
+                                try { echo CSRF::hiddenInput('csrf'); } catch (\Throwable $_) {}
+                                } elseif (!empty($csrf_token)) {
+                                echo '<input type="hidden" name="csrf" value="'.htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'">';
+                                }
+                            ?>
+                            <div class="card-actions" style="display:flex;gap:.5rem;margin-top:.5rem;">
+                                <button type="submit" class="btn btn-primary btn-add" aria-label="Pridať do košíka">Pridať do košíka</button>
+
+                                <!-- buy-now: přidá do košíku a přesměruje na checkout -->
+                                <button type="button" class="btn btn-ghost btn-buy-now" data-action="buy-now" aria-label="Kúpiť">
+                                Kúpiť
+                                </button>
+                            </div>
+                            </form>
+
                         </article>
                     <?php endforeach; ?>
                 </div>

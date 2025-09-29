@@ -152,34 +152,51 @@ if ($method === 'POST') {
         return ['template' => 'pages/checkout.php', 'vars' => ['error' => 'Neplatný e-mail.', 'posted' => $_POST]];
     }
 
-    // collect cart items
+    // collect cart items (unified: support DB-backed carts and legacy $_SESSION['cart'])
     $cartItems = [];
 
     try {
+        // prefer DB-backed cart if user has one or session has cart_id
+        $cartId = null;
+
+        // 1) If session has cart_id (string UUID) use it
+        if (!empty($_SESSION['cart_id'])) {
+            $cartId = $_SESSION['cart_id'];
+        }
+
+        // 2) If user logged in, prefer user's cart (most recent). This will override session cart_id.
         if ($currentUserId !== null) {
             $cartRow = $database->fetch('SELECT id FROM carts WHERE user_id = :user_id ORDER BY updated_at DESC LIMIT 1', ['user_id' => $currentUserId]);
             if ($cartRow && !empty($cartRow['id'])) {
-                $cartId = (int)$cartRow['id'];
-                $rows = $database->fetchAll(
-                    'SELECT ci.book_id, ci.quantity, ci.price_snapshot, ci.currency, b.title, b.slug, b.is_available, b.stock_quantity
-                     FROM cart_items ci
-                     JOIN books b ON b.id = ci.book_id
-                     WHERE ci.cart_id = :cart_id',
-                    ['cart_id' => $cartId]
-                );
-                foreach ($rows as $r) {
-                    $cartItems[] = [
-                        'book_id' => (int)$r['book_id'],
-                        'qty' => (int)$r['quantity'],
-                        'price_snapshot' => (float)$r['price_snapshot'],
-                        'currency' => $r['currency'],
-                        'title' => $r['title'],
-                    ];
-                }
+                // NOTE: do NOT cast to int - carts.id may be a UUID string
+                $cartId = $cartRow['id'];
+                // make sure session also stores it
+                $_SESSION['cart_id'] = $cartId;
+            }
+        }
+
+        // 3) If we have a DB cart id, load cart_items from DB
+        if ($cartId !== null) {
+            $rows = $database->fetchAll(
+                'SELECT ci.book_id, ci.quantity, ci.price_snapshot, ci.currency, b.title, b.slug, b.is_available, b.stock_quantity
+                FROM cart_items ci
+                JOIN books b ON b.id = ci.book_id
+                WHERE ci.cart_id = :cart_id',
+                ['cart_id' => $cartId]
+            );
+            foreach ($rows as $r) {
+                $cartItems[] = [
+                    'book_id' => (int)$r['book_id'],
+                    'qty' => (int)$r['quantity'],
+                    'price_snapshot' => (float)$r['price_snapshot'],
+                    'currency' => $r['currency'],
+                    'title' => $r['title'],
+                ];
             }
         } else {
+            // 4) fallback: legacy session array format (bookId => qty)
             $sessCart = $_SESSION['cart'] ?? [];
-            if (!empty($sessCart)) {
+            if (!empty($sessCart) && is_array($sessCart)) {
                 $ids = array_map('intval', array_keys($sessCart));
                 if (!empty($ids)) {
                     $placeholders = implode(',', array_fill(0, count($ids), '?'));
@@ -384,4 +401,93 @@ if ($currentUserId !== null) {
     }
 }
 
-return ['template' => 'pages/checkout.php', 'vars' => ['prefill' => $prefill]];
+// --- build cart for template (handler-side) ---
+$templateCart = [];
+try {
+    // prefer session cart_id, else user's cart, else legacy session array
+    $cartId = $_SESSION['cart_id'] ?? null;
+    if ($currentUserId !== null) {
+        $r = $database->fetch('SELECT id FROM carts WHERE user_id = :uid ORDER BY updated_at DESC LIMIT 1', ['uid' => $currentUserId]);
+        if ($r && !empty($r['id'])) {
+            $cartId = $r['id'];
+            $_SESSION['cart_id'] = $cartId;
+        }
+    }
+
+    if (!empty($cartId)) {
+        // try normal lookup (string UUID)
+        $rows = $database->fetchAll(
+            'SELECT ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
+             FROM cart_items ci
+             LEFT JOIN books b ON b.id = ci.book_id
+             WHERE ci.cart_id = :cart_id
+             ORDER BY ci.id ASC',
+            ['cart_id' => $cartId]
+        );
+        foreach ($rows as $r) {
+            $templateCart[] = [
+                'title' => $r['title'] ?? '',
+                'qty' => (int)($r['quantity'] ?? 0),
+                'price_snapshot' => isset($r['price_snapshot']) ? (float)$r['price_snapshot'] : 0.0,
+            ];
+        }
+
+        // fallback: packed UUID stored as BINARY(16) (try UNHEX(REPLACE(...)))
+        if (empty($templateCart) && is_string($cartId) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $cartId)) {
+            try {
+                $rows = $database->fetchAll(
+                    'SELECT ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
+                     FROM cart_items ci
+                     LEFT JOIN books b ON b.id = ci.book_id
+                     WHERE ci.cart_id = UNHEX(REPLACE(:cart_id, "-", ""))
+                     ORDER BY ci.id ASC',
+                    ['cart_id' => $cartId]
+                );
+                foreach ($rows as $r) {
+                    $templateCart[] = [
+                        'title' => $r['title'] ?? '',
+                        'qty' => (int)($r['quantity'] ?? 0),
+                        'price_snapshot' => isset($r['price_snapshot']) ? (float)$r['price_snapshot'] : 0.0,
+                    ];
+                }
+            } catch (\Throwable $_) {
+                // ignore fallback error
+            }
+        }
+    } else {
+        // legacy session-cart fallback (bookId => qty)
+        $sess = $_SESSION['cart'] ?? [];
+        if (!empty($sess) && is_array($sess)) {
+            $ids = array_map('intval', array_keys($sess));
+            if (!empty($ids)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $books = $database->fetchAll('SELECT id, title, price FROM books WHERE id IN (' . $placeholders . ') AND is_active = 1', $ids);
+                $byId = [];
+                foreach ($books as $b) $byId[(int)$b['id']] = $b;
+                foreach ($sess as $bid => $q) {
+                    $b = $byId[(int)$bid] ?? null;
+                    if (!$b) continue;
+                    $templateCart[] = [
+                        'title' => $b['title'],
+                        'qty' => (int)$q,
+                        'price_snapshot' => isset($b['price']) ? (float)$b['price'] : 0.0,
+                    ];
+                }
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) { try { Logger::systemError($e, $currentUserId ?? null); } catch (\Throwable $_) {} }
+}
+
+// pass CSRF token if available (index.php might inject $csrfToken)
+$csrfForTpl = $csrfToken ?? null;
+
+return [
+    'template' => 'pages/checkout.php',
+    'vars' => [
+        'prefill' => $prefill,
+        'cart' => $templateCart,
+        'csrf' => $csrfForTpl,
+    ],
+];

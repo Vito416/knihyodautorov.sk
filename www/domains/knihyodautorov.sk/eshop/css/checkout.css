@@ -1,0 +1,70 @@
+/* public/assets/css/checkout.css
+   Scoped to .checkout-page so můžeš bezpečně importovat do layoutu.
+*/
+
+.checkout-page{
+  --card-bg: #ffffff;
+  --muted: #6b7280;
+  --accent: #0ea5a4;
+  --accent-dark: #0596a4;
+  --danger: #ef4444;
+  --radius: 12px;
+  --gap: 18px;
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  display:block;
+  background: linear-gradient(180deg,#fafcff, #f7f9fb);
+  padding:20px;
+  border-radius: var(--radius);
+  box-shadow: 0 6px 18px rgba(15,23,42,0.06);
+}
+
+/* header */
+.checkout-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.page-title{font-size:1.25rem;margin:0}
+.checkout-meta{display:flex;gap:8px;align-items:center}
+.meta-pill{background:transparent;padding:6px 10px;border-radius:999px;border:1px solid rgba(14,165,164,0.08);color:var(--muted);font-size:0.9rem}
+
+/* layout */
+.checkout-grid{display:grid;grid-template-columns:1fr 360px;gap:20px}
+@media (max-width:900px){ .checkout-grid{grid-template-columns:1fr} }
+
+.card{background:var(--card-bg);padding:16px;border-radius:10px}
+.form-card{min-height:220px}
+.summary-card{position:relative}
+
+/* sections */
+.section-title{margin:0 0 10px 0;font-size:1rem}
+
+/* list */
+.checkout-items{list-style:none;padding:0;margin:0;border-top:1px dashed #eef2f7}
+.item-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9}
+.item-title{font-weight:600}
+.item-meta{color:var(--muted);font-size:0.95rem}
+.price{font-weight:700}
+
+/* totals */
+.total-row{display:flex;justify-content:space-between;align-items:center;padding-top:12px;font-size:1.02rem}
+
+/* form */
+.form-checkout{display:flex;flex-direction:column;gap:12px}
+.form-row{display:flex;flex-direction:column}
+.row.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row.three{display:grid;grid-template-columns:1fr 120px 1fr;gap:12px}
+@media (max-width:700px){ .row.two,.row.three{grid-template-columns:1fr} }
+
+label{font-size:0.9rem;color:var(--muted);margin-bottom:6px}
+input[type=text], input[type=email], select, textarea{
+  padding:10px 12px;border:1px solid #e6eef6;border-radius:10px;font-size:1rem;background:transparent;
+}
+input:focus, select:focus, textarea:focus{outline:none;box-shadow:0 0 0 4px rgba(14,165,164,0.06);border-color:var(--accent)}
+
+/* buttons */
+.form-actions{display:flex;gap:12px;margin-top:6px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:9px 12px;border-radius:10px;border:0;background:transparent;cursor:pointer;text-decoration:none}
+.btn-primary{background:linear-gradient(90deg,var(--accent), var(--accent-dark));color:white;font-weight:700;box-shadow:0 8px 20px rgba(14,165,164,0.12)}
+.btn-ghost{background:transparent;border:1px solid #e6eef6;color:var(--muted);padding:9px 12px;border-radius:10px;}
+
+/* misc */
+.form-error{background:#fff4f4;border:1px solid rgba(239,68,68,0.12);color:var(--danger);padding:10px;border-radius:8px}
+.empty{padding:24px;text-align:center;color:var(--muted)}
+.muted{color:var(--muted);font-size:0.92rem}

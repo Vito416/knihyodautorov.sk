@@ -161,6 +161,9 @@ body{
 .excerpt{ color:var(--color-muted); font-size:.88rem; }
 .meta{ padding:.75rem; display:flex; gap:.5rem; justify-content:space-between; border-top:1px solid rgba(0,0,0,0.03);}
 .card-actions{ display:flex; gap:.5rem; align-items:center; }
+.card-actions .btn { padding: .45rem .7rem; font-size: .92rem; border-radius: 10px; }
+.card-actions .btn-add { background: linear-gradient(90deg, #f3c26b, #7dd3fc); color:#071421; border:none; }
+.card-actions .btn-buy-now { background: transparent; border:1px solid rgba(8,12,20,0.06); color: #2d2a24; }
 
 /* ---------- EPIC OVERLAY (IMAGE ZOOM) ---------- */
 .epic-overlay{

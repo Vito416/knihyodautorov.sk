@@ -56,6 +56,29 @@ if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
 if (!defined('APP_NAME')) define('APP_NAME', $config['app_name'] ?? ($_ENV['APP_NAME'] ?? 'app'));
 if (!defined('APP_URL')) define('APP_URL', $config['app_url'] ?? ($_ENV['APP_URL'] ?? ''));
 
+$gopayCfg = [
+    'goid' => $_ENV['GOPAY_GOID'] ?? '8583067438',
+    'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '1223619925',
+    'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '6vkhVP8c',
+    'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com/api',
+    // optional: pass Language::CZECH or TokenScope::ALL from bootstrap if you want
+    // 'language' => \GoPay\Definition\Language::CZECH,
+    // 'scope' => \GoPay\Definition\TokenScope::ALL,
+];
+
+$gopayWrapper = new GoPaySdkWrapper($gopayCfg);
+
+// logger shim: adapt your existing Logger static API to object expected by adapter
+$loggerShim = new class {
+    public function info($message, $userId = null, $context = null) { try { Logger::info($message, $userId, $context); } catch (\Throwable $_) {} }
+    public function warn($message, $userId = null, $context = null) { try { Logger::warn($message, $userId, $context); } catch (\Throwable $_) {} }
+    public function systemError($e, $userId = null, $token = null, $context = null) { try { Logger::systemError($e, $userId, $token, $context); } catch (\Throwable $_) {} }
+    public function systemMessage($level, $message, $userId = null, $context = null) { try { Logger::systemMessage($level, $message, $userId, $context); } catch (\Throwable $_) {} }
+};
+
+$notificationUrl = (string)($_ENV['APP_GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay/notify');
+$returnUrl = (string)($_ENV['APP_GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'order/return');
+
 // -------------------- Crypto / KeyManager (fail fast) --------------------
 try {
     if (!class_exists('KeyManager')) throw new RuntimeException('KeyManager class not available');
@@ -141,6 +164,8 @@ if (class_exists('EnforcePasswordChange') && method_exists('EnforcePasswordChang
 if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) {
     try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
 }
+
+$gopayAdapter = new GoPayAdapter($database, $gopayWrapper, $loggerShim, null, $notificationUrl, $returnUrl);
 
 // Templates init
 Templates::init($config);

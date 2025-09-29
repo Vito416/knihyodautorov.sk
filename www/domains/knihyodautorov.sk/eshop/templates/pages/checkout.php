@@ -3,92 +3,150 @@
 // Expects:
 //  - $pageTitle (string|null)
 //  - $navActive (string|null)
-//  - $cart (array) : položky ['product_name'=>string,'quantity'=>int,'price'=>float]
-//  - $csrf_token (string|null)
+//  - $cart (array) : položky ['title'=>string,'qty'=>int,'price_snapshot'=>float]
+//  - $csrf (string|null)
 //  - $error (string|null)
-//
-// Uses partials: header.php, flash.php, footer.php
+//  - $prefill (array)
 
-$pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Pokladna';
+$pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Pokladňa';
 $navActive = $navActive ?? 'cart';
 $cart = isset($cart) && is_array($cart) ? $cart : [];
-$csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
+$csrf = $csrf ?? null;
 $error = isset($error) ? (string)$error : null;
+$prefill = $prefill ?? [];
 
-$partialsDir = __DIR__ . '/../partials';
-include $partialsDir . '/header.php';
-include $partialsDir . '/flash.php';
-
+// server-side totals for accessibility / noscript
 $total = 0.0;
+$itemsCount = 0;
 foreach ($cart as $item) {
-    $total += (float)$item['price'] * (int)$item['quantity'];
+    $qty = (int)($item['qty'] ?? 0);
+    $price = (float)($item['price_snapshot'] ?? 0.0);
+    $total += $price * $qty;
+    $itemsCount += $qty;
 }
 ?>
-<article class="checkout-page">
-    <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
+<article class="checkout-page card">
+    <header class="checkout-header">
+        <h1 class="page-title"><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
+        <div class="checkout-meta">
+            <span class="meta-pill">Položky: <strong id="cart-items-count"><?= (int)$itemsCount ?></strong></span>
+            <span class="meta-pill">Spolu: <strong id="cart-total"><?= number_format($total, 2, ',', ' ') ?> €</strong></span>
+        </div>
+    </header>
 
-    <?php if (empty($cart)): ?>
-        <p>Váš košík je prázdný.</p>
-        <p><a class="btn" href="/eshop/catalog.php">Pokračovat v nákupu</a></p>
-    <?php else: ?>
-        <?php if ($error !== null && $error !== ''): ?>
-            <div class="form-error" role="alert"><?= htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
-        <?php endif; ?>
-
-        <h2>Souhrn objednávky</h2>
-        <ul class="checkout-items">
-            <?php foreach ($cart as $item): ?>
-                <li>
-                    <?= htmlspecialchars($item['product_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>
-                    × <?= (int)$item['quantity'] ?>
-                    — <?= number_format($item['price'] * $item['quantity'], 2, ',', ' ') ?> Kč
-                </li>
-            <?php endforeach; ?>
-        </ul>
-        <p><strong>Celkem: <?= number_format($total, 2, ',', ' ') ?> Kč</strong></p>
-
-        <h2>Fakturační údaje</h2>
-        <form method="post" action="/eshop/checkout.php" class="form-checkout" novalidate>
-            <div class="form-row">
-                <label for="full_name">Jméno a příjmení</label>
-                <input type="text" id="full_name" name="full_name" required value="<?= htmlspecialchars($_POST['full_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <div class="form-row">
-                <label for="address">Adresa</label>
-                <input type="text" id="address" name="address" required value="<?= htmlspecialchars($_POST['address'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <div class="form-row">
-                <label for="city">Město</label>
-                <input type="text" id="city" name="city" required value="<?= htmlspecialchars($_POST['city'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <div class="form-row">
-                <label for="zip">PSČ</label>
-                <input type="text" id="zip" name="zip" required value="<?= htmlspecialchars($_POST['zip'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <div class="form-row">
-                <label for="email">E-mail</label>
-                <input type="email" id="email" name="email" required value="<?= htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <div class="form-row">
-                <label for="phone">Telefon</label>
-                <input type="tel" id="phone" name="phone" value="<?= htmlspecialchars($_POST['phone'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-            </div>
-
-            <?php if ($csrf !== null): ?>
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+    <div class="checkout-grid">
+        <!-- LEFT: Billing form -->
+        <section class="form-card">
+            <?php if ($error): ?>
+                <div class="form-error" role="alert"><?= htmlspecialchars($error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
             <?php endif; ?>
 
-            <div class="form-row">
-                <button type="submit" class="btn btn-primary">Dokončit objednávku</button>
-            </div>
-        </form>
-    <?php endif; ?>
-</article>
+            <h2 class="section-title">Fakturačné údaje</h2>
 
-<?php
-include $partialsDir . '/footer.php';
+            <form id="checkout-form" method="post" action="?route=checkout" class="form-checkout" novalidate>
+                <div class="row two">
+                    <div class="form-row">
+                        <label for="bill_full_name">Meno a priezvisko</label>
+                        <input type="text" id="bill_full_name" name="bill_full_name" required
+                               value="<?= htmlspecialchars($_POST['bill_full_name'] ?? $prefill['full_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    </div>
+
+                    <div class="form-row">
+                        <label for="email">E-mail</label>
+                        <input type="email" id="email" name="email" required
+                               value="<?= htmlspecialchars($_POST['email'] ?? $prefill['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <label for="bill_street">Ulica a číslo</label>
+                    <input type="text" id="bill_street" name="bill_street" required
+                           value="<?= htmlspecialchars($_POST['bill_street'] ?? $prefill['street'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                </div>
+
+                <div class="row three">
+                    <div class="form-row">
+                        <label for="bill_city">Mesto</label>
+                        <input type="text" id="bill_city" name="bill_city" required
+                               value="<?= htmlspecialchars($_POST['bill_city'] ?? $prefill['city'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    </div>
+
+                    <div class="form-row">
+                        <label for="bill_zip">PSČ</label>
+                        <input type="text" id="bill_zip" name="bill_zip" required
+                               value="<?= htmlspecialchars($_POST['bill_zip'] ?? $prefill['zip'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    </div>
+
+                    <div class="form-row">
+                        <label for="bill_country">Krajina</label>
+                        <input type="text" id="bill_country" name="bill_country" required
+                               value="<?= htmlspecialchars($_POST['bill_country'] ?? $prefill['country'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                    </div>
+                </div>
+
+                <?php if ($csrf !== null): ?>
+                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+                <?php endif; ?>
+
+                <div class="form-actions">
+                    <!-- NOTE: button type="button" -> submit cez JS (posiela JSON) -->
+                    <button type="button" id="checkout-submit" class="btn btn-primary" data-action="submit-order">
+                        Dokončiť objednávku
+                    </button>
+                    <a href="/eshop" class="btn btn-ghost">Pokračovať v nákupe</a>
+                </div>
+            </form>
+            <script type="text/javascript">
+            // server-side cart snapshot (bez session reliance)
+            window.__checkoutCart = <?= json_encode(array_values($cart), JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
+            // optional CSRF token (ak máš)
+            window.__csrfToken = <?= $csrf !== null ? json_encode($csrf, JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) : 'null' ?>;
+            // endpoint
+            window.__orderSubmitUrl = '/eshop/order_submit';
+            </script>
+        </section>
+
+        <!-- RIGHT: Order summary -->
+        <aside class="summary-card aside">
+            <h2 class="section-title">Súhrn objednávky</h2>
+
+            <?php if (empty($cart)): ?>
+                <div class="empty">
+                    <p>Váš košík je prázdny.</p>
+                    <p><a class="btn btn-ghost" href="/eshop">Pridať položky</a></p>
+                </div>
+            <?php else: ?>
+                <ul class="checkout-items" id="checkout-items">
+                    <?php foreach ($cart as $idx => $item):
+                        $title = $item['title'] ?? '';
+                        $qty = (int)($item['qty'] ?? 0);
+                        $price = (float)($item['price_snapshot'] ?? 0.0);
+                        $line = $price * $qty;
+                    ?>
+                    <li class="item-row" data-idx="<?= $idx ?>">
+                        <div>
+                            <div class="item-title"><?= htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
+                            <div class="item-meta"><?= $qty ?> × <?= number_format($price, 2, ',', ' ') ?> €</div>
+                        </div>
+                        <div class="price"><?= number_format($line, 2, ',', ' ') ?> €</div>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+
+                <div class="total-row">
+                    <div class="muted">Medzisúčet</div>
+                    <div class="price"><?= number_format($total, 2, ',', ' ') ?> €</div>
+                </div>
+
+                <div class="total-row" style="margin-top:8px;font-size:1.05rem">
+                    <strong>Celkom</strong>
+                    <strong id="total-strong"><?= number_format($total, 2, ',', ' ') ?> €</strong>
+                </div>
+
+                <div class="smallprint muted" style="margin-top:12px;font-size:0.86rem">
+                    Bezpečná platba — prijímame GoPay, PayBySquare a ďalšie. Po odoslaní budete presmerovaný na stránku platobnej brány.
+                </div>
+            <?php endif; ?>
+        </aside>
+    </div>
+</article>

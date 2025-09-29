@@ -29,7 +29,9 @@ $mobile_nav_id = 'header_nav_mobile';
   <title><?= htmlspecialchars($pageTitleSafe, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> — <?= htmlspecialchars($appName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <link rel="stylesheet" href="/eshop/css/app.css" media="screen">
   <link rel="stylesheet" href="/eshop/css/header.css" media="screen">
-    <link rel="stylesheet" href="/eshop/css/catalog.css" media="screen">
+  <link rel="stylesheet" href="/eshop/css/catalog.css" media="screen">
+  <link rel="stylesheet" href="/eshop/css/flash.css">
+  <link rel="stylesheet" href="/eshop/css/checkout.css">
   <?php if ($csrf_token): ?>
     <meta name="csrf-token" content="<?= htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
   <?php endif; ?>

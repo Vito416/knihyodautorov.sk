@@ -18,37 +18,6 @@ try {
 $currentUserId = $userId ?? null;
 $user = $user ?? null;
 
-if ($currentUserId !== null) {
-    try {
-        $user = $database->fetch('SELECT * FROM pouzivatelia WHERE id = :id LIMIT 1', ['id' => $currentUserId]);
-        if ($user) {
-            // získat id zakoupených knih jako pole integerů
-            $pbooks = $database->fetchColumn(
-                'SELECT DISTINCT oi.book_id
-                 FROM orders o
-                 INNER JOIN order_items oi ON oi.order_id = o.id
-                 WHERE o.user_id = :uid
-                 AND o.status = :paid_status',
-                ['uid' => $currentUserId, 'paid_status' => 'paid']
-            );
-            $user['purchased_books'] = array_map('intval', $pbooks);
-        }
-    } catch (Throwable $e) {
-        try { if (class_exists('Logger')) Logger::error('Failed to fetch user in index.php', $currentUserId ?? null, ['exception' => (string)$e]); } catch (Throwable $_) {}
-        $user = null;
-    }
-}
-
-// --- CSRF token (pokud existuje) ---
-$csrfToken = null;
-try {
-    if (class_exists('CSRF') && method_exists('CSRF', 'token')) {
-        $csrfToken = CSRF::token();
-    }
-} catch (Throwable $_) {
-    $csrfToken = null;
-}
-
 // --- Route detection ---
 $uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '', '/');
 $base = trim('eshop', '/'); // adjust pokud je jiný base
@@ -71,7 +40,10 @@ $routes = [
     'catalog'        => 'catalog.php',
     'detail'         => 'detail.php',
     'cart'           => 'cart.php',
+    'cart_add'           => '/actions/cart_add.php',
+    'cart_mini'           => '/actions/cart_mini.php',
     'checkout'       => 'checkout.php',
+    'order_submit'       => '/actions/order_submit.php',
     'gopay_callback' => 'gopay_callback.php',
     'order'          => 'order.php',
     'login'          => 'login.php',
@@ -92,23 +64,32 @@ if (!isset($routes[$route])) {
     exit;
 }
 
-// --- Prepare trusted shared vars for header/footer ---
-$categories = [];
-try {
-    // použijeme per-request cache helper; krátká TTL (2s) je default v cachedFetchAll
-    $categories = $database->cachedFetchAll('SELECT * FROM categories ORDER BY nazov ASC');
-} catch (Throwable $e) {
-    try { if (class_exists('Logger')) Logger::warn('Failed to fetch categories for header', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
-    $categories = [];
+// --- Build trustedShared using TrustedShared helper ---
+// TrustedShared::create bude best-effort: použije předanou Database, user a userId.
+// EnrichUser=true zajistí načtení purchased_books (pokud máš v DB odpovídající metody).
+// --- Build trustedShared using TrustedShared helper (fallback safe) ---
+if (class_exists('TrustedShared') && method_exists('TrustedShared', 'create')) {
+    $trustedShared = TrustedShared::create([
+        'database'     => $database,
+        'user'         => $user,
+        'userId'       => $currentUserId ?? null,
+        'gopayAdapter' => $gopayAdapter ?? null,
+        'enrichUser'   => false, // pokud už máš manuální fetch výše; změň podle volby A/B
+    ]);
+} else {
+    // fallback: keep minimal manual trustedShared to avoid fatal errors
+    $trustedShared = [
+        'user'         => $user,
+        'csrfToken'    => $csrfToken ?? null,
+        'categories'   => [],
+        'db'           => $database,
+        'gopayAdapter' => $gopayAdapter ?? null,
+        'now_utc'      => gmdate('Y-m-d H:i:s'),
+    ];
+    if (class_exists('Logger')) {
+        try { Logger::warn('TrustedShared class missing, using fallback'); } catch (Throwable $_) {}
+    }
 }
-
-// trustedShared obsahuje vše, co chceme sdílet (header/footer + případně do handleru)
-$trustedShared = [
-    'user'       => $user,
-    'csrfToken'  => $csrfToken,
-    'categories' => $categories,
-    'db'         => $database, // přímo Database instance — handlery a šablony mohou volat ->fetch/->execute/...
-];
 
 // --- Normalize route config ---
 $routeConfig = $routes[$route];
@@ -123,18 +104,8 @@ if (is_string($routeConfig)) {
     echo Templates::render('pages/error.php', ['message' => 'Internal route config error', 'user' => $user]);
     exit;
 }
-
 // --- Decide which trustedShared keys to inject into handler scope (sharedForInclude) ---
-$sharedForInclude = [];
-if ($shareSpec === true) {
-    $sharedForInclude = $trustedShared;
-} elseif ($shareSpec === false) {
-    $sharedForInclude = [];
-} elseif (is_array($shareSpec)) {
-    foreach ($shareSpec as $k) {
-        if (array_key_exists($k, $trustedShared)) $sharedForInclude[$k] = $trustedShared[$k];
-    }
-}
+$sharedForInclude = TrustedShared::select($trustedShared, $shareSpec);
 
 // --- Handler include in isolated scope, with selected shared vars extracted (EXTR_SKIP) ---
 $handlerResult = (function(string $handlerPath, array $sharedVars) {
@@ -178,16 +149,7 @@ if ($result['content'] === null && $handlerResult['content'] !== '') {
 }
 
 // --- Decide which trustedShared keys to pass to the template (sharedForTemplate) ---
-$sharedForTemplate = [];
-if ($shareSpec === true) {
-    $sharedForTemplate = $trustedShared;
-} elseif ($shareSpec === false) {
-    $sharedForTemplate = [];
-} elseif (is_array($shareSpec)) {
-    foreach ($shareSpec as $k) {
-        if (array_key_exists($k, $trustedShared)) $sharedForTemplate[$k] = $trustedShared[$k];
-    }
-}
+$sharedForTemplate = TrustedShared::select($trustedShared, $shareSpec);
 
 // --- Compose final variables for template ---
 // We want to PROTECT trustedShared from being overwritten by handler vars,

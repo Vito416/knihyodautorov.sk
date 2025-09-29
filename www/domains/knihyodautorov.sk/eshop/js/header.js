@@ -199,7 +199,7 @@
   const fetchMiniCart = () => {
     if (!miniCartEl) return Promise.resolve();
     createMinicartStructure(miniCartEl);
-    return fetch('/eshop/api/minicart.php', { credentials: 'same-origin' })
+    return fetch('/eshop/cart_mini', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : Promise.reject('Failed to load minicart'))
       .then(json => {
         const listEl = miniCartEl.querySelector('.header_minicart-list');
