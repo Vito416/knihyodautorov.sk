@@ -56,9 +56,6 @@ if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
 if (!defined('APP_NAME')) define('APP_NAME', $config['app_name'] ?? ($_ENV['APP_NAME'] ?? 'app'));
 if (!defined('APP_URL')) define('APP_URL', $config['app_url'] ?? ($_ENV['APP_URL'] ?? ''));
 
-use GoPay\Definition\Language;
-use GoPay\Definition\TokenScope;
-
 $gopayCfg = [
     'goid' => $_ENV['GOPAY_GOID'] ?? '',
     'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '',

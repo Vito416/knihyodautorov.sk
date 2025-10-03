@@ -142,18 +142,6 @@ $prefixes = [
 
     'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
 
-    'GuzzleHttp\\Promise\\' => __DIR__ . '/guzzlehttp/promises/src/',
-
-    'GuzzleHttp\\Psr7\\' => __DIR__ . '/guzzlehttp/psr7/src/',
-
-    'GuzzleHttp\\' => __DIR__ . '/guzzlehttp/guzzle/src/',
-
-    'GuzzleHttp\\Stream\\' => __DIR__ . '/guzzlehttp/streams/src/',
-
-   /* 'Symfony\\Contracts\\Deprecation\\' => __DIR__ . '/symfony/deprecation-contracts/src/',*/
-
-    'GoPay\\' => __DIR__ . '/gopay/src/',
-
     'Cron\\' => __DIR__ . '/../cron/',
 ];
 
