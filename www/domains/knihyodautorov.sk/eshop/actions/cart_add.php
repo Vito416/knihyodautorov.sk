@@ -310,12 +310,19 @@ try {
         ];
     }
 
+    $currency = 'EUR';
+    if (!empty($cartRows) && !empty($cartRows[0]['currency'])) {
+        $currency = $cartRows[0]['currency'];
+    } elseif (!empty($book['currency'])) {
+        $currency = $book['currency'];
+    }
+
     $cartSummary = [
         'cart_id' => $cartId,
         'items_count' => $itemsCountDistinct,
         'items_total_qty' => $itemsTotalQty,
         'subtotal' => number_format($subtotal, 2, '.', ''),
-        'currency' => $cartRows[0]['currency'] ?? ($book['currency'] ?? 'EUR'),
+        'currency' => $currency,
         'items' => $items,
     ];
 
@@ -330,7 +337,17 @@ try {
             ]);
         }
     } catch (\Throwable $_) {}
-    respondJson(['ok' => true, 'cart' => $cartSummary]);
+    // po úspěšném updatu košíka
+    $newCsrf = null;
+    try {
+        if (class_exists('CSRF')) {
+            $newCsrf = CSRF::token();
+        }
+    } catch (\Throwable $_) { /* ignore */ }
+
+    $payload = ['ok' => true, 'cart' => $cartSummary];
+    if ($newCsrf) $payload['csrf_token'] = $newCsrf;
+    respondJson($payload);
 } catch (\Throwable $e) {
     try { if (class_exists('Logger')) Logger::systemError($e, null, ['phase' => 'cart_add.summary']); } catch (\Throwable $_) {}
     respondJson(['ok' => false, 'error' => 'server_error'], 500);

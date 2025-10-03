@@ -1,8 +1,9 @@
-/* header.js — robustní integrace pro header.php (patch) */
+/* header.js — robustní integrace pro header.php (patch)
+   Přidá hlavičku mini-košíku, remove/clear akce a opraví "empty" zobrazení. */
 (function () {
   'use strict';
 
-  /* helpers */
+  /* -------------------- helpers -------------------- */
   const $ = (sel, ctx = document) => (ctx || document).querySelector(sel);
   const $$ = (sel, ctx = document) => Array.from((ctx || document).querySelectorAll(sel));
   const on = (el, evt, selOrHandler, handler) => {
@@ -26,7 +27,63 @@
   const rafPulse = (el) => { if (!el) return; el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); setTimeout(()=>el.classList.remove('pulse'), 900); };
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 
-  /* THEME */
+  // small POST helper (JSON) with CSRF auto-injection and form fallback
+  const postJson = (url, payload = {}) => {
+    const csrf = (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]') || {}).value
+              || document.querySelector('meta[name="csrf-token"], meta[name="csrf"]')?.getAttribute('content')
+              || window.__csrfToken || null;
+
+    // try JSON first (include CSRF header for server)
+    const headers = { 'Content-Type': 'application/json' };
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(payload)
+    }).then(r => {
+      if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || r.statusText)));
+      return r.json().catch(()=>({}));
+    }).then(json => {
+      // update token if server returned new one
+      if (json && json.csrf_token) {
+        document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
+          try { i.value = json.csrf_token; } catch(_) {}
+        });
+        const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
+        if (meta) try { meta.setAttribute('content', json.csrf_token); } catch(_) {}
+        try { window.__csrfToken = json.csrf_token; } catch(_) {}
+      }
+      return json;
+    }).catch(err => {
+      // fallback: form-encoded (send csrf in form)
+      try {
+        const fd = new FormData();
+        Object.keys(payload || {}).forEach(k => fd.append(k, payload[k]));
+        if (csrf) fd.set('csrf', csrf);
+        return fetch(url, { method: 'POST', credentials: 'same-origin', body: fd })
+          .then(r => {
+            if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || r.statusText)));
+            return r.json().catch(()=>({}));
+          }).then(json => {
+            if (json && json.csrf_token) {
+              document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
+                try { i.value = json.csrf_token; } catch(_) {}
+              });
+              const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
+              if (meta) try { meta.setAttribute('content', json.csrf_token); } catch(_) {}
+              try { window.__csrfToken = json.csrf_token; } catch(_) {}
+            }
+            return json;
+          });
+      } catch (e) {
+        return Promise.reject(err);
+      }
+    });
+  };
+
+  /* -------------------- THEME -------------------- */
   const THEME_KEY = 'epic:theme';
   const themeToggle = $('[data-header-action="theme-toggle"]');
   const setTheme = (t) => {
@@ -48,7 +105,7 @@
   });
   initTheme();
 
-  /* MOBILE NAV */
+  /* -------------------- MOBILE NAV -------------------- */
   const mobileNav = document.getElementById('header_nav_mobile');
   const navToggle = document.querySelector('[data-header-toggle="nav"]');
   let lastFocused = null;
@@ -65,21 +122,58 @@
     if (lastFocused && typeof lastFocused.focus === 'function') lastFocused.focus();
     document.body.style.overflow = '';
   };
-  if (navToggle) navToggle.addEventListener('click', ()=> { const open = navToggle.getAttribute('aria-expanded') === 'true'; (open ? closeMobileNav() : openMobileNav)(); });
+  if (navToggle) navToggle.addEventListener('click', ()=> {
+    const open = navToggle.getAttribute('aria-expanded') === 'true';
+    (open ? closeMobileNav : openMobileNav)();
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMobileNav(); });
 
-  /* DROPDOWNS (categories) — robust */
-  $$('[data-header-toggle="categories"]').forEach((btn) => {
+  /* -------------------- DROPDOWNS (categories) — robust -------------------- */
+  const categoryButtons = $$('[data-header-toggle="categories"]');
+  const categoryMap = new Map();
+
+  categoryButtons.forEach((btn) => {
     const panel = document.getElementById(btn.getAttribute('aria-controls'));
     if (!panel) return;
+    categoryMap.set(btn, panel);
+
     const setOpen = (v) => { btn.setAttribute('aria-expanded', v ? 'true' : 'false'); panel.setAttribute('aria-hidden', v ? 'false' : 'true'); };
     setOpen(false);
-    btn.addEventListener('click', (e) => { e.stopPropagation(); const isOpen = btn.getAttribute('aria-expanded') === 'true'; setOpen(!isOpen); if (!isOpen) { const first = panel.querySelector('[role="menuitem"]'); if (first) first.focus(); } });
-    btn.addEventListener('keydown', (e) => { if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(true); const first = panel.querySelector('[role="menuitem"]'); if (first) first.focus(); } });
-    document.addEventListener('click', (ev) => { if (!panel.contains(ev.target) && ev.target !== btn) setOpen(false); });
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isOpen = btn.getAttribute('aria-expanded') === 'true';
+      categoryMap.forEach((p, b) => { b.setAttribute('aria-expanded','false'); p.setAttribute('aria-hidden','true'); });
+      if (!isOpen) {
+        setOpen(true);
+        const first = panel.querySelector('[role="menuitem"]');
+        if (first) first.focus();
+      } else {
+        setOpen(false);
+      }
+    });
+
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        categoryMap.forEach((p, b) => { b.setAttribute('aria-expanded','false'); p.setAttribute('aria-hidden','true'); });
+        setOpen(true);
+        const first = panel.querySelector('[role="menuitem"]');
+        if (first) first.focus();
+      }
+    });
   });
 
-  /* MENUBAR keyboard nav */
+  document.addEventListener('click', (ev) => {
+    categoryMap.forEach((panel, btn) => {
+      if (!panel.contains(ev.target) && ev.target !== btn) {
+        btn.setAttribute('aria-expanded','false');
+        panel.setAttribute('aria-hidden','true');
+      }
+    });
+  });
+
+  /* -------------------- MENUBAR keyboard nav -------------------- */
   const navList = document.querySelector('.header_nav-list');
   if (navList) navList.addEventListener('keydown', (e) => {
     const menuitems = Array.from(navList.querySelectorAll('[role="menuitem"]')); if (!menuitems.length) return;
@@ -93,7 +187,7 @@
     }
   });
 
-  /* SEARCH SUGGESTIONS */
+  /* -------------------- SEARCH SUGGESTIONS (unchanged) -------------------- */
   const searchInput = document.querySelector('[data-header-input="search-q"]');
   const suggestionsHost = document.querySelector('[data-header-suggestions]') || document.getElementById('header_search_suggestions');
   const SUGGEST_URL = document.querySelector('meta[name="suggest-url"]')?.content || '/eshop/api/suggest.php?q=';
@@ -109,10 +203,21 @@
   const renderSuggestions = (items) => {
     if (!suggestionsHost) return;
     suggestionNodes = []; selectionIndex = -1;
+    suggestionsHost.innerHTML = '';
+
     if (!Array.isArray(items) || items.length === 0) {
-      suggestionsHost.innerHTML = '<div class="muted">Žiadne výsledky</div>'; suggestionsHost.setAttribute('aria-hidden','false'); return;
+      const none = document.createElement('div');
+      none.className = 'muted';
+      none.textContent = 'Žiadne výsledky';
+      suggestionsHost.appendChild(none);
+      suggestionsHost.setAttribute('aria-hidden','false');
+      return;
     }
-    const ul = document.createElement('ul'); ul.setAttribute('role','listbox'); ul.style.listStyle='none'; ul.style.margin='0'; ul.style.padding='6px';
+
+    const ul = document.createElement('ul');
+    ul.className = 'header_suggestions-list';
+    ul.setAttribute('role','listbox');
+
     items.forEach((it, idx) => {
       const li = document.createElement('li');
       li.setAttribute('role','option');
@@ -120,17 +225,30 @@
       li.tabIndex = -1;
       li.className = 'header_suggestion';
       li.dataset.value = it.value || it.label || '';
-      const label = escapeHtml(it.label || it.value || '');
-      const meta = escapeHtml(it.meta || '');
-      li.innerHTML = `<div style="font-weight:600">${label}</div><div style="font-size:0.82rem;color:var(--epic-muted)">${meta}</div>`;
+
+      const labelDiv = document.createElement('div');
+      labelDiv.className = 'hdr-label';
+      labelDiv.innerHTML = escapeHtml(it.label || it.value || '');
+
+      const metaDiv = document.createElement('div');
+      metaDiv.className = 'hdr-meta';
+      metaDiv.innerHTML = escapeHtml(it.meta || '');
+
+      li.appendChild(labelDiv);
+      li.appendChild(metaDiv);
+
       li.addEventListener('click', () => {
         if (it.url) window.location.href = it.url;
-        else window.location.href = '/eshop/catalog.php?q=' + encodeURIComponent(it.value || it.label);
+        else window.location.href = '/eshop/catalog.php?q=' + encodeURIComponent(it.value || it.label || '');
       });
       li.addEventListener('keydown', (e) => { if (e.key === 'Enter') li.click(); });
-      ul.appendChild(li); suggestionNodes.push(li);
+
+      ul.appendChild(li);
+      suggestionNodes.push(li);
     });
-    suggestionsHost.innerHTML = ''; suggestionsHost.appendChild(ul); suggestionsHost.setAttribute('aria-hidden','false');
+
+    suggestionsHost.appendChild(ul);
+    suggestionsHost.setAttribute('aria-hidden','false');
   };
 
   const doSuggest = debounce((term) => {
@@ -141,7 +259,7 @@
     fetch(url, { signal: controller.signal, credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : Promise.reject('Network error'))
       .then(data => renderSuggestions(data || []))
-      .catch(err => { if (err.name !== 'AbortError') { console.warn('Suggest error', err); clearSuggestions(); } });
+      .catch(err => { if (!err || err.name !== 'AbortError') { console.warn('Suggest error', err); clearSuggestions(); } });
   }, 200);
 
   if (searchInput) {
@@ -171,17 +289,54 @@
     if (suggestionsHost && !suggestionsHost.contains(e.target) && e.target !== searchInput) clearSuggestions();
   });
 
-  /* MINI CART — robust selection & auto-create structure if missing */
+  /* -------------------- MINI CART — robust selection & auto-create structure if missing -------------------- */
   const miniCartEl = document.querySelector('[data-header-minicart]') || document.querySelector('.header_cart-dropdown') || document.querySelector('.header_minicart');
   const cartLink = document.querySelector('[data-header-link="cart"]');
   const cartBadge = document.querySelector('[data-header-badge]');
 
   const createMinicartStructure = (el) => {
     if (!el) return;
+    // If already created but missing parts, ensure they exist
+    if (!el.querySelector('.header_minicart-header')) {
+      const header = document.createElement('div');
+      header.className = 'header_minicart-header';
+      header.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <strong class="header_minicart-title-heading">Košík</strong>
+            <div class="header_minicart-total muted" aria-hidden="true" style="font-size:.92rem;color:var(--muted)"></div>
+          </div>
+          <div class="header_minicart-controls" style="display:flex;gap:8px;align-items:center;">
+            <a href="/eshop/cart_clear" class="header_btn header_btn--ghost minicart-action-clear" title="Vymazať košík">Vymazať</a>
+            <a href="/eshop/cart" class="header_btn header_btn--ghost minicart-action-view" title="Zobraziť košík">Zobraziť</a>
+            <a href="/eshop/checkout" class="header_btn header_btn--primary minicart-action-checkout" title="Dokončiť nákup">Dokončiť</a>
+          </div>
+        </div>
+      `;
+      el.appendChild(header);
+    }
+
     if (!el.querySelector('.header_minicart-list')) {
-      const list = document.createElement('ul'); list.className = 'header_minicart-list';
-      const empty = document.createElement('div'); empty.className = 'header_minicart-empty'; empty.textContent = 'V košíku nič nie je';
-      el.appendChild(empty); el.appendChild(list);
+      const empty = document.createElement('div');
+      empty.className = 'header_minicart-empty';
+      empty.textContent = 'V košíku nič nie je';
+      empty.setAttribute('aria-hidden','true');
+
+      const list = document.createElement('ul');
+      list.className = 'header_minicart-list';
+      list.setAttribute('role','list');
+      list.setAttribute('aria-hidden','true');
+
+      el.appendChild(empty);
+      el.appendChild(list);
+    }
+
+    // footer / actions area (optional)
+    if (!el.querySelector('.header_minicart-actions')) {
+      const actions = document.createElement('div');
+      actions.className = 'header_minicart-actions';
+      actions.style.display = 'none'; // visibility managed by aria attributes
+      el.appendChild(actions);
     }
   };
   createMinicartStructure(miniCartEl);
@@ -190,51 +345,331 @@
     const count = Number(n) || 0;
     if (cartBadge) {
       cartBadge.textContent = count > 0 ? String(count) : '';
-      if (count > 0) { cartBadge.classList.remove('header_cart-badge--empty'); cartBadge.removeAttribute('aria-hidden'); cartBadge.setAttribute('role','status'); cartBadge.setAttribute('aria-live','polite'); rafPulse(cartBadge); }
-      else { cartBadge.classList.add('header_cart-badge--empty'); cartBadge.setAttribute('aria-hidden','true'); }
+      cartBadge.setAttribute('data-header-badge', String(count));
+      if (count > 0) {
+        cartBadge.classList.remove('header_cart-badge--empty');
+        cartBadge.removeAttribute('aria-hidden');
+        cartBadge.setAttribute('role','status');
+        cartBadge.setAttribute('aria-live','polite');
+        rafPulse(cartBadge);
+      } else {
+        cartBadge.classList.add('header_cart-badge--empty');
+        cartBadge.setAttribute('aria-hidden','true');
+      }
     }
     if (cartLink) { cartLink.setAttribute('data-header-cart-count', String(count)); cartLink.setAttribute('aria-label', count > 0 ? `Košík, ${count} položiek` : 'Košík'); }
+  };
+
+  // remove single item by id (rowid or id)
+  const removeCartItem = (id) => {
+    if (!id) return Promise.reject(new Error('no id'));
+    // disable interactions briefly (optimistic)
+    return postJson('/eshop/cart_remove.php', { id })
+      .then(res => {
+        // server should respond success = true or updated cart
+        return fetchMiniCart(); // refresh view
+      }).catch(err => {
+        console.warn('Remove item failed', err);
+        return Promise.reject(err);
+      });
+  };
+
+// --- clear cart (with CSRF) + UI update + event dispatch ---
+const getCsrfFromDOM = () => {
+  return (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]') || {}).value
+    || document.querySelector('meta[name="csrf-token"], meta[name="csrf"]')?.getAttribute('content')
+    || window.__csrfToken || null;
+};
+
+const applyCsrfToDOM = (token) => {
+  if (!token) return;
+  document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
+    try { i.value = token; } catch (_) {}
+  });
+  const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
+  if (meta) try { meta.setAttribute('content', token); } catch (_) {}
+  try { window.__csrfToken = token; } catch (_) {}
+};
+
+  const clearCart = () => {
+    const url = '/eshop/cart_clear'; // uprav na '/eshop/cart_clear' pokud máš vlastní routing
+    const csrf = getCsrfFromDOM();
+    const fd = new FormData();
+    if (csrf) fd.set('csrf', csrf);
+
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, csrf ? { 'X-CSRF-Token': csrf } : {}),
+      body: fd
+    })
+    .then(r => r.text().then(txt => ({ r, txt })))
+    .then(({ r, txt }) => {
+      if (!r.ok) {
+        try { const j = JSON.parse(txt); return Promise.reject(j); } catch(_) { return Promise.reject(txt || r.statusText); }
+      }
+      let data = {};
+      try { data = txt ? JSON.parse(txt) : {}; } catch(_) { data = {}; }
+
+      // update CSRF
+      if (data && data.csrf_token) applyCsrfToDOM(data.csrf_token);
+
+      // update badge immediately using returned cart summary (robust)
+      if (data && data.cart) {
+        const newCount = Number(data.cart.items_total_qty ?? data.cart.items_count ?? 0);
+        updateCartBadge(newCount);
+      } else {
+        updateCartBadge(0);
+      }
+
+      // dispatch events so other modules react
+      try {
+        document.dispatchEvent(new CustomEvent('cart:cleared', { detail: { cart: data.cart || null } }));
+        document.dispatchEvent(new CustomEvent('cart:updated', { detail: { cart: data.cart || null } }));
+      } catch (_) {}
+
+      // refresh minicart markup for consistency
+      return fetchMiniCart().then(() => data);
+    });
   };
 
   const fetchMiniCart = () => {
     if (!miniCartEl) return Promise.resolve();
     createMinicartStructure(miniCartEl);
+    // show loading state (optional): set aria-busy
+    miniCartEl.setAttribute('aria-busy','true');
     return fetch('/eshop/cart_mini', { credentials: 'same-origin' })
       .then(r => r.ok ? r.json() : Promise.reject('Failed to load minicart'))
       .then(json => {
         const listEl = miniCartEl.querySelector('.header_minicart-list');
         const emptyEl = miniCartEl.querySelector('.header_minicart-empty');
+        const headerTotal = miniCartEl.querySelector('.header_minicart-total');
+        const actions = miniCartEl.querySelector('.header_minicart-actions');
+
+        // update header total if available
+        if (headerTotal) {
+          if (json && (json.total_price !== undefined && json.total_price !== null)) {
+            headerTotal.textContent = `Spolu: ${String(json.total_price)}`;
+            headerTotal.setAttribute('aria-hidden','false');
+          } else {
+            headerTotal.textContent = '';
+            headerTotal.setAttribute('aria-hidden','true');
+          }
+        }
+
         if (Array.isArray(json.items) && json.items.length) {
-          emptyEl.style.display = 'none'; listEl.style.display = ''; listEl.innerHTML = '';
-          json.items.slice(0, 8).forEach(it => {
+          emptyEl.setAttribute('aria-hidden','true');
+          listEl.setAttribute('aria-hidden','false');
+          listEl.innerHTML = '';
+          json.items.slice(0, 20).forEach(it => {
             const li = document.createElement('li');
-            const thumb = it.thumb ? `<img src="${escapeHtml(it.thumb)}" alt="" style="width:46px;height:46px;object-fit:cover;border-radius:6px">` : `<div style="width:46px;height:46px;border-radius:6px;background:rgba(255,255,255,0.02)"></div>`;
-            li.innerHTML = `<div style="flex:0 0 46px">${thumb}</div><div style="flex:1"><div style="font-weight:600">${escapeHtml(it.title)}</div><div style="font-size:0.85rem;color:var(--epic-muted)">×${Number(it.qty)||1} • ${escapeHtml(it.price||'')}</div></div>`;
+            li.className = 'header_minicart-item';
+            li.setAttribute('role','listitem');
+            // store identifier for removal
+            const itemId = it.id || it.rowid || it.sku || it.key || '';
+
+            const thumbWrap = document.createElement('div');
+            thumbWrap.className = 'header_minicart-thumb-wrap';
+
+            if (it.thumb) {
+              const img = document.createElement('img');
+              img.className = 'header_minicart-thumb';
+              img.src = it.thumb;
+              img.alt = it.title || '';
+              thumbWrap.appendChild(img);
+            } else {
+              const box = document.createElement('div');
+              box.className = 'header_minicart-thumb';
+              thumbWrap.appendChild(box);
+            }
+
+            const meta = document.createElement('div');
+            meta.className = 'header_minicart-meta';
+
+            const title = document.createElement('div');
+            title.className = 'header_minicart-title';
+            // clickable title link if url provided
+            if (it.url) {
+              const a = document.createElement('a');
+              a.href = it.url;
+              a.textContent = it.title || '';
+              a.className = 'header_minicart-title-link';
+              title.appendChild(a);
+            } else {
+              title.textContent = it.title || '';
+            }
+
+            const sub = document.createElement('div');
+            sub.className = 'header_minicart-sub';
+            sub.textContent = `×${Number(it.qty)||1} • ${it.price||''}`;
+
+            // remove button
+            const remBtn = document.createElement('button');
+            remBtn.type = 'button';
+            remBtn.className = 'minicart-remove header_btn header_btn--ghost';
+            remBtn.setAttribute('title', 'Odstrániť položku');
+            remBtn.dataset.id = itemId;
+            remBtn.textContent = 'Odstrániť';
+
+            meta.appendChild(title);
+            meta.appendChild(sub);
+
+            // layout: thumb | meta | remove btn
+            const rightWrap = document.createElement('div');
+            rightWrap.style.display = 'flex';
+            rightWrap.style.alignItems = 'center';
+            rightWrap.style.gap = '8px';
+            rightWrap.appendChild(remBtn);
+
+            li.appendChild(thumbWrap);
+            li.appendChild(meta);
+            li.appendChild(rightWrap);
+
             listEl.appendChild(li);
           });
+
+          // show actions (clear/view/checkout)
+          if (actions) actions.style.display = 'flex';
           updateCartBadge(json.total_count || json.items.length || 0);
         } else {
-          emptyEl.style.display = ''; listEl.style.display = 'none'; listEl.innerHTML = '';
+          emptyEl.setAttribute('aria-hidden','false');
+          listEl.setAttribute('aria-hidden','true');
+          listEl.innerHTML = '';
+          if (actions) actions.style.display = 'none';
           updateCartBadge(0);
         }
-      }).catch(err => { console.warn('Minicart error', err); });
+
+        miniCartEl.removeAttribute('aria-busy');
+      }).catch(err => {
+        miniCartEl.removeAttribute('aria-busy');
+        console.warn('Minicart error', err);
+      });
   };
 
-  if (cartLink && miniCartEl) {
-    let timeout = null;
-    const open = () => miniCartEl.setAttribute('aria-hidden','false');
-    const close = () => miniCartEl.setAttribute('aria-hidden','true');
-
-    cartLink.addEventListener('mouseenter', ()=> { timeout = setTimeout(()=>{ fetchMiniCart().then(open); }, 220); });
-    cartLink.addEventListener('mouseleave', ()=> { clearTimeout(timeout); close(); });
-    miniCartEl.addEventListener('mouseenter', ()=> clearTimeout(timeout));
-    miniCartEl.addEventListener('mouseleave', ()=> close());
-
-    cartLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      const isOpen = miniCartEl.getAttribute('aria-hidden') === 'false';
-      if (isOpen) close(); else fetchMiniCart().then(open);
+  /* delegation: remove item click, clear cart click */
+  if (miniCartEl) {
+    // delegate remove
+    on(miniCartEl, 'click', '.minicart-remove', (e) => {
+      const id = e.target.dataset.id;
+      if (!id) return;
+      e.target.disabled = true;
+      removeCartItem(id).finally(() => { e.target.disabled = false; });
     });
+
+    // clear cart
+    on(miniCartEl, 'click', '.minicart-action-clear', (e) => {
+      e.preventDefault();
+      const btn = e.target;
+      if (!confirm('Naozaj vymazať celý košík?')) return;
+      btn.disabled = true;
+      clearCart().finally(()=> { btn.disabled = false; });
+    });
+
+    // view and checkout are normal links — no JS needed (kept for consistency)
+  }
+
+  if (cartLink && miniCartEl) {
+    // delays (nastav si podle potřeby)
+    const HOVER_OPEN_DELAY = 260;  // ms před otevřením po najetí
+    const HOVER_CLOSE_DELAY = 360; // ms před zavřením po opuštění
+    let openTimer = null;
+    let closeTimer = null;
+
+    // helpery - open/close kontrolují a mažou timery
+    const doOpen = () => {
+      clearTimeout(closeTimer);
+      clearTimeout(openTimer);
+      // aktualizace aria
+      miniCartEl.setAttribute('aria-hidden', 'false');
+      if (cartLink) cartLink.setAttribute('aria-expanded','true');
+    };
+    const doClose = () => {
+      clearTimeout(openTimer);
+      clearTimeout(closeTimer);
+      miniCartEl.setAttribute('aria-hidden', 'true');
+      if (cartLink) cartLink.setAttribute('aria-expanded','false');
+    };
+
+    // bezpečné otevření s fetch a s ochranou proti duplikaci fetchů
+    const openWithFetch = () => {
+      clearTimeout(closeTimer);
+      // pokud už je otevřeno, nic nedělej kromě zrušení timerů
+      if (miniCartEl.getAttribute('aria-hidden') === 'false') { return; }
+      // fetch nejdřív (pokud chceš okamžité zobrazení, můžeš doOpen() zavolat před fetch)
+      fetchMiniCart().then(() => doOpen()).catch(()=> doOpen());
+    };
+
+    // event type - preferujeme pointer events pokud jsou dostupné
+    const enterEvt = ('onpointerenter' in window) ? 'pointerenter' : 'mouseenter';
+    const leaveEvt = ('onpointerleave' in window) ? 'pointerleave' : 'mouseleave';
+
+    // když najedeš na ikonu: naplánuj otevření
+    cartLink.addEventListener(enterEvt, () => {
+      clearTimeout(closeTimer);
+      clearTimeout(openTimer);
+      openTimer = setTimeout(()=> openWithFetch(), HOVER_OPEN_DELAY);
+    });
+
+    // když odjedeš z ikony: naplánuj zavření
+    cartLink.addEventListener(leaveEvt, () => {
+      clearTimeout(openTimer);
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(()=> doClose(), HOVER_CLOSE_DELAY);
+    });
+
+    // když kurzor vejde do minicartu, zrušíme zavření
+    miniCartEl.addEventListener(enterEvt, () => {
+      clearTimeout(closeTimer);
+      clearTimeout(openTimer);
+      // pokud byl mini otevřený (fetch proběhl), ujistit se, že zůstane otevřený
+      if (miniCartEl.getAttribute('aria-hidden') === 'true') {
+        // možná bylo otevření naplánované; ujistíme se, že se otevře
+        openWithFetch();
+      }
+    });
+
+    // když kurzor opustí minicart, naplánuj zavření
+    miniCartEl.addEventListener(leaveEvt, () => {
+      clearTimeout(openTimer);
+      clearTimeout(closeTimer);
+      closeTimer = setTimeout(()=> doClose(), HOVER_CLOSE_DELAY);
+    });
+
+    // click na ikonu: toggle (pro dotyková zařízení)
+    cartLink.addEventListener('click', (e) => {
+      // Pokud kliknutí začalo v elementu uvnitř mini košíku (např. <a> "Dokončiť"),
+      // necháme default navigaci a nevoláme preventDefault().
+      try {
+        if (miniCartEl && miniCartEl.contains(e.target)) {
+          return; // necháme odkazy v minicartu fungovat normálně
+        }
+      } catch (_) {}
+
+      // Jinak: řešíme toggle otevření/uzavření mini košíku
+      e.preventDefault();
+      const isOpen = miniCartEl && miniCartEl.getAttribute('aria-hidden') === 'false';
+      if (isOpen) {
+        doClose();
+      } else {
+        openWithFetch();
+      }
+    });
+
+    // přístupnost: klávesou Enter/Space otevřít a Esc zavřít
+    cartLink.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openWithFetch();
+      } else if (e.key === 'Escape') {
+        doClose();
+      }
+    });
+
+    // focus/blur (pro keyboard users): focus otevře, blur naplánuje zavření
+    cartLink.addEventListener('focus', () => { clearTimeout(closeTimer); openWithFetch(); }, true);
+    cartLink.addEventListener('blur', () => { clearTimeout(openTimer); closeTimer = setTimeout(()=> doClose(), HOVER_CLOSE_DELAY); }, true);
+    miniCartEl.addEventListener('focusin', () => { clearTimeout(closeTimer); }, true);
+    miniCartEl.addEventListener('focusout', () => { clearTimeout(openTimer); closeTimer = setTimeout(()=> doClose(), HOVER_CLOSE_DELAY); }, true);
   }
 
   try {
@@ -278,6 +713,6 @@
   });
 
   /* expose small API */
-  window.EPIC_HEADER = { fetchMiniCart, updateCartBadge, openMobileNav, closeMobileNav, setTheme };
+  window.EPIC_HEADER = { fetchMiniCart, updateCartBadge, openMobileNav, closeMobileNav, setTheme, removeCartItem, clearCart };
 
 })();

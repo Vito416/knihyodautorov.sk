@@ -4,14 +4,14 @@
 //  - $pageTitle (string|null)
 //  - $navActive (string|null)
 //  - $cart (array) : položky ['title'=>string,'qty'=>int,'price_snapshot'=>float]
-//  - $csrf (string|null)
+//  - $csrf_token (string|null)
 //  - $error (string|null)
 //  - $prefill (array)
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Pokladňa';
 $navActive = $navActive ?? 'cart';
 $cart = isset($cart) && is_array($cart) ? $cart : [];
-$csrf = $csrf ?? null;
+$csrf_token = $csrf_token ?? ($trustedShared['csrfToken'] ?? null);
 $error = isset($error) ? (string)$error : null;
 $prefill = $prefill ?? [];
 
@@ -83,12 +83,8 @@ foreach ($cart as $item) {
                                value="<?= htmlspecialchars($_POST['bill_country'] ?? $prefill['country'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                     </div>
                 </div>
-
-                <?php if ($csrf !== null): ?>
-                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                <?php endif; ?>
-
                 <div class="form-actions">
+                    <?= \CSRF::hiddenInput('csrf') ?>
                     <!-- NOTE: button type="button" -> submit cez JS (posiela JSON) -->
                     <button type="button" id="checkout-submit" class="btn btn-primary" data-action="submit-order">
                         Dokončiť objednávku
@@ -100,7 +96,7 @@ foreach ($cart as $item) {
             // server-side cart snapshot (bez session reliance)
             window.__checkoutCart = <?= json_encode(array_values($cart), JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) ?>;
             // optional CSRF token (ak máš)
-            window.__csrfToken = <?= $csrf !== null ? json_encode($csrf, JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) : 'null' ?>;
+            window.__csrfToken = <?= $csrf_token !== null ? json_encode($csrf_token, JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT) : 'null' ?>;
             // endpoint
             window.__orderSubmitUrl = '/eshop/order_submit';
             </script>

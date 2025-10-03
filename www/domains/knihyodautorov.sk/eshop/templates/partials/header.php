@@ -74,7 +74,7 @@ $mobile_nav_id = 'header_nav_mobile';
       <button class="header_btn header_btn--ghost header_theme-toggle" type="button" aria-pressed="false" aria-label="Prepínač motívu" data-header-action="theme-toggle">🌓</button>
 
       <!-- mini-cart s pergamen efektem -->
-      <a href="/eshop/cart" class="header_link header_link-cart"
+      <a class="header_link header_link-cart"
          title="<?= $cart_count > 0 ? 'Košík, ' . $cart_count . ' položiek' : 'Košík' ?>"
          aria-label="<?= $cart_count > 0 ? 'Košík, ' . $cart_count . ' položiek' : 'Košík' ?>"
          data-header-link="cart" data-header-cart-count="<?= $cart_count ?>">
@@ -167,7 +167,11 @@ $mobile_nav_id = 'header_nav_mobile';
       </li>
 
       <li role="none" class="header_nav-item<?= $activeClass('new') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/new" <?= $navActive==='new'?'aria-current="page"':'' ?>>Novinky <span class="header_badge header_badge--new" aria-hidden="true">Nové</span></a></li>
-      <li role="none" class="header_nav-item<?= $activeClass('events') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/events" <?= $navActive==='events'?'aria-current="page"':'' ?>>Súťaže <span class="header_badge header_badge--epic" aria-hidden="true">Epické</span></a></li>
+      <li role="none" class="header_nav-item<?= $activeClass('events') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/events" <?= $navActive==='events'?'aria-current="page"':'' ?>>Akcie <span class="header_badge header_badge--epic" aria-hidden="true">Zľavy</span></a></li>
+      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/gdpr">Ochrana osobných údajov</a></li>
+      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/vop">Obchodné podmienky</a></li>
+      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/reklamacie">Reklamačný poriadok</a></li>
+      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/contact">Kontakt</a></li>
     </ul>
   </div>
 
@@ -176,7 +180,11 @@ $mobile_nav_id = 'header_nav_mobile';
       <li role="none"><a role="menuitem" href="/eshop/catalog">Katalóg</a></li>
       <li role="none"><a role="menuitem" href="/eshop/authors">Autori</a></li>
       <li role="none"><a role="menuitem" href="/eshop/new">Novinky</a></li>
-      <li role="none"><a role="menuitem" href="/eshop/events">Súťaže</a></li>
+      <li role="none"><a role="menuitem" href="/eshop/events">Akcie / Zľavy</a></li>
+      <li role="none"><a role="menuitem" href="/eshop/gdpr">Ochrana osobných údajov</a></li>
+      <li role="none"><a role="menuitem" href="/eshop/vop">Obchodné podmienky</a></li>
+      <li role="none"><a role="menuitem" href="/eshop/reklamacie">Reklamačný poriadok</a></li>
+      <li role="none"><a role="menuitem" href="/eshop/contact">Kontakt</a></li>
     </ul>
   </div>
 </nav>

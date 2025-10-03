@@ -38,9 +38,11 @@ if (isset($_SERVER['HTTP_ACCEPT']) && stripos($_SERVER['HTTP_ACCEPT'], 'text/htm
 // --- Routes: string = handler file (default share true), array = ['file'=>..., 'share'=> true|false|[keys]] ---
 $routes = [
     'catalog'        => 'catalog.php',
+    'contact'           => 'contact.php',
     'detail'         => 'detail.php',
     'cart'           => 'cart.php',
     'cart_add'           => '/actions/cart_add.php',
+    'cart_clear'           => '/actions/cart_clear.php',
     'cart_mini'           => '/actions/cart_mini.php',
     'checkout'       => 'checkout.php',
     'order_submit'       => '/actions/order_submit.php',
@@ -52,9 +54,13 @@ $routes = [
     'verify'         => 'verify.php',
     'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
+    'faq'         => 'faq.php',
     'google'         => 'google_auth.php',
     'profile'        => 'profile.php',
     'download'       => 'download.php',
+    'gdpr'           => 'gdpr.php',
+    'vop'            => 'vop.php',
+    'reklamacie'     => 'reklamacie.php',
 ];
 
 // --- Route exists? ---

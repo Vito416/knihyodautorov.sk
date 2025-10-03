@@ -56,17 +56,17 @@ if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
 if (!defined('APP_NAME')) define('APP_NAME', $config['app_name'] ?? ($_ENV['APP_NAME'] ?? 'app'));
 if (!defined('APP_URL')) define('APP_URL', $config['app_url'] ?? ($_ENV['APP_URL'] ?? ''));
 
-$gopayCfg = [
-    'goid' => $_ENV['GOPAY_GOID'] ?? '8583067438',
-    'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '1223619925',
-    'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '6vkhVP8c',
-    'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com/api',
-    // optional: pass Language::CZECH or TokenScope::ALL from bootstrap if you want
-    // 'language' => \GoPay\Definition\Language::CZECH,
-    // 'scope' => \GoPay\Definition\TokenScope::ALL,
-];
+use GoPay\Definition\Language;
+use GoPay\Definition\TokenScope;
 
-$gopayWrapper = new GoPaySdkWrapper($gopayCfg);
+$gopayCfg = [
+    'goid' => $_ENV['GOPAY_GOID'] ?? '',
+    'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
+    'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
+    'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com',
+    'language' => $_ENV['GOPAY_LANGUAGE'] ?? Language::CZECH,
+    'scope' => $_ENV['GOPAY_SCOPE'] ?? TokenScope::ALL,
+];
 
 // logger shim: adapt your existing Logger static API to object expected by adapter
 $loggerShim = new class {
@@ -165,14 +165,37 @@ if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) 
     try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
 }
 
-$gopayAdapter = new GoPayAdapter($database, $gopayWrapper, $loggerShim, null, $notificationUrl, $returnUrl);
-
 // Templates init
 Templates::init($config);
 
 // Mailer init (safe loader)
 require_once __DIR__ . '/loaders/mailer_loader.php';
 init_mailer_from_config($config, $db); // $db je PDO returned by Database::getPdo()
+
+// -------------------- FileCache pro GoPay (šifrovaná) --------------------
+$gopayCacheDir = $PROJECT_ROOT . '/cache/gopay';
+if (!is_dir($gopayCacheDir)) {
+    if (!@mkdir($gopayCacheDir, 0700, true) && !is_dir($gopayCacheDir)) {
+        $logBootstrapError('Failed to create GoPay cache dir: ' . $gopayCacheDir);
+        http_response_code(500);
+        exit;
+    }
+}
+
+// FileCache instance (už se šifrováním)
+$gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR);
+
+// -------------------- GoPay wrapper + adapter --------------------
+$gopayWrapper = new GoPaySdkWrapper($gopayCfg, $gopayFileCache);
+
+$gopayAdapter = new GoPayAdapter(
+    $database,       // DB instance
+    $gopayWrapper,   // wrapper
+    $loggerShim,     // logger
+    null,
+    $notificationUrl, 
+    $returnUrl
+);
 
 // Return $db for backwards compatibility (keep old code working)
 return $db;

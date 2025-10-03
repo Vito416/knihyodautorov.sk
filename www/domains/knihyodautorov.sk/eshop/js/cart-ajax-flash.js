@@ -230,7 +230,22 @@
             metaNode.textContent = `${qty} ${word} — ${cart.subtotal || ''} ${cart.currency || ''}`.trim();
           }
         }
+        // --- CSRF token update (drop-in) ---
+        if (data && data.csrf_token) {
+          try {
+            // 1) update any hidden inputs inside this form (and other forms on page)
+            document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
+              try { i.value = data.csrf_token; } catch (_) {}
+            });
 
+            // 2) update meta tag if present (<meta name="csrf-token" content="...">)
+            const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
+            if (meta) try { meta.setAttribute('content', data.csrf_token); } catch (_) {}
+
+            // 3) optionally expose globally for quick JS access
+            try { window.__csrfToken = data.csrf_token; } catch (_) {}
+          } catch (_) {}
+        }
         document.dispatchEvent(new CustomEvent('cart:updated', { detail: { cart } }));
         // pokud formulář obsahoval buy_now, přesměruj uživatele na checkout
         try {

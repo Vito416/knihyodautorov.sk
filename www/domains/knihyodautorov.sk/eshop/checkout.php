@@ -114,7 +114,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) session_start();
 $currentUserId = $user['id'] ?? ($_SESSION['user_id'] ?? null);
 
 // ensure session cart exists
-if (!isset($_SESSION['cart']) || !is_array($_SESSION['cart'])) $_SESSION['cart'] = [];
+if (!isset($_SESSION['cart_id'])) {
+    $newCartId = bin2hex(random_bytes(16)); // UUID-like hex
+    $_SESSION['cart_id'] = $newCartId;
+
+    // Vytvoření záznamu v DB
+    $database->execute(
+        'INSERT INTO carts (id, user_id, created_at, updated_at) VALUES (:id, NULL, NOW(), NOW())',
+        ['id' => $newCartId]
+    );
+}
 
 /* ---------- handle POST: place order ---------- */
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -417,34 +426,35 @@ try {
     if (!empty($cartId)) {
         // try normal lookup (string UUID)
         $rows = $database->fetchAll(
-            'SELECT ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
-             FROM cart_items ci
-             LEFT JOIN books b ON b.id = ci.book_id
-             WHERE ci.cart_id = :cart_id
-             ORDER BY ci.id ASC',
+            'SELECT ci.book_id, ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
+            FROM cart_items ci
+            LEFT JOIN books b ON b.id = ci.book_id
+            WHERE ci.cart_id = :cart_id
+            ORDER BY ci.id ASC',
             ['cart_id' => $cartId]
         );
         foreach ($rows as $r) {
             $templateCart[] = [
+                'book_id' => (int)($r['book_id'] ?? 0),
                 'title' => $r['title'] ?? '',
                 'qty' => (int)($r['quantity'] ?? 0),
                 'price_snapshot' => isset($r['price_snapshot']) ? (float)$r['price_snapshot'] : 0.0,
             ];
         }
-
         // fallback: packed UUID stored as BINARY(16) (try UNHEX(REPLACE(...)))
         if (empty($templateCart) && is_string($cartId) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i', $cartId)) {
             try {
                 $rows = $database->fetchAll(
-                    'SELECT ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
-                     FROM cart_items ci
-                     LEFT JOIN books b ON b.id = ci.book_id
-                     WHERE ci.cart_id = UNHEX(REPLACE(:cart_id, "-", ""))
-                     ORDER BY ci.id ASC',
+                    'SELECT ci.book_id, ci.quantity, COALESCE(ci.price_snapshot, ci.unit_price, 0) AS price_snapshot, b.title
+                    FROM cart_items ci
+                    LEFT JOIN books b ON b.id = ci.book_id
+                    WHERE ci.cart_id = :cart_id
+                    ORDER BY ci.id ASC',
                     ['cart_id' => $cartId]
                 );
                 foreach ($rows as $r) {
                     $templateCart[] = [
+                        'book_id' => (int)($r['book_id'] ?? 0),
                         'title' => $r['title'] ?? '',
                         'qty' => (int)($r['quantity'] ?? 0),
                         'price_snapshot' => isset($r['price_snapshot']) ? (float)$r['price_snapshot'] : 0.0,
@@ -468,6 +478,7 @@ try {
                     $b = $byId[(int)$bid] ?? null;
                     if (!$b) continue;
                     $templateCart[] = [
+                        'book_id' => (int)$b['id'],
                         'title' => $b['title'],
                         'qty' => (int)$q,
                         'price_snapshot' => isset($b['price']) ? (float)$b['price'] : 0.0,

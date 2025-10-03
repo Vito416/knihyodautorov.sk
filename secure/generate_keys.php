@@ -50,6 +50,7 @@ try {
         ['env'=>'EMAIL_VERIFICATION_KEY','basename'=>'email_verification_key','required'=>true],
         ['env'=>'UNSUBSCRIBE_KEY',   'basename'=>'unsubscribe_key','required'=>true],
         ['env'=>'PROFILE_CRYPTO',    'basename'=>'profile_crypto', 'required'=>true],
+        ['env'=>'CACHE_CRYPTO_KEY',  'basename'=>'cache_crypto',   'required'=>true],
     ];
 
     foreach ($toCreate as $spec) {

@@ -43,27 +43,6 @@ function toInt(mixed $v, int $default = 0): int {
     return $default;
 }
 
-function validateCsrfToken(?string $csrfTokenShared, array $parsedInput = []): bool {
-    $provided = null;
-    if (!empty($_SERVER['HTTP_X_CSRF_TOKEN'])) $provided = (string) $_SERVER['HTTP_X_CSRF_TOKEN'];
-    elseif (!empty($_SERVER['HTTP_X_CSRF'])) $provided = (string) $_SERVER['HTTP_X_CSRF'];
-    elseif (isset($_POST['csrf'])) $provided = (string) $_POST['csrf'];
-    elseif (isset($parsedInput['csrf'])) $provided = (string) $parsedInput['csrf'];
-
-    if ($provided === null || $provided === '') return false;
-
-    if (class_exists('CSRF') && method_exists('CSRF', 'validate')) {
-        try { return (bool) CSRF::validate($provided); } catch (\Throwable $e) { return false; }
-    }
-
-    if ($csrfTokenShared !== null && $csrfTokenShared !== '') {
-        return hash_equals((string)$csrfTokenShared, (string)$provided);
-    }
-
-    // žádný validator -> nevalidní
-    return false;
-}
-
 /* ---------- dependencies ---------- */
 /** @var Database $db */
 if (!isset($db) || !($db instanceof Database)) {
@@ -76,6 +55,7 @@ if (!isset($gopayAdapter) || !is_object($gopayAdapter)) {
 
 /* ---------- parse input ---------- */
 $input = [];
+$raw = null; // ensure defined for later use
 $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
 if (stripos((string)$contentType, 'application/json') !== false) {
     $raw = file_get_contents('php://input');
@@ -88,14 +68,63 @@ if (stripos((string)$contentType, 'application/json') !== false) {
     $input = $_POST;
 }
 
-/* ---------- optional CSRF (if available) ---------- */
+/* ---------- CSRF (stejné chování jako cart_add.php, bez maybeGetCsrfToken) ---------- */
+// ensure session (pokud bootstrap už session startoval, není potřeba, ale nevadí)
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
+/**
+ * Rozšířená validace tokenu:
+ * - Hledá token v hlavičkách (X-CSRF-Token, X-CSRF)
+ * - Hledá v $_POST nebo v parsed JSON pod klíči: csrf
+ * - Preferuje CSRF::validate pokud třída existuje
+ */
+function validateCsrfToken(?string $csrfTokenShared, array $parsedInput = []): bool {
+    $provided = null;
+
+    // headers (PHP exposes as HTTP_... uppercase)
+    if (!empty($_SERVER['HTTP_X_CSRF_TOKEN'])) {
+        $provided = (string) $_SERVER['HTTP_X_CSRF_TOKEN'];
+    } elseif (!empty($_SERVER['HTTP_X_CSRF'])) {
+        $provided = (string) $_SERVER['HTTP_X_CSRF'];
+    } elseif (isset($_POST['csrf'])) {
+        $provided = (string) $_POST['csrf'];
+    } elseif (isset($parsedInput['csrf'])) {
+        $provided = (string) $parsedInput['csrf'];
+    }
+
+    if ($provided === null || $provided === '') {
+        return false;
+    }
+
+    // prefer server-side validator if available
+    if (class_exists('CSRF') && method_exists('CSRF', 'validate')) {
+        try {
+            return (bool) CSRF::validate($provided);
+        } catch (\Throwable $e) {
+            try { if (class_exists('Logger')) Logger::warn('CSRF.validate threw', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
+            return false;
+        }
+    }
+
+    // fallback: compare s sdíleným tokenem
+    if ($csrfTokenShared !== null && $csrfTokenShared !== '') {
+        return hash_equals((string)$csrfTokenShared, (string)$provided);
+    }
+
+    // žádná mechanika -> invalid
+    return false;
+}
+
+// proveď validaci (před pokračováním)
 try {
-    $csrfShared = $csrfToken ?? null;
+    $csrfShared = $csrfToken ?? null; // očekáváme, že bootstrap/injektor může poskytnout $csrfToken
     if (!validateCsrfToken($csrfShared, $input)) {
-        // vracíme ok:false — frontend to ošetří jako flash
+        http_response_code(403);
         respondJson(['ok' => false, 'error' => 'csrf_invalid', 'message' => 'Neplatný CSRF token']);
     }
-} catch (\Throwable $_) {
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) try { Logger::warn('order_submit: CSRF validation threw', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
+    http_response_code(403);
     respondJson(['ok' => false, 'error' => 'csrf_error', 'message' => 'Chyba CSRF kontroly']);
 }
 
@@ -140,7 +169,7 @@ try {
     $booksById = [];
     foreach ($booksRows as $r) $booksById[(int)$r['id']] = $r;
 } catch (\Throwable $e) {
-    if (class_exists('Logger')) try { Logger::systemError($e, null, ['phase'=>'order_submit.fetch_books']); } catch (\Throwable $_) {}
+    if (class_exists('Logger')) try { Logger::systemError($e, null, ['phase'=>'order_submit.fetch_books']); } catch (\Throwable $e) {}
     respondJson(['ok' => false, 'error' => 'server_error', 'message' => 'Chyba při dotazu na knihy']);
 }
 
@@ -188,7 +217,7 @@ if ($clientIdempotencyKey !== null) {
             }
         }
     } catch (\Throwable $e) {
-        if (class_exists('Logger')) try { Logger::warn('order_submit: idempotency lookup failed', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+        if (class_exists('Logger')) try { Logger::warn('order_submit: idempotency lookup failed', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
     }
 }
 
@@ -276,7 +305,7 @@ try {
                 'order_uuid' => $orderUuid,
                 'error_token' => $errorToken
             ]);
-        } catch (\Throwable $_) {
+        } catch (\Throwable $e) {
             // never bubble logging failure
         }
     }
@@ -296,22 +325,16 @@ try {
     ]);
 }
 
-/* ---------- persist idempotency placeholder (best-effort) ---------- */
-try {
-    $placeholder = json_encode(['order_id' => $orderId, 'payment_id' => null, 'redirect_url' => null]);
-    $db->prepareAndRun('INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at) VALUES (:k, :uid, NULL, :r, 86400, NOW())', [
-        ':k' => $idempHash, ':uid' => $user['id'] ?? null, ':r' => $placeholder
-    ]);
-} catch (\Throwable $_) {
-    // ignoruj duplicity / chybějící tabulku
-}
-
 /* ---------- call GoPay adapter ---------- */
 try {
     $gopayRes = $gopayAdapter->createPaymentFromOrder($orderId, $idempotencyKey);
 } catch (\Throwable $e) {
-    if (class_exists('Logger')) try { Logger::systemError($e, null, ['phase'=>'gopay.createPayment', 'order_id'=>$orderId]); } catch (\Throwable $_) {}
-    respondJson(['ok' => false, 'error' => 'payment_init_failed', 'message' => 'Chyba při inicializaci platby']);
+    if (class_exists('Logger')) try { Logger::systemError($e, null, ['phase'=>'gopay.createPayment', 'order_id'=>$orderId]); } catch (\Throwable $e) {}
+    $out = ['ok' => false, 'error' => 'payment_init_failed', 'message' => 'Chyba při inicializaci platby'];
+    $newCsrf = null;
+    try { if (class_exists('CSRF')) $newCsrf = CSRF::token(); } catch (\Throwable $e) {}
+    if ($newCsrf) $out['csrf_token'] = $newCsrf;
+    respondJson($out);
 }
 
 /* ---------- ensure redirect_url exists ---------- */
@@ -320,20 +343,59 @@ $paymentId = $gopayRes['payment_id'] ?? null;
 
 /* If GoPay didn't return redirect URL -> ok:false so checkout.js will flash */
 if (empty($redirect)) {
-    // update idempotency with whatever response we have
-    try {
-        $toStore = json_encode(['order_id' => $orderId, 'payment_id' => $paymentId, 'redirect_url' => $redirect, 'gopay' => $gopayRes['gopay'] ?? null]);
-        $db->execute('UPDATE idempotency_keys SET response = :r WHERE key_hash = :k', [':r' => $toStore, ':k' => $idempHash]);
-    } catch (\Throwable $_) {}
-    respondJson(['ok' => false, 'error' => 'no_redirect', 'message' => 'Platební brána nevrátila přesměrovací URL']);
+    $out = ['ok' => false, 'error' => 'no_redirect', 'message' => 'Platební brána nevrátila přesměrovací URL'];
+    $newCsrf = null;
+    try { if (class_exists('CSRF')) $newCsrf = CSRF::token(); } catch (\Throwable $e) {}
+    if ($newCsrf) $out['csrf_token'] = $newCsrf;
+    respondJson($out);
 }
 
 /* ---------- persist real idempotency response (best-effort) ---------- */
 try {
-    $toStore = json_encode(['order_id' => $orderId, 'payment_id' => $paymentId, 'redirect_url' => $redirect, 'gopay' => $gopayRes['gopay'] ?? null]);
-    $db->execute('UPDATE idempotency_keys SET response = :r WHERE key_hash = :k', [':r' => $toStore, ':k' => $idempHash]);
-} catch (\Throwable $_) {
-    // non-fatal
+    // Pokusíme se vytvořit deterministický hash requestu (pokud máme raw body nebo parsed input).
+    $requestHash = null;
+    if (!empty($raw) && is_string($raw)) {
+        $requestHash = hash('sha256', $raw);
+    } else {
+        // Fallback: serializovat parsed input (pokud je dostupný) — lepší než NULL.
+        try {
+            $requestHash = is_array($input) ? hash('sha256', json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) : null;
+        } catch (\Throwable $e) {
+            $requestHash = null;
+        }
+    }
+
+    $toStore = json_encode([
+        'order_id'    => $orderId,
+        'payment_id'  => $paymentId,
+        'redirect_url'=> $redirect,
+        'gopay'       => $gopayRes['gopay'] ?? null
+    ]);
+
+    $db->prepareAndRun(
+        'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
+         VALUES (:k, :uid, :req, :r, :ttl, NOW())
+         ON DUPLICATE KEY UPDATE response = :r, ttl_seconds = :ttl',
+        [
+            ':k'   => $idempHash,
+            ':uid' => $user['id'] ?? null,
+            ':req' => $requestHash,
+            ':r'   => $toStore,
+            ':ttl' => 86400 // 1 den; upravte pokud chcete jinou hodnotu
+        ]
+    );
+} catch (\Throwable $e) {
+    // Best-effort: nedovolíme, aby to zlomilo checkout.
+    if (class_exists('Logger')) {
+        try {
+            Logger::warn('order_submit: idempotency write failed', null, [
+                'exception' => (string)$e,
+                'order_id' => $orderId,
+                'idempotency_hash' => $idempHash
+            ]);
+        } catch (\Throwable $e) {}
+    }
+    // pokračujeme dál bez přerušení
 }
 
 /* ---------- set last_order_id in session if session active (UX) ---------- */
@@ -342,9 +404,13 @@ if (session_status() === PHP_SESSION_ACTIVE) {
 }
 
 /* ---------- final OK response (frontend will redirect) ---------- */
-respondJson([
+$okPayload = [
     'ok' => true,
     'order_id' => $orderId,
     'payment_id' => $paymentId,
     'redirect_url' => $redirect
-]);
+];
+$newCsrf = null;
+try { if (class_exists('CSRF')) $newCsrf = CSRF::token(); } catch (\Throwable $e) {}
+if ($newCsrf) $okPayload['csrf_token'] = $newCsrf;
+respondJson($okPayload);

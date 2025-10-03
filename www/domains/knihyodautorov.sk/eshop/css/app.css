@@ -48,8 +48,6 @@ body{
   padding:3rem 1rem;
   margin-bottom:2rem;
   border-radius:var(--radius);
-  background-image: url('/assets/parchment-bg.jpg');
-  background-size: cover;
   color:var(--color-text);
   box-shadow: 0 10px 40px rgba(16,10,0,0.08);
   position:relative;

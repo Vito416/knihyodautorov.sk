@@ -43,7 +43,7 @@
 
 /* base */
 *{ box-sizing:border-box; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
-body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; line-height:1.35; }
+body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial; line-height:1.35;}
 
 /* header shell */
 .header_root{
@@ -69,7 +69,7 @@ body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-
   margin:0 auto;
 }
 .wrap{ width:100%; }
-.main_wrap{ padding-top:14px; }
+.main_wrap{ padding-top:14px;}
 
 /* brand */
 .header_brand{ display:flex; align-items:center; gap:.9rem; }
@@ -238,7 +238,7 @@ body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-
 .header_cart-dropdown, .header_minicart, [data-header-minicart]{
   position:absolute;
   right:0;
-  top:calc(var(--header-h) + 14px);
+  top:calc(var(--header-h) - 22px);
   min-width:320px;
   max-width:460px;
   background:var(--surface-1);
@@ -256,7 +256,9 @@ body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-
 .header_minicart-list, .header_cart-dropdown .header_minicart-list, [data-header-minicart] .header_minicart-list{ list-style:none; margin:0; padding:0; max-height:280px; overflow:auto; }
 .header_minicart-empty, .header_cart-dropdown .header_minicart-empty, [data-header-minicart] .header_minicart-empty{ color:var(--muted); padding:12px; }
 .header_minicart-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
-
+.header_link-cart {
+  position: relative;
+}
 /* account */
 .header_account-inline{ display:flex; gap:10px; align-items:center; }
 .header_avatar-link{
@@ -401,4 +403,122 @@ body{ background:var(--bg-page); color:var(--ink); font-family:system-ui,-apple-
   outline: none;
   box-shadow: 0 0 0 6px rgba(125,211,252,0.12);
   border-radius: 10px;
+}
+
+/* --- Compatibility helpers pro JS-generated classes --- */
+
+/* Suggestions: podpora pro JS třídy vs existující .header_search-suggestions */
+[data-header-suggestions], #header_search_suggestions, .header_search-suggestions {
+  /* dědí chování z .header_search-suggestions; nic měnit, jen zajistit selektor */
+}
+
+/* seznam a položky (JS používá tyto názvy) */
+.header_suggestions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.header_suggestion {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  transition: background var(--duration-fast), transform var(--duration-fast);
+}
+.header_suggestion:hover,
+.header_suggestion[aria-selected="true"] {
+  background: linear-gradient(90deg, rgba(125,211,252,0.04), rgba(91,42,134,0.01));
+  transform: translateY(-2px);
+}
+
+/* malé elementy s label/meta — mapování na existující názvy */
+.hdr-label, .header_search-suggestion__title { font-weight: 600; color: var(--ink); }
+.hdr-meta, .header_search-suggestion__meta { font-size: .86rem; color: var(--muted); }
+
+/* Minicart itemy — doplnění chybějících tříd použitých v JS */
+.header_minicart-item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+}
+.header_minicart-thumb-wrap { flex: 0 0 46px; display: flex; align-items: center; justify-content: center; }
+.header_minicart-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--thumb-bg, rgba(255,255,255,0.02));
+}
+.header_minicart-meta { flex: 1 1 auto; min-width: 0; }
+.header_minicart-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header_minicart-sub { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+
+/* Zajistí správné zobrazení kontejneru i pokud použijeme aria-hidden (JS to nastavuje) */
+[data-header-minicart], .header_minicart, .header_cart-dropdown { /* už máte podobné, ale opakování je OK */ }
+
+/* Badge compat: pokud JS začne nastavovat data-header-badge, CSS na to už reaguje.
+   (Tyto selektory už jsou ve vašem souboru — opakuji jen pro jistotu) */
+[data-header-link="cart"] .header_cart-badge {
+  transition: transform var(--duration-med) var(--ease-quick), opacity var(--duration-fast);
+}
+[data-header-link="cart"] .header_cart-badge[data-header-badge="0"],
+[data-header-link="cart"] .header_cart-badge[aria-hidden="true"] {
+  opacity: 0;
+  transform: scale(.95);
+  pointer-events: none;
+}
+[data-header-link="cart"] .header_cart-badge[data-header-badge]:not([data-header-badge="0"]) {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+/* --- Minicart: header, actions, item remove --- */
+.header_minicart-header { padding: 8px 12px 6px 12px; border-bottom: 1px solid rgba(8,12,20,0.03); margin-bottom:8px; }
+.header_minicart-title-heading { font-size:1rem; font-weight:800; }
+.header_minicart-total { font-size:.92rem; color:var(--muted); margin-left:6px; }
+
+/* Controls wrapper - buttons already styled with .header_btn variants */
+.header_minicart-controls { display:flex; gap:8px; align-items:center; }
+
+/* ensure aria-hidden toggles visibility */
+.header_minicart-empty[aria-hidden="true"] { display: none !important; }
+.header_minicart-list[aria-hidden="true"] { display: none !important; }
+.header_minicart-empty[aria-hidden="false"] { display: block; }
+.header_minicart-list[aria-hidden="false"] { display: block; }
+
+/* item layout */
+.header_minicart-item {
+  display:flex;
+  gap:12px;
+  align-items:center;
+  padding:8px;
+  border-radius:10px;
+  transition: background var(--duration-fast), transform var(--duration-fast);
+}
+.header_minicart-item:hover { background: rgba(125,211,252,0.02); transform: translateY(-2px); }
+
+.header_minicart-thumb-wrap { flex:0 0 46px; display:flex; align-items:center; justify-content:center; }
+.header_minicart-thumb { width:46px; height:46px; border-radius:8px; object-fit:cover; background: var(--thumb-bg, rgba(255,255,255,0.02)); }
+
+.header_minicart-meta { flex:1 1 auto; min-width:0; }
+.header_minicart-title-link { color:inherit; text-decoration:none; font-weight:600; display:inline-block; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.header_minicart-title { font-weight:600; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.header_minicart-sub { font-size:.85rem; color:var(--muted); margin-top:4px; }
+
+/* remove button */
+.minicart-remove { padding:6px 8px; font-size:.85rem; white-space:nowrap; }
+.minicart-remove:disabled { opacity:.6; transform:none; pointer-events:none; }
+
+/* actions region */
+.header_minicart-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+.header_minicart-actions .header_btn--primary { min-width: 120px; }
+
+/* small responsive tweaks */
+@media (max-width:520px) {
+  .header_minicart-list { max-height: 320px; overflow:auto; }
+  .header_minicart-title-link, .header_minicart-title { max-width: 140px; }
 }

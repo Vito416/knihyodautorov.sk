@@ -100,14 +100,14 @@ final class GoPayAdapter
     {
         $idempHash = hash('sha256', (string)$idempotencyKey);
 
-        // idempotency quick-check (if previously created payment response cached)
+        // idempotency quick-check
         $cached = $this->db->fetch('SELECT response FROM idempotency_keys WHERE key_hash = :k', [':k' => $idempHash]);
         if ($cached !== null && !empty($cached['response'])) {
             try { $this->logger->info('Idempotent createPaymentFromOrder hit', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
             return json_decode($cached['response'], true);
         }
 
-        // Load order (lock row to ensure consistent read)
+        // Load order (lock row)
         $order = $this->db->fetch('SELECT * FROM orders WHERE id = :id FOR UPDATE', [':id' => $orderId]);
         if ($order === null) {
             throw new \RuntimeException('Order not found: ' . $orderId);
@@ -116,77 +116,60 @@ final class GoPayAdapter
             throw new \RuntimeException('Order not in pending state: ' . $orderId);
         }
 
-        // Compose payment payload expected by GoPay SDK
-        $amountCents = (int)round((float)$order['total'] * 100); // cents
-
+        // Compose payment payload
+        $amountCents = (int)round((float)$order['total'] * 100);
         $payload = [
             'amount' => $amountCents,
             'currency' => $order['currency'] ?? 'EUR',
             'order_number' => $order['uuid'] ?? (string)$order['id'],
-            // GoPay SDK expects callback subobject
             'callback' => [
                 'return_url' => $this->returnUrl,
                 'notification_url' => $this->notificationUrl,
             ],
-            // volitelné: popis/položky
             'order_description' => 'Objednávka ' . ($order['uuid'] ?? $order['id']),
             'items' => array_map(function($it){
-                return ['name' => $it['title'] ?? 'item', 'amount' => (int)round(((float)($it['price_snapshot'] ?? 0.0))*100), 'count' => (int)($it['qty'] ?? 1)];
-            }, $this->fetchOrderItemsForPayload($orderId) ), // implementuj pomocník, nebo vynech
+                return [
+                    'name' => $it['title'] ?? 'item',
+                    'amount' => (int)round(((float)($it['price_snapshot'] ?? 0.0))*100),
+                    'count' => (int)($it['qty'] ?? 1)
+                ];
+            }, $this->fetchOrderItemsForPayload($orderId)),
         ];
 
-        // try creating GoPay payment (outside DB transaction)
+        // Create GoPay payment
         try {
             try { 
-                $this->logger->info(
-                    'Calling GoPay createPayment', 
-                    null, 
-                    ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]
-                ); 
+                $this->logger->info('Calling GoPay createPayment', null, ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]); 
             } catch (\Throwable $_) {}
 
-            // GoPay SDK call
             $gopayResponse = $this->gopayClient->createPayment($payload);
 
-            // SDK returns GoPay\Http\Response
-            if (is_object($gopayResponse) && method_exists($gopayResponse, 'hasSucceed')) {
-                if (!$gopayResponse->hasSucceed()) {
-                    $body = $gopayResponse->json ?? null;
-                    try { 
-                        $this->logger->systemError(
-                            new \RuntimeException('GoPay createPayment failed'), 
-                            null, 
-                            null, 
-                            ['response' => $body]
-                        ); 
-                    } catch (\Throwable $_) {}
-                    throw new \RuntimeException('Payment gateway error');
-                }
-                $gopayJson = $gopayResponse->json;
-            } else {
-                $gopayJson = is_array($gopayResponse) 
-                    ? $gopayResponse 
-                    : (is_object($gopayResponse) ? get_object_vars($gopayResponse) : []);
+            if (is_object($gopayResponse) && method_exists($gopayResponse, 'hasSucceed') && !$gopayResponse->hasSucceed()) {
+                $body = $gopayResponse->json ?? null;
+                try { 
+                    $this->logger->systemError(new \RuntimeException('GoPay createPayment failed'), null, null, ['response' => $body]); 
+                } catch (\Throwable $_) {}
+                throw new \RuntimeException('Payment gateway error');
             }
 
+            $gopayJson = is_array($gopayResponse) 
+                ? $gopayResponse 
+                : (is_object($gopayResponse) ? get_object_vars($gopayResponse) : []);
+
         } catch (\Throwable $e) {
-            try { 
-                $this->logger->systemError(
-                    $e, 
-                    null, 
-                    null, 
-                    ['phase' => 'gopay.createPayment', 'order_id' => $orderId]
-                ); 
-            } catch (\Throwable $_) {}
+            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.createPayment', 'order_id' => $orderId]); } catch (\Throwable $_) {}
             throw $e;
         }
 
-        // persist payment reference and idempotency mapping
-        $this->db->transaction(function (Database $d) use ($orderId, $gopayResponse, $idempHash, $order) {
+        // Persist payment + idempotency inside single transaction
+        $this->db->transaction(function (Database $d) use ($orderId, $order, $gopayResponse, $idempHash) {
             $gwId = $this->extractGatewayPaymentId($gopayResponse);
             $detailsJson = json_encode($gopayResponse);
+
+            // Insert payment
             $d->prepareAndRun(
-                'INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, created_at) VALUES (:oid, :gw, :tx, :st, :amt, :cur, :det, NOW())',
+                'INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, created_at) 
+                VALUES (:oid, :gw, :tx, :st, :amt, :cur, :det, NOW())',
                 [
                     ':oid' => $orderId,
                     ':gw' => 'gopay',
@@ -199,28 +182,36 @@ final class GoPayAdapter
             );
 
             $paymentId = (int)$d->lastInsertId();
+            $redirectUrl = $this->extractRedirectUrl($gopayResponse);
 
-            // persist idempotency key -> response placeholder (will update with redirect url)
-            $respPlaceholder = json_encode(['payment_id' => $paymentId, 'redirect_url' => null]);
+            // Persist idempotency key (only once)
+            $payloadResp = json_encode([
+                'payment_id' => $paymentId,
+                'redirect_url' => $redirectUrl,
+                'gopay' => $gopayResponse
+            ]);
+
             try {
-                $d->prepareAndRun('INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at) VALUES (:k, NULL, NULL, :r, 86400, NOW())', [':k' => $idempHash, ':r' => $respPlaceholder]);
+                $d->prepareAndRun(
+                    'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
+                    VALUES (:k, NULL, NULL, :r, 86400, NOW())
+                    ON DUPLICATE KEY UPDATE response = :r',
+                    [':k' => $idempHash, ':r' => $payloadResp]
+                );
             } catch (\Throwable $_) {
-                // ignore; idempotency table may not exist or duplicate key; continue
+                // ignore duplicate key / DB issues
             }
         });
 
-        // determine redirect URL from GoPay response
+        // Return structured response
+        $paymentId = $this->findPaymentIdByGatewayId($this->extractGatewayPaymentId($gopayResponse));
         $redirectUrl = $this->extractRedirectUrl($gopayResponse);
 
-        // update idempotency response with actual redirect
-        try {
-            $payloadResp = json_encode(['payment_id' => $this->findPaymentIdByGatewayId($this->extractGatewayPaymentId($gopayResponse)), 'redirect_url' => $redirectUrl]);
-            $this->db->execute('UPDATE idempotency_keys SET response = :r WHERE key_hash = :k', [':r' => $payloadResp, ':k' => $idempHash]);
-        } catch (\Throwable $_) {
-            // non-fatal
-        }
-
-        return ['payment_id' => $this->findPaymentIdByGatewayId($this->extractGatewayPaymentId($gopayResponse)), 'redirect_url' => $redirectUrl, 'gopay' => $gopayResponse];
+        return [
+            'payment_id' => $paymentId,
+            'redirect_url' => $redirectUrl,
+            'gopay' => $gopayResponse
+        ];
     }
 
     /**
@@ -428,6 +419,8 @@ final class GoPayAdapter
     private function extractRedirectUrl($gopayResponse): ?string
     {
         if (is_array($gopayResponse)) {
+            // handle sandbox format
+            if (isset($gopayResponse[0]['gw_url'])) return $gopayResponse[0]['gw_url'];
             return $gopayResponse['gw_url'] ?? $gopayResponse['payment_redirect'] ?? $gopayResponse['redirect_url'] ?? null;
         }
         if (is_object($gopayResponse)) {

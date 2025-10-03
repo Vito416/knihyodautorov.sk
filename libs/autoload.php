@@ -36,11 +36,6 @@ $require_first = function(array $candidates) {
    (musí být načteny dříve než mpdf/src/FpdiTrait.php nebo mpdf/src/Mpdf.php)
    ------------------------- */
 
-// 1) FPDI trait (setasign/fpdi)
-$require_first([
-    'setasign/fpdi/src/autoloader.php',
-]);
-
 // 2) mpdf - psr-log-aware trait (mPDF očekává tento trait jménem MpdfPsrLogAwareTrait)
 $require_first([
     'mpdf-psr-log-aware-trait/src/MpdfPsrLogAwareTrait.php',
@@ -124,10 +119,6 @@ $prefixes = [
     'Mpdf\\PsrHttpMessageShim\\' => __DIR__ . '/mpdf-psr-http-message-shim/src/',
     'Mpdf\\PsrLogAwareTrait\\' => __DIR__ . '/mpdf-psr-log-aware-trait/src/',
 
-    // FPDI (setasign)
-    'setasign\\Fpdi\\' => __DIR__ . '/setasign/fpdi/src/',
-    'SetaSign\\Fpdi\\' => __DIR__ . '/setasign/fpdi/src/',
-
     // PSR interfaces
     'Psr\\Http\\Message\\' => __DIR__ . '/psr-http-message/src/',
     'Psr\\Http\\Client\\' => __DIR__ . '/psr-http-client/src/',
@@ -135,9 +126,6 @@ $prefixes = [
 
     // PhpSpreadsheet
     'PhpOffice\\PhpSpreadsheet\\' => __DIR__ . '/phpspreadsheet/src/PhpSpreadsheet/',
-
-    // Intervention Image
-    'Intervention\\Image\\' => __DIR__ . '/intervention/src/Intervention/Image/',
 
     // DeepCopy (myclabs)
     'DeepCopy\\' => __DIR__ . '/myclabs-deep-copy/src/DeepCopy/',
