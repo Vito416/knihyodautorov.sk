@@ -51,6 +51,7 @@ try {
         ['env'=>'UNSUBSCRIBE_KEY',   'basename'=>'unsubscribe_key','required'=>true],
         ['env'=>'PROFILE_CRYPTO',    'basename'=>'profile_crypto', 'required'=>true],
         ['env'=>'CACHE_CRYPTO_KEY',  'basename'=>'cache_crypto',   'required'=>true],
+        ['env'=>'ORDER_BLOB_KEY', 'basename'=>'order_blob', 'required'=>true],
     ];
 
     foreach ($toCreate as $spec) {

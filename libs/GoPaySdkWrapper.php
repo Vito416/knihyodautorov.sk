@@ -9,6 +9,9 @@ declare(strict_types=1);
  * - Falls back to direct HTTP if official SDK isn't available or fails.
  * - Sanitizes payloads before logging.
  */
+final class GoPayTokenException extends \RuntimeException {}
+final class GoPayHttpException extends \RuntimeException {}
+final class GoPayPaymentException extends \RuntimeException {}
 
 final class GoPaySdkWrapper implements PaymentGatewayInterface
 {
@@ -55,6 +58,35 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
     }
 
     /**
+     * Safe JSON encode helper (throws on error).
+     */
+    private function safeJsonEncode(mixed $v): string
+    {
+        $s = json_encode($v);
+        if ($s === false) {
+            $msg = json_last_error_msg();
+            $ex = new \RuntimeException('JSON encode failed: ' . $msg);
+            try { Logger::systemError($ex, null, null, ['phase' => 'json_encode']); } catch (\Throwable $_) {}
+            throw $ex;
+        }
+        return $s;
+    }
+
+    /**
+     * Build HTTP header array from assoc map to avoid fragile numeric indices.
+     * @param array $assoc e.g. ['Authorization'=>'Bearer x', 'Content-Type'=>'application/json']
+     * @return array ['Key: Value', ...]
+     */
+    private function buildHeaders(array $assoc): array
+    {
+        $out = [];
+        foreach ($assoc as $k => $v) {
+            $out[] = $k . ': ' . $v;
+        }
+        return $out;
+    }
+
+    /**
      * Get OAuth token (cached).
      *
      * @return string
@@ -62,34 +94,51 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
      */
     public function getToken(): string
     {
-        // quick cache check (fast path)
-        $tokenData = $this->cache->get($this->cacheKey);
+        // fast path
+        $tokenData = null;
+        try { $tokenData = $this->cache->get($this->cacheKey); } catch (\Throwable $_) { $tokenData = null; }
         if (is_array($tokenData) && isset($tokenData['token'], $tokenData['expires_at']) && $tokenData['expires_at'] > time()) {
             return (string)$tokenData['token'];
         }
 
-        // prevent token stampede with a simple file lock (per-process)
-        $lockFile = sys_get_temp_dir() . '/gopay_token_lock_' . md5($this->cacheKey);
-        $fp = @fopen($lockFile, 'c+');
-        $locked = false;
-        if ($fp) {
-            $locked = flock($fp, LOCK_EX);
+        $lockKey = 'gopay_token_lock';
+        $fp = null;
+        $lockToken = null;
+        $haveCacheLock = false;
+
+        // 1) try cache-provided lock API
+        if (method_exists($this->cache, 'acquireLock')) {
+            try {
+                $lockToken = $this->cache->acquireLock($lockKey, 10);
+                $haveCacheLock = $lockToken !== null;
+            } catch (\Throwable $_) {
+                $haveCacheLock = false;
+                $lockToken = null;
+            }
+        }
+
+        // 2) fallback to file lock if cache lock not available
+        $tempLockPath = __DIR__ . '/tmp/gopay_token_lock_' . md5($this->cfg['clientId']);
+        if (!$haveCacheLock) {
+            $fp = @fopen($tempLockPath, 'c+');
+            if ($fp !== false) {
+                // block for up to the cache lock TTL - here we do blocking flock
+                if (!flock($fp, LOCK_EX)) {
+                    fclose($fp);
+                    $fp = null;
+                }
+            }
         }
 
         try {
-            // re-check cache inside lock (double-checked locking)
-            $tokenData = $this->cache->get($this->cacheKey);
+            // double-check cache while holding lock
+            try { $tokenData = $this->cache->get($this->cacheKey); } catch (\Throwable $_) { $tokenData = null; }
             if (is_array($tokenData) && isset($tokenData['token'], $tokenData['expires_at']) && $tokenData['expires_at'] > time()) {
                 return (string)$tokenData['token'];
             }
 
             $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/oauth2/token';
             $credentials = base64_encode($this->cfg['clientId'] . ':' . $this->cfg['clientSecret']);
-            $headers = [
-                'Authorization: Basic ' . $credentials,
-                'Content-Type: application/x-www-form-urlencoded',
-                'User-Agent: MyShop/GoPaySdkWrapper/1.0'
-            ];
             $body = http_build_query(['grant_type' => 'client_credentials', 'scope' => $this->cfg['scope']]);
 
             $attempts = 3;
@@ -97,39 +146,52 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             $lastEx = null;
             for ($i = 0; $i < $attempts; $i++) {
                 try {
-                    $resp = $this->doRequest('POST', $url, $headers, $body, ['raw' => true, 'expect_json' => true]);
-                    $httpCode = $resp['http_code'];
-                    $decoded = $resp['json'];
-                    $raw = $resp['body'];
+                    $headers = $this->buildHeaders([
+                        'Authorization' => 'Basic ' . $credentials,
+                        'Content-Type' => 'application/x-www-form-urlencoded',
+                        'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+                        'Expect' => '',
+                        'Content-Length' => (string)strlen($body),
+                    ]);
+                    $resp = $this->doRequest('POST', $url, $headers, $body, ['raw' => true, 'expect_json' => true, 'attempts' => 1]);
+                    $httpCode = $resp['http_code'] ?? 0;
+                    $decoded = $resp['json'] ?? null;
+                    $raw = $resp['body'] ?? '';
 
                     if ($httpCode >= 200 && $httpCode < 300 && is_array($decoded) && isset($decoded['access_token'], $decoded['expires_in'])) {
-                        $this->cache->set($this->cacheKey, [
-                            'token' => (string)$decoded['access_token'],
-                            'expires_at' => time() + (int)$decoded['expires_in'] - 10,
-                        ], (int)$decoded['expires_in']);
-
+                        $expiresIn = (int)$decoded['expires_in'];
+                        try {
+                            $this->cache->set($this->cacheKey, [
+                                'token' => (string)$decoded['access_token'],
+                                'expires_at' => time() + $expiresIn - ($this->cfg['tokenTtlSafety'] ?? 10),
+                            ], $expiresIn);
+                        } catch (\Throwable $_) {}
                         return (string)$decoded['access_token'];
                     }
 
                     $msg = is_array($decoded) ? ($decoded['error_description'] ?? json_encode($decoded)) : $raw;
-                    throw new \RuntimeException("GoPay token endpoint returned HTTP {$httpCode}: {$msg}");
+                    throw new GoPayTokenException("GoPay token endpoint returned HTTP {$httpCode}: {$msg}");
                 } catch (\Throwable $e) {
                     $lastEx = $e;
                     try { Logger::warn('getToken attempt failed', null, ['attempt' => $i + 1, 'exception' => (string)$e]); } catch (\Throwable $_) {}
-                    usleep($backoffMs * 1000);
-                    $backoffMs *= 2;
+                    $backoffMs = min($backoffMs * 2, 2000);
+                    usleep(($backoffMs + random_int(0, 250)) * 1000);
                 }
             }
 
-            $ex = $lastEx ?? new \RuntimeException('Unknown error obtaining token');
+            $ex = $lastEx ?? new GoPayTokenException('Unknown error obtaining token');
             try { Logger::systemError($ex, null, null, ['phase' => 'getToken']); } catch (\Throwable $_) {}
-            throw new \RuntimeException('Failed to obtain GoPay OAuth token: ' . $ex->getMessage());
+            throw new GoPayTokenException('Failed to obtain GoPay OAuth token: ' . $ex->getMessage());
         } finally {
-            if ($locked && isset($fp) && is_resource($fp)) {
-                flock($fp, LOCK_UN);
-                fclose($fp);
-            } elseif (isset($fp) && is_resource($fp)) {
-                fclose($fp);
+            // release file lock
+            if (isset($fp) && is_resource($fp)) {
+                @fflush($fp);
+                @flock($fp, LOCK_UN);
+                @fclose($fp);
+            }
+            // release cache lock if used
+            if ($lockToken !== null && method_exists($this->cache, 'releaseLock')) {
+                try { $this->cache->releaseLock($lockKey, $lockToken); } catch (\Throwable $_) {}
             }
         }
     }
@@ -143,32 +205,22 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
      */
     public function createPayment(array $payload): array
     {
-        // ensure target.type and goid present (goid as string to avoid 32bit overflow)
+        // ensure target.type and goid present
         $goidVal = (string)$this->cfg['goid'];
-        if (empty($payload['target']) && $goidVal !== '') {
-            $payload['target'] = [
-                'type' => 'ACCOUNT',
-                'goid' => $goidVal,
-            ];
+        if (empty($payload['target'])) {
+            $payload['target'] = ['type' => 'ACCOUNT', 'goid' => $goidVal];
         } else {
-            if (!isset($payload['target']['type'])) {
-                $payload['target']['type'] = 'ACCOUNT';
-            }
-            if (empty($payload['target']['goid']) && $goidVal !== '') {
-                $payload['target']['goid'] = $goidVal;
-            } else {
-                // ensure it's string
-                $payload['target']['goid'] = (string)$payload['target']['goid'];
-            }
+            $payload['target']['type'] = $payload['target']['type'] ?? 'ACCOUNT';
+            $payload['target']['goid'] = (string)($payload['target']['goid'] ?? $goidVal);
         }
 
-        // prefer SDK client
+        // try SDK first
         if ($this->client !== null && method_exists($this->client, 'createPayment')) {
             try {
                 $resp = $this->client->createPayment($payload);
                 if (is_object($resp)) $resp = json_decode(json_encode($resp), true);
                 if (!is_array($resp)) {
-                    throw new \RuntimeException('Unexpected SDK response type for createPayment');
+                    throw new GoPayPaymentException('Unexpected SDK response type for createPayment');
                 }
                 return $resp;
             } catch (\Throwable $e) {
@@ -177,48 +229,42 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             }
         }
 
+        // HTTP fallback
         $token = $this->getToken();
         $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment';
+        $body = $this->safeJsonEncode($payload);
 
-        $body = json_encode($payload);
-        if ($body === false) {
-            $err = json_last_error_msg();
-            $ex = new \RuntimeException('JSON encode failed: ' . $err);
-            try { Logger::systemError($ex, null, null, ['phase' => 'createPayment.json_encode']); } catch (\Throwable $_) {}
-            throw $ex;
-        }
-
-        // headers with UA + Content-Length
-        $headers = [
-            'Authorization: Bearer ' . $token,
-            'Content-Type: application/json',
-            'User-Agent: MyShop/GoPaySdkWrapper/1.0',
-            'Content-Length: ' . strlen($body),
+        $headerAssoc = [
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type'  => 'application/json',
+            'User-Agent'    => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+            // avoid "Expect: 100-continue" delays
+            'Expect'        => '',
+            'Content-Length'=> (string)strlen($body),
         ];
+        $headers = $this->buildHeaders($headerAssoc);
 
-        // log sanitized payload
         try { Logger::info('GoPay createPayment payload', null, [$this->sanitizeForLog($payload)]); } catch (\Throwable $_) {}
 
-        // first attempt
+        // perform request with single retry-on-401
         $resp = $this->doRequest('POST', $url, $headers, $body, ['expect_json' => true, 'raw' => true]);
         $httpCode = $resp['http_code'];
         $json = $resp['json'] ?? null;
         $raw = $resp['body'] ?? '';
 
-        // if 401 -> try refresh token once (clear cache + get new token + retry)
         if ($httpCode === 401) {
             try { Logger::info('Received 401, clearing token cache and retrying once', null, []); } catch (\Throwable $_) {}
             $this->clearTokenCache();
             $token = $this->getToken();
-            $headers[0] = 'Authorization: Bearer ' . $token; // keep ordering consistent (first header)
-            $headers[3] = 'Content-Length: ' . strlen($body); // oprav místo asoc. klíče
+            $headerAssoc['Authorization'] = 'Bearer ' . $token;
+            $headerAssoc['Content-Length'] = (string)strlen($body);
+            $headers = $this->buildHeaders($headerAssoc);
             $resp = $this->doRequest('POST', $url, $headers, $body, ['expect_json' => true, 'raw' => true]);
             $httpCode = $resp['http_code'];
             $json = $resp['json'] ?? null;
             $raw = $resp['body'] ?? '';
         }
 
-        // log response sanitized
         try { Logger::info('GoPay createPayment response', null, [$this->sanitizeForLog($json ?? $raw)]); } catch (\Throwable $_) {}
 
         if ($httpCode < 200 || $httpCode >= 300) {
@@ -251,33 +297,76 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
      */
     public function getStatus(string $gatewayPaymentId): array
     {
+        // --- safe cache key (no reserved chars) ---
+        $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gatewayPaymentId), 0, 32);
+        $cached = null;
+        try {
+            $cached = $this->cache->get($statusCacheKey);
+        } catch (\Throwable $e) {
+            try { Logger::warn('Status cache get failed', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+            $cached = null;
+        }
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        // SDK path (unchanged)
         if ($this->client !== null && method_exists($this->client, 'getStatus')) {
             try {
                 $resp = $this->client->getStatus($gatewayPaymentId);
                 if (is_object($resp)) $resp = json_decode(json_encode($resp), true);
                 if (!is_array($resp)) throw new \RuntimeException('Unexpected SDK response type for getStatus');
+                try {
+                    $this->cache->set($statusCacheKey, $resp, 60);
+                } catch (\Throwable $e) {
+                    try { Logger::warn('Failed to set status cache (SDK path)', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e]); } catch (\Throwable $_) {}
+                }
                 return $resp;
             } catch (\Throwable $e) {
                 try { Logger::warn('SDK getStatus failed, falling back to HTTP', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
             }
         }
 
+        // HTTP fallback
         $token = $this->getToken();
-        $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/' . rawurlencode($gatewayPaymentId) . '/status';
-        $headers = [
-            'Authorization: Bearer ' . $token,
-            'Content-Type: application/json',
-        ];
+        $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment/' . rawurlencode($gatewayPaymentId);
+
+        // NOTE: do NOT send Content-Type on GET — causes RESTEasy "Cannot consume content type" 500
+        $headers = $this->buildHeaders([
+            'Authorization' => 'Bearer ' . $token,
+            'Accept' => 'application/json',
+            'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+            'Expect' => '',
+        ]);
 
         $resp = $this->doRequest('GET', $url, $headers, null, ['expect_json' => true, 'raw' => true]);
-        $httpCode = $resp['http_code'];
+        $httpCode = $resp['http_code'] ?? 0;
         $json = $resp['json'] ?? null;
         $raw = $resp['body'] ?? '';
+
+        // retry once on 401 (token might be stale)
+        if ($httpCode === 401) {
+            try { Logger::info('getStatus received 401, clearing token and retrying', null, []); } catch (\Throwable $_) {}
+            $this->clearTokenCache();
+            $token = $this->getToken();
+            $headers = $this->buildHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/json',
+                'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+                'Expect' => '',
+            ]);
+            $resp = $this->doRequest('GET', $url, $headers, null, ['expect_json' => true, 'raw' => true]);
+            $httpCode = $resp['http_code'] ?? 0;
+            $json = $resp['json'] ?? null;
+            $raw = $resp['body'] ?? '';
+        }
+
+        try { Logger::info('GoPay getStatus response', null, [$this->sanitizeForLog($json ?? $raw)]); } catch (\Throwable $_) {}
 
         if ($httpCode < 200 || $httpCode >= 300) {
             $msg = is_array($json) ? ($json['error_description'] ?? ($json['message'] ?? json_encode($json))) : $raw;
             $ex = new \RuntimeException("GoPay getStatus returned HTTP {$httpCode}: {$msg}");
-            try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+            try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId, 'http_code' => $httpCode]); } catch (\Throwable $_) {}
             throw $ex;
         }
 
@@ -285,6 +374,13 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             $ex = new \RuntimeException("GoPay getStatus returned non-JSON body (HTTP {$httpCode}): {$raw}");
             try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
             throw $ex;
+        }
+
+        // Safely try to set cache, but do not fail the call if cache set errors
+        try {
+            $this->cache->set($statusCacheKey, $json, 60);
+        } catch (\Throwable $e) {
+            try { Logger::warn('Failed to set status cache', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
         }
 
         return $json;
@@ -311,28 +407,41 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
         }
 
         $token = $this->getToken();
-        $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/' . rawurlencode($gatewayPaymentId) . '/refund';
-        $headers = [
-            'Authorization: Bearer ' . $token,
-            'Content-Type: application/json',
-        ];
+        $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment/' . rawurlencode($gatewayPaymentId) . '/refund';
+        $headers = $this->buildHeaders([
+            'Authorization' => 'Bearer ' . $token,
+            'Content-Type' => 'application/json',
+            'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+            'Expect' => '',
+        ]);
 
-        $body = json_encode($args);
-        if ($body === false) {
-            $ex = new \RuntimeException('JSON encode failed for refund args: ' . json_last_error_msg());
-            try { Logger::systemError($ex, null, null, ['phase' => 'refundPayment']); } catch (\Throwable $_) {}
-            throw $ex;
-        }
-
+        $body = $this->safeJsonEncode($args);
         $resp = $this->doRequest('POST', $url, $headers, $body, ['expect_json' => true, 'raw' => true]);
-        $httpCode = $resp['http_code'];
+        $httpCode = $resp['http_code'] ?? 0;
         $json = $resp['json'] ?? null;
         $raw = $resp['body'] ?? '';
+
+        // retry once on 401
+        if ($httpCode === 401) {
+            try { Logger::info('refundPayment received 401, clearing token and retrying', null, []); } catch (\Throwable $_) {}
+            $this->clearTokenCache();
+            $token = $this->getToken();
+            $headers = $this->buildHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type' => 'application/json',
+                'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+                'Expect' => '',
+            ]);
+            $resp = $this->doRequest('POST', $url, $headers, $body, ['expect_json' => true, 'raw' => true]);
+            $httpCode = $resp['http_code'] ?? 0;
+            $json = $resp['json'] ?? null;
+            $raw = $resp['body'] ?? '';
+        }
 
         if ($httpCode < 200 || $httpCode >= 300) {
             $msg = is_array($json) ? ($json['error_description'] ?? ($json['message'] ?? json_encode($json))) : $raw;
             $ex = new \RuntimeException("GoPay refund returned HTTP {$httpCode}: {$msg}");
-            try { Logger::systemError($ex, null, null, ['phase' => 'refundPayment', 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+            try { Logger::systemError($ex, null, null, ['phase' => 'refundPayment', 'id' => $gatewayPaymentId, 'http_code' => $httpCode]); } catch (\Throwable $_) {}
             throw $ex;
         }
 
@@ -371,6 +480,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
         $backoffMs = $options['backoff_ms'] ?? 200;
         $expectJson = $options['expect_json'] ?? false;
         $raw = $options['raw'] ?? false;
+        $timeout = $options['timeout'] ?? 15;
 
         $lastEx = null;
         for ($i = 0; $i < $attempts; $i++) {
@@ -380,7 +490,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $timeout);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, $options['ssl_verify_peer'] ?? true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
 
@@ -388,35 +498,34 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             if ($body !== null) curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
 
             $resp = curl_exec($ch);
-            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlErr = null;
-            if ($resp === false) {
-                $curlErr = curl_error($ch);
-            }
+            $curlErrNo = curl_errno($ch);
+            $curlErr = curl_error($ch);
+            $info = curl_getinfo($ch);
+            $httpCode = (int)$info['http_code'];
+
+            // close the handle
             curl_close($ch);
 
-            if ($resp === false) {
-                $lastEx = new \RuntimeException('CURL error: ' . $curlErr);
-                try { Logger::warn('HTTP request failed (curl)', null, ['url' => $url, 'error' => $curlErr, 'attempt' => $i + 1]); } catch (\Throwable $_) {}
-                usleep($backoffMs * 1000);
-                $backoffMs *= 2;
+            if ($resp === false || $curlErrNo !== 0) {
+                $lastEx = new GoPayHttpException('CURL error: ' . $curlErr . ' (' . $curlErrNo . ')');
+                try { Logger::warn('HTTP request failed (curl)', null, ['url' => $url, 'error' => $curlErr, 'errno' => $curlErrNo, 'attempt' => $i + 1, 'info' => $info]); } catch (\Throwable $_) {}
+                $backoffMs = min($backoffMs * 2, 2000);
+                usleep(($backoffMs + random_int(0, 250)) * 1000);
                 continue;
             }
 
+            // decode json when requested/possible
             $decoded = null;
-            if ($expectJson || $raw) {
+            if ($expectJson) {
                 $decoded = json_decode($resp, true);
-            } else {
-                $tmp = json_decode($resp, true);
-                if (json_last_error() === JSON_ERROR_NONE) {
-                    $decoded = $tmp;
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new GoPayHttpException('Invalid JSON response: ' . json_last_error_msg());
                 }
             }
-
             return ['http_code' => $httpCode, 'body' => $resp, 'json' => $decoded];
         }
 
-        $ex = new \RuntimeException('HTTP request failed after retries: ' . ($lastEx ? $lastEx->getMessage() : 'unknown'));
+        $ex = new GoPayHttpException('HTTP request failed after retries: ' . ($lastEx ? $lastEx->getMessage() : 'unknown'));
         try { Logger::systemError($ex, null, null, ['phase' => 'doRequest', 'url' => $url]); } catch (\Throwable $_) {}
         throw $ex;
     }
@@ -424,11 +533,11 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
     /**
      * Simple sanitizer for logging payloads/responses.
      */
-    private function sanitizeForLog($data)
+    private function sanitizeForLog(array|string $data): array|string
     {
         if (is_array($data)) {
             $copy = $data;
-            $sensitive = ['clientSecret','client_secret','card_number','cardnum','cc_number','ccnum','cvv','cvc','payment_method_token','access_token','refresh_token','clientId','client_id','secret'];
+            $sensitive = ['account','number','pan','email','phone','phone_number','iban','accountNumber','clientSecret','client_secret','card_number','cardnum','cc_number','ccnum','cvv','cvc','payment_method_token','access_token','refresh_token','clientId','client_id','secret'];
             array_walk_recursive($copy, function (&$v, $k) use ($sensitive) {
                 if (in_array($k, $sensitive, true)) {
                     $v = '[REDACTED]';

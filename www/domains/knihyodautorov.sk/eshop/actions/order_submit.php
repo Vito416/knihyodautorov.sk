@@ -220,6 +220,16 @@ if ($clientIdempotencyKey !== null) {
         if (class_exists('Logger')) try { Logger::warn('order_submit: idempotency lookup failed', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
     }
 }
+/* ---------- encrypt customer blob helper ---------- */
+function encryptCustomerBlob(string $customerBlob): array {
+    $keyInfo = KeyManager::getRawKeyBytes('ORDER_BLOB', KEYS_DIR, 'order_blob', false);
+    $encrypted = Crypto::encryptWithKeyBytes($customerBlob, $keyInfo['raw'], 'compact_base64');
+    KeyManager::memzero($keyInfo['raw']);
+    return [
+        'encrypted' => $encrypted,
+        'version' => $keyInfo['version']
+    ];
+}
 
 /* ---------- create order + items + reservations (transaction) ---------- */
 $orderId = null;
@@ -238,15 +248,16 @@ try {
             'country' => $bill_country
         ]);
 
+        $enc = encryptCustomerBlob($customerBlob);
         $d->prepareAndRun(
-            'INSERT INTO orders (uuid, total, currency, status, bill_full_name, encrypted_customer_blob, created_at) VALUES (:uuid,:total,:cur,:st,:name,:blob,NOW())',
+            'INSERT INTO orders (uuid, total, currency, status, encrypted_customer_blob, encrypted_customer_blob_key_version, created_at) VALUES (:uuid,:total,:cur,:st,:blob,:key_version,NOW())',
             [
                 ':uuid' => $orderUuid,
                 ':total' => number_format($total, 2, '.', ''),
                 ':cur' => $currency,
                 ':st' => 'pending',
-                ':name' => $bill_full_name,
-                ':blob' => $customerBlob
+                ':blob' => $enc['encrypted'],
+                ':key_version' => $enc['version']
             ]
         );
         $orderId = (int)$d->lastInsertId();
@@ -374,14 +385,16 @@ try {
 
     $db->prepareAndRun(
         'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
-         VALUES (:k, :uid, :req, :r, :ttl, NOW())
-         ON DUPLICATE KEY UPDATE response = :r, ttl_seconds = :ttl',
+        VALUES (:k, :uid, :req, :r, :ttl, NOW())
+        ON DUPLICATE KEY UPDATE response = :r2, ttl_seconds = :ttl2',
         [
-            ':k'   => $idempHash,
-            ':uid' => $user['id'] ?? null,
-            ':req' => $requestHash,
-            ':r'   => $toStore,
-            ':ttl' => 86400 // 1 den; upravte pokud chcete jinou hodnotu
+            ':k'    => $idempHash,
+            ':uid'  => $user['id'] ?? null,
+            ':req'  => $requestHash,
+            ':r'    => $toStore,
+            ':ttl'  => 86400,
+            ':r2'   => $toStore,
+            ':ttl2' => 86400
         ]
     );
 } catch (\Throwable $e) {

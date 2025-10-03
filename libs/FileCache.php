@@ -288,6 +288,84 @@ class FileCache implements CacheInterface
     }
 
     /**
+     * Attempt to acquire a file-based lock with expiry.
+     *
+     * Returns a lock token string on success (must be passed to releaseLock),
+     * or null on failure.
+     *
+     * Uses O_EXCL-like fopen('x') to create lock file atomically. If a stale
+     * lock exists (expired), it is removed and acquisition is retried once.
+     */
+    public function acquireLock(string $name, int $ttlSeconds = 10): ?string
+    {
+        $safe = preg_replace('/[^A-Za-z0-9_\-]/', '_', mb_substr($name, 0, 64));
+        $locksDir = $this->cacheDirReal . DIRECTORY_SEPARATOR . 'locks';
+        if (!is_dir($locksDir)) {
+            @mkdir($locksDir, 0700, true);
+            @chmod($locksDir, 0700);
+        }
+        $lockFile = $locksDir . DIRECTORY_SEPARATOR . $safe . '.lock';
+        $token = bin2hex(random_bytes(16));
+        $expireAt = time() + max(1, (int)$ttlSeconds);
+        $payload = json_encode(['token' => $token, 'expires' => $expireAt], JSON_UNESCAPED_SLASHES);
+
+        // Try atomic create via fopen('x')
+        $fp = @fopen($lockFile, 'x'); // fails if file exists
+        if ($fp !== false) {
+            // write token + expires
+            fwrite($fp, $payload);
+            fflush($fp);
+            fclose($fp);
+            @chmod($lockFile, 0600);
+            return $token;
+        }
+
+        // if file exists, check if stale
+        if (is_file($lockFile) && is_readable($lockFile)) {
+            $raw = @file_get_contents($lockFile);
+            if ($raw !== false) {
+                $dec = @json_decode($raw, true);
+                if (is_array($dec) && isset($dec['expires']) && is_numeric($dec['expires'])) {
+                    if ((int)$dec['expires'] < time()) {
+                        // stale -> try to remove and acquire once more
+                        @unlink($lockFile);
+                        $fp2 = @fopen($lockFile, 'x');
+                        if ($fp2 !== false) {
+                            fwrite($fp2, $payload);
+                            fflush($fp2);
+                            fclose($fp2);
+                            @chmod($lockFile, 0600);
+                            return $token;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Release lock previously acquired by acquireLock.
+     * Returns true on success, false otherwise.
+     */
+    public function releaseLock(string $name, string $token): bool
+    {
+        $safe = preg_replace('/[^A-Za-z0-9_\-]/', '_', mb_substr($name, 0, 64));
+        $lockFile = $this->cacheDirReal . DIRECTORY_SEPARATOR . 'locks' . DIRECTORY_SEPARATOR . $safe . '.lock';
+        if (!is_file($lockFile) || !is_readable($lockFile)) return false;
+        $raw = @file_get_contents($lockFile);
+        if ($raw === false) return false;
+        $dec = @json_decode($raw, true);
+        if (!is_array($dec) || !isset($dec['token'])) return false;
+        if (!hash_equals((string)$dec['token'], (string)$token)) {
+            // token mismatch — do not remove other's lock
+            return false;
+        }
+        return @unlink($lockFile);
+    }
+
+    /**
      * Returns detailed cache metrics for sharded caches with size breakdown.
      *
      * - totalFiles: all cache files including expired

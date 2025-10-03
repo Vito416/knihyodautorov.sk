@@ -44,9 +44,6 @@ function init_mailer_from_config(array $config, ?PDO $pdo = null): void
         }
 
         Mailer::init($config, $pdo);
-        if (class_exists('Logger')) {
-            try { Logger::systemMessage('notice', 'Mailer initialized'); } catch (\Throwable $_) {}
-        }
     } catch (\Throwable $e) {
         // log error but do not abort bootstrap
         if (class_exists('Logger')) {

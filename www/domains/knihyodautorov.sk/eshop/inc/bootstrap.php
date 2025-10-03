@@ -76,8 +76,8 @@ $loggerShim = new class {
     public function systemMessage($level, $message, $userId = null, $context = null) { try { Logger::systemMessage($level, $message, $userId, $context); } catch (\Throwable $_) {} }
 };
 
-$notificationUrl = (string)($_ENV['APP_GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay/notify');
-$returnUrl = (string)($_ENV['APP_GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'order/return');
+$notificationUrl = (string)($_ENV['GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'notify');
+$returnUrl = (string)($_ENV['GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay_return');
 
 // -------------------- Crypto / KeyManager (fail fast) --------------------
 try {

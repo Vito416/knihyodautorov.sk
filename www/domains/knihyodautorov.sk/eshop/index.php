@@ -61,6 +61,8 @@ $routes = [
     'gdpr'           => 'gdpr.php',
     'vop'            => 'vop.php',
     'reklamacie'     => 'reklamacie.php',
+    'notify'         => '/gopay/notify.php',
+    'gopay_return'         => '/gopay_return.php',
 ];
 
 // --- Route exists? ---

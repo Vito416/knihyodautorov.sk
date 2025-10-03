@@ -17,6 +17,7 @@ final class GoPayAdapter
     private string $notificationUrl;
     private string $returnUrl;
     private int $reservationTtlSec = 900; // 15 minutes default
+    private ?FileCache $cache = null; // optional FileCache for idempotency/status caching
 
     public function __construct(
         Database $db,
@@ -24,7 +25,8 @@ final class GoPayAdapter
         object $logger,
         ?object $mailer = null,
         string $notificationUrl = '',
-        string $returnUrl = ''
+        string $returnUrl = '',
+        ?FileCache $cache = null
     ) {
         $this->db = $db;
         $this->gopayClient = $gopayClient;
@@ -32,6 +34,7 @@ final class GoPayAdapter
         $this->mailer = $mailer;
         $this->notificationUrl = $notificationUrl;
         $this->returnUrl = $returnUrl;
+        $this->cache = $cache; // may be null, check before use
     }
 
     /*
@@ -100,15 +103,24 @@ final class GoPayAdapter
     {
         $idempHash = hash('sha256', (string)$idempotencyKey);
 
-        // idempotency quick-check
-        $cached = $this->db->fetch('SELECT response FROM idempotency_keys WHERE key_hash = :k', [':k' => $idempHash]);
-        if ($cached !== null && !empty($cached['response'])) {
-            try { $this->logger->info('Idempotent createPaymentFromOrder hit', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
-            return json_decode($cached['response'], true);
+        // 1) idempotency quick-check via FileCache (prefer), fallback to DB
+        $cacheKey = 'gopay:idemp:' . md5(($this->notificationUrl ?? '') . '|' . ($this->returnUrl ?? '') . '|' . $idempHash);
+        if (!empty($this->cache)) {
+            $cached = $this->cache->get($cacheKey);
+            if (is_string($cached) && $cached !== '') {
+                try { $this->logger->info('Idempotent createPaymentFromOrder hit (cache)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
+                return json_decode($cached, true);
+            }
+        } else {
+            $cached = $this->db->fetch('SELECT response FROM idempotency_keys WHERE key_hash = :k', [':k' => $idempHash]);
+            if ($cached !== null && !empty($cached['response'])) {
+                try { $this->logger->info('Idempotent createPaymentFromOrder hit (db)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
+                return json_decode($cached['response'], true);
+            }
         }
 
-        // Load order (lock row)
-        $order = $this->db->fetch('SELECT * FROM orders WHERE id = :id FOR UPDATE', [':id' => $orderId]);
+        // Load order (non-locking). We'll re-check & lock inside the short DB transaction
+        $order = $this->db->fetch('SELECT * FROM orders WHERE id = :id', [':id' => $orderId]);
         if ($order === null) {
             throw new \RuntimeException('Order not found: ' . $orderId);
         }
@@ -116,7 +128,7 @@ final class GoPayAdapter
             throw new \RuntimeException('Order not in pending state: ' . $orderId);
         }
 
-        // Compose payment payload
+        // Compose payment payload (keep your existing payload building)
         $amountCents = (int)round((float)$order['total'] * 100);
         $payload = [
             'amount' => $amountCents,
@@ -127,66 +139,100 @@ final class GoPayAdapter
                 'notification_url' => $this->notificationUrl,
             ],
             'order_description' => 'Objednávka ' . ($order['uuid'] ?? $order['id']),
-            'items' => array_map(function($it){
-                return [
-                    'name' => $it['title'] ?? 'item',
-                    'amount' => (int)round(((float)($it['price_snapshot'] ?? 0.0))*100),
-                    'count' => (int)($it['qty'] ?? 1)
-                ];
-            }, $this->fetchOrderItemsForPayload($orderId)),
+            // items nastavíme níže
         ];
-
-        // Create GoPay payment
-        try {
-            try { 
-                $this->logger->info('Calling GoPay createPayment', null, ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]); 
-            } catch (\Throwable $_) {}
-
-            $gopayResponse = $this->gopayClient->createPayment($payload);
-
-            if (is_object($gopayResponse) && method_exists($gopayResponse, 'hasSucceed') && !$gopayResponse->hasSucceed()) {
-                $body = $gopayResponse->json ?? null;
-                try { 
-                    $this->logger->systemError(new \RuntimeException('GoPay createPayment failed'), null, null, ['response' => $body]); 
-                } catch (\Throwable $_) {}
-                throw new \RuntimeException('Payment gateway error');
+        $payload['items'] = array_map(function($it){
+            return [
+                'name' => $it['title'] ?? 'item',
+                'amount' => (int)round(((float)($it['price_snapshot'] ?? 0.0))*100),
+                'count' => (int)($it['qty'] ?? 1)
+            ];
+        }, $this->fetchOrderItemsForPayload($orderId));
+        // verify totals (defensive)
+        $sumItems = 0;
+        foreach ($payload['items'] as $it) {
+            if (!isset($it['amount']) || !is_int($it['amount']) || $it['amount'] < 0) {
+                throw new \RuntimeException('Invalid item amount in payload');
             }
+            $sumItems += $it['amount'] * max(1, (int)($it['count'] ?? 1));
+        }
+        if ($sumItems !== $payload['amount']) {
+            // buď loguj a throw (STRICT), nebo jen warn
+            try { $this->logger->warn('Payment amount mismatch between items and total', null, ['order_id'=>$orderId,'items_sum'=>$sumItems,'amount'=>$payload['amount']]); } catch (\Throwable $_) {}
+            // volitelně: throw new \RuntimeException('Payment amount mismatch');
+        }
 
-            $gopayJson = is_array($gopayResponse) 
-                ? $gopayResponse 
-                : (is_object($gopayResponse) ? get_object_vars($gopayResponse) : []);
+        // 2) Provisionální payment row (with re-check & FOR UPDATE lock)
+        $provisionPaymentId = null;
+        try {
+            $this->db->transaction(function (Database $d) use ($orderId, $order, &$provisionPaymentId) {
+                // re-lock order and ensure still pending
+                $row = $d->fetch('SELECT id, status, total, currency FROM orders WHERE id = :id FOR UPDATE', [':id' => $orderId]);
+                if ($row === null) {
+                    throw new \RuntimeException('Order disappeared during processing: ' . $orderId);
+                }
+                if ($row['status'] !== 'pending') {
+                    throw new \RuntimeException('Order no longer pending: ' . $orderId);
+                }
 
+                $d->prepareAndRun(
+                    'INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, created_at) 
+                    VALUES (:oid, :gw, NULL, :st, :amt, :cur, NULL, NOW())',
+                    [
+                        ':oid' => $orderId,
+                        ':gw' => 'gopay',
+                        ':st' => 'initiated',
+                        ':amt' => $this->safeDecimal($row['total']),
+                        ':cur' => $row['currency'] ?? 'EUR'
+                    ]
+                );
+                $provisionPaymentId = (int)$d->lastInsertId();
+            });
         } catch (\Throwable $e) {
+            try { $this->logger->systemError($e, null, null, ['phase'=>'provision_payment']); } catch (\Throwable $_) {}
+            throw $e;
+        }
+
+        // 3) Call GoPay
+        try {
+            try { $this->logger->info('Calling GoPay createPayment', null, ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]); } catch (\Throwable $_) {}
+            $gopayResponse = $this->gopayClient->createPayment($payload);
+        } catch (\Throwable $e) {
+            // Attempt to mark provisioned payment as failed to aid reconciliation
+            try {
+                if ($provisionPaymentId !== null) {
+                    $this->db->prepareAndRun('UPDATE payments SET status = :st, details = :det, updated_at = NOW() WHERE id = :id', [
+                        ':st' => 'failed',
+                        ':det' => json_encode(['error' => (string)$e]),
+                        ':id' => $provisionPaymentId
+                    ]);
+                } else {
+                    try { $this->logger->warn('Attempted to mark provisioned payment as failed but provisionPaymentId is null', null, ['order_id'=>$orderId]); } catch (\Throwable $_) {}
+                }
+            } catch (\Throwable $_) {}
             try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.createPayment', 'order_id' => $orderId]); } catch (\Throwable $_) {}
             throw $e;
         }
 
-        // Persist payment + idempotency inside single transaction
-        $this->db->transaction(function (Database $d) use ($orderId, $order, $gopayResponse, $idempHash) {
+        // 4) Persist gateway id/details and idempotency inside transaction
+        $this->db->transaction(function (Database $d) use ($orderId, $gopayResponse, $provisionPaymentId, $idempHash, $cacheKey) {
             $gwId = $this->extractGatewayPaymentId($gopayResponse);
             $detailsJson = json_encode($gopayResponse);
 
-            // Insert payment
             $d->prepareAndRun(
-                'INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, created_at) 
-                VALUES (:oid, :gw, :tx, :st, :amt, :cur, :det, NOW())',
+                'UPDATE payments SET transaction_id = :tx, status = :st, details = :det, updated_at = NOW() WHERE id = :id',
                 [
-                    ':oid' => $orderId,
-                    ':gw' => 'gopay',
                     ':tx' => $gwId,
                     ':st' => 'pending',
-                    ':amt' => $this->safeDecimal($order['total']),
-                    ':cur' => $order['currency'] ?? 'EUR',
-                    ':det' => $detailsJson
+                    ':det' => $detailsJson,
+                    ':id' => $provisionPaymentId
                 ]
             );
 
-            $paymentId = (int)$d->lastInsertId();
+            // persist idempotency key in DB (best-effort)
             $redirectUrl = $this->extractRedirectUrl($gopayResponse);
-
-            // Persist idempotency key (only once)
             $payloadResp = json_encode([
-                'payment_id' => $paymentId,
+                'payment_id' => $provisionPaymentId,
                 'redirect_url' => $redirectUrl,
                 'gopay' => $gopayResponse
             ]);
@@ -195,17 +241,29 @@ final class GoPayAdapter
                 $d->prepareAndRun(
                     'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
                     VALUES (:k, NULL, NULL, :r, 86400, NOW())
-                    ON DUPLICATE KEY UPDATE response = :r',
-                    [':k' => $idempHash, ':r' => $payloadResp]
+                    ON DUPLICATE KEY UPDATE response = :r2',
+                    [':k' => $idempHash, ':r' => $payloadResp, ':r2' => $payloadResp]
                 );
             } catch (\Throwable $_) {
                 // ignore duplicate key / DB issues
             }
+
+            // store in FileCache if available
+            if (!empty($this->cache) && method_exists($this->cache, 'set')) {
+                try { $this->cache->set($cacheKey, $payloadResp, 86400); } catch (\Throwable $_) {}
+            }
         });
 
-        // Return structured response
-        $paymentId = $this->findPaymentIdByGatewayId($this->extractGatewayPaymentId($gopayResponse));
+        // 5) Return structured response
+        $gwId = $this->extractGatewayPaymentId($gopayResponse);
+        $paymentId = $this->findPaymentIdByGatewayId($gwId);
         $redirectUrl = $this->extractRedirectUrl($gopayResponse);
+
+        // fallback: pokud nelze najít row podle gateway id, vrať provision id (alespoň něco pro reconciliaci)
+        if ($paymentId === null && isset($provisionPaymentId) && $provisionPaymentId !== null) {
+            try { $this->logger->warn('Could not find payment by gateway id, returning provisional payment id as fallback', null, ['gw_id'=>$gwId,'provision_id'=>$provisionPaymentId]); } catch (\Throwable $_) {}
+            $paymentId = $provisionPaymentId;
+        }
 
         return [
             'payment_id' => $paymentId,
@@ -227,7 +285,20 @@ final class GoPayAdapter
     public function handleNotify(string $rawBody, array $headers = []): array
     {
         $payloadHash = $this->computePayloadHash($rawBody);
-
+        // Optional webhook signature verification (enable by setting GOPAY_WEBHOOK_SECRET)
+        $secret = (string)($_ENV['GOPAY_WEBHOOK_SECRET'] ?? '');
+        if ($secret !== '') {
+            $sigHeader = $headers['X-GOPAY-SIGN'] ?? $headers['x-gopay-sign'] ?? $headers['Gopay-Signature'] ?? null;
+            if ($sigHeader === null) {
+                try { $this->logger->warn('Missing webhook signature header', null, ['hash' => $payloadHash]); } catch (\Throwable $_) {}
+                throw new \RuntimeException('Missing webhook signature');
+            }
+            $expected = hash_hmac('sha256', $rawBody, $secret);
+            if (!hash_equals($expected, $sigHeader)) {
+                try { $this->logger->warn('Invalid webhook signature', null, ['hash' => $payloadHash]); } catch (\Throwable $_) {}
+                throw new \RuntimeException('Invalid webhook signature');
+            }
+        }
         // dedupe based on payments.webhook_payload_hash or payment_logs
         $exists = $this->db->fetch('SELECT id FROM payments WHERE webhook_payload_hash = :h LIMIT 1', [':h' => $payloadHash]);
         if ($exists !== null) {
@@ -241,7 +312,11 @@ final class GoPayAdapter
         // Always verify via GoPay API (authoritative)
         try {
             try { $this->logger->info('Verifying webhook via GoPay getStatus', null, ['gopay_id' => $gwId]); } catch (\Throwable $_) {}
-            $status = $this->gopayClient->getStatus($gwId);
+            if (empty($gwId)) {
+            try { $this->logger->warn('Webhook missing gateway id (paymentId/id)', null, ['payload_hash' => $payloadHash, 'raw' => $rawBody]); } catch (\Throwable $_) {}
+            throw new \RuntimeException('Webhook missing gateway payment id');
+        }
+        $status = $this->gopayClient->getStatus($gwId);
         } catch (\Throwable $e) {
             try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]); } catch (\Throwable $_) {}
             throw $e;
@@ -257,7 +332,15 @@ final class GoPayAdapter
             $payment = $d->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw', [':tx' => $gwId, ':gw' => 'gopay']);
             if ($payment === null) {
                 // create a payment record if missing (best effort)
-                $d->prepareAndRun('INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, webhook_payload_hash, raw_webhook, created_at) VALUES (NULL, :gw, :tx, :st, 0, "EUR", :det, :h, :raw, NOW())', [':gw' => 'gopay', ':tx' => $gwId, ':st' => $mapping['payment_status'], ':det' => json_encode($status), ':h' => $payloadHash, ':raw' => json_encode($status)]);
+                $d->prepareAndRun('INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, webhook_payload_hash, raw_webhook, created_at) VALUES (NULL, :gw, :tx, :st, 0, :cur, :det, :h, :raw, NOW())', [
+                    ':gw' => 'gopay',
+                    ':tx' => $gwId,
+                    ':st' => $mapping['payment_status'],
+                    ':cur' => 'EUR',
+                    ':det' => json_encode($status),
+                    ':h' => $payloadHash,
+                    ':raw' => json_encode($status)
+                ]);
                 $paymentId = (int)$d->lastInsertId();
                 $payment = $d->fetch('SELECT * FROM payments WHERE id = :id', [':id' => $paymentId]);
             } else {
@@ -271,9 +354,33 @@ final class GoPayAdapter
                 // mark reservations and decrement stock
                 $reservations = $d->fetchAll('SELECT * FROM inventory_reservations WHERE order_id = :oid AND status = "pending"', [':oid' => $orderId]);
                 foreach ($reservations as $r) {
-                    // decrement stock (safe UPDATE)
-                    $d->prepareAndRun('UPDATE books SET stock_quantity = stock_quantity - :q WHERE id = :bid AND stock_quantity >= :q', [':q' => $r['qty'], ':bid' => $r['book_id']]);
-                    $d->prepareAndRun('UPDATE inventory_reservations SET status = "confirmed" WHERE id = :id', [':id' => $r['id']]);
+                // lock the book row and check stock atomically
+                $bookRow = $d->fetch('SELECT stock_quantity FROM books WHERE id = :bid FOR UPDATE', [
+                    ':bid' => $r['book_id']
+                ]);
+
+                if ($bookRow === null) {
+                    throw new \RuntimeException('Book not found for book_id=' . $r['book_id']);
+                }
+
+                $currentStock = (int)($bookRow['stock_quantity'] ?? 0);
+                $qty = (int)($r['qty'] ?? 0);
+
+                if ($currentStock < $qty) {
+                    // insufficient stock -> rollback transaction by throwing
+                    throw new \RuntimeException('Insufficient stock for book_id=' . $r['book_id']);
+                }
+
+                // now safe to decrement
+                $d->prepareAndRun('UPDATE books SET stock_quantity = stock_quantity - :q WHERE id = :bid', [
+                    ':q' => $qty,
+                    ':bid' => $r['book_id']
+                ]);
+                            // mark reservation confirmed
+                            $d->prepareAndRun('UPDATE inventory_reservations SET status = :st WHERE id = :id', [
+                                ':st' => 'confirmed',
+                                ':id' => $r['id']
+                            ]);
                 }
 
                 $d->prepareAndRun('UPDATE orders SET status = "paid", updated_at = NOW() WHERE id = :id', [':id' => $orderId]);
@@ -327,11 +434,13 @@ final class GoPayAdapter
                         $expiresAt = (new \DateTimeImmutable('+30 days'))->format('Y-m-d H:i:s');
                         $maxUses = 5;
 
+                        // ensure $tokenHash is binary; store hex
+                        $tokenHashHex = is_string($tokenHash) ? bin2hex($tokenHash) : bin2hex((string)$tokenHash);
                         $d->prepareAndRun('INSERT INTO order_item_downloads (order_id, book_id, asset_id, download_token_hash, encryption_key_version, token_key_version, max_uses, used, expires_at, created_at) VALUES (:oid, :bid, :aid, :hash, NULL, :tkv, :max, 0, :exp, NOW())', [
                             ':oid' => $orderId,
                             ':bid' => $a['book_id'],
                             ':aid' => $a['asset_id'],
-                            ':hash' => $tokenHash,
+                            ':hash' => $tokenHashHex,
                             ':tkv' => $tokenKeyVer,
                             ':max' => $maxUses,
                             ':exp' => $expiresAt
@@ -432,7 +541,10 @@ final class GoPayAdapter
     private function findPaymentIdByGatewayId(string $gwId): ?int
     {
         $row = $this->db->fetch('SELECT id FROM payments WHERE transaction_id = :tx AND gateway = :gw LIMIT 1', [':tx' => $gwId, ':gw' => 'gopay']);
-        return $row['id'] ?? null;
+        if (is_array($row) && isset($row['id'])) {
+            return (int)$row['id'];
+        }
+        return null;
     }
 
     private function safeDecimal($v): string
@@ -512,7 +624,12 @@ final class GoPayAdapter
         ];
 
         try {
-            $notifId = Mailer::enqueue($payloadArr);
+            if ($this->mailer !== null && method_exists($this->mailer, 'enqueue')) {
+                $notifId = $this->mailer->enqueue($payloadArr);
+            } else {
+                // fallback to static
+                $notifId = Mailer::enqueue($payloadArr);
+            }
             try { $this->logger->systemMessage('notice', 'Order downloads email enqueued', null, ['order_id' => $orderId, 'notification_id' => $notifId]); } catch (\Throwable $_) {}
         } catch (\Throwable $e) {
             try { $this->logger->systemMessage('error', 'Mailer enqueue failed during order downloads', null, ['order_id' => $orderId, 'exception' => (string)$e]); } catch (\Throwable $_) {}
