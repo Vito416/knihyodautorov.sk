@@ -5,29 +5,47 @@ use Psr\SimpleCache\CacheInterface;
 use Psr\SimpleCache\InvalidArgumentException as PsrInvalidArgumentException;
 
 /**
- * Production-ready file-based PSR-16 cache.
+ * Production-ready file-based PSR-16 cache (improved).
  *
- * - ALWAYS uses dedicated key material via KeyManager for encryption/decryption.
- * - No global Crypto fallback.
- * - Default key: ENV = CACHE_CRYPTO_KEY, basename = cache_crypto
- *
- * Stored format (serialized array):
- * [
- *   'expires' => int|null,
- *   'value' => string (plain or compact_base64 encrypted),
- *   'enc' => bool (true if encrypted),
- *   'key_version' => string|null
- * ]
+ * NOTE: This variant uses your global static Logger (Logger::systemMessage / Logger::systemError).
+ * If Logger class is not present, it falls back silently to error_log().
  */
 class FileCache implements CacheInterface
 {
     private string $cacheDir;
+    private string $cacheDirReal;
 
     // encryption options
     private bool $useEncryption = false;
     private ?string $cryptoKeysDir = null;
     private string $cryptoEnvName = 'CACHE_CRYPTO_KEY';
     private string $cryptoBasename = 'cache_crypto';
+
+    // storage controls
+    private int $gcProbability = 1; // numerator
+    private int $gcProbabilityDivisor = 1000; // 1/1000 chance to run GC on set()
+
+    // Sharding depth: number of hex chars from hash to use as subdirs (0 = no sharding)
+    private int $shardDepth = 2;
+
+    // Quota / eviction
+    // maxTotalSizeBytes: 0 = unlimited; otherwise enforce total size in bytes
+    private int $maxTotalSizeBytes = 0;
+    // maxFiles: 0 = unlimited; otherwise enforce number of files
+    private int $maxFiles = 0;
+
+    // Max single entry payload (serialized) - prevents huge writes (0 = unlimited)
+    private int $maxEntryBytes = 1024 * 1024; // default 1MB
+
+    // Metrics / counters (in-memory, per-process - can be exposed to monitoring)
+    private array $counters = [
+        'sets' => 0,
+        'gets' => 0,
+        'hits' => 0,
+        'misses' => 0,
+        'evictions' => 0,
+        'errors' => 0,
+    ];
 
     private const SAFE_PREFIX_LEN = 32;
 
@@ -37,18 +55,22 @@ class FileCache implements CacheInterface
     }
 
     /**
-     * @param string|null $cacheDir path to cache directory (default: __DIR__ . '/../cache')
-     * @param bool $useEncryption enable AEAD encryption using KeyManager keys
-     * @param string|null $cryptoKeysDir directory where key files are stored (or null to rely on ENV)
-     * @param string $cryptoEnvName env var name for base64 key fallback (default: CACHE_CRYPTO_KEY)
-     * @param string $cryptoBasename basename for key files (default: cache_crypto)
+     * @param string|null $cacheDir
+     * @param bool $useEncryption
+     * @param string|null $cryptoKeysDir
+     * @param string $cryptoEnvName
+     * @param string $cryptoBasename
      */
     public function __construct(
         ?string $cacheDir = null,
         bool $useEncryption = false,
         ?string $cryptoKeysDir = null,
         string $cryptoEnvName = 'CACHE_CRYPTO_KEY',
-        string $cryptoBasename = 'cache_crypto'
+        string $cryptoBasename = 'cache_crypto',
+        int $shardDepth = 2,
+        int $maxTotalSizeBytes = 0,
+        int $maxFiles = 0,
+        int $maxEntryBytes = 1048576
     ) {
         $this->cacheDir = $cacheDir ?? __DIR__ . '/../cache';
 
@@ -59,51 +81,97 @@ class FileCache implements CacheInterface
             @chmod($this->cacheDir, 0700);
         }
 
+        $real = realpath($this->cacheDir);
+        if ($real === false) {
+            throw new RuntimeException("Cannot resolve cacheDir realpath: {$this->cacheDir}");
+        }
+        $this->cacheDirReal = rtrim($real, DIRECTORY_SEPARATOR);
+
         $this->useEncryption = $useEncryption;
         $this->cryptoKeysDir = $cryptoKeysDir;
         $this->cryptoEnvName = $cryptoEnvName;
         $this->cryptoBasename = $cryptoBasename;
+        $this->shardDepth = max(0, (int)$shardDepth);
+        $this->maxTotalSizeBytes = max(0, (int)$maxTotalSizeBytes);
+        $this->maxFiles = max(0, (int)$maxFiles);
+        $this->maxEntryBytes = max(0, (int)$maxEntryBytes);
 
-if ($this->useEncryption) {
-    if (!class_exists('KeyManager') || !class_exists('Crypto')) {
-        throw new RuntimeException('KeyManager or Crypto class not available; cannot enable encryption.');
-    }
+        // Ensure top-level cache dir perms and ownership (best-effort)
+        @chmod($this->cacheDirReal, 0700);
 
-    // ensure libsodium present early (clear diagnostics)
-    try {
-        KeyManager::requireSodium();
-    } catch (Throwable $e) {
-        throw new RuntimeException('libsodium extension required for FileCache encryption: ' . $e->getMessage());
-    }
+        if ($this->useEncryption) {
+            if (!class_exists('KeyManager') || !class_exists('Crypto')) {
+                throw new RuntimeException('KeyManager or Crypto class not available; cannot enable encryption.');
+            }
 
-    // quick probe: ensure we have at least one candidate key (file or ENV)
-    try {
-        $candidates = KeyManager::getAllRawKeys(
-            $this->cryptoEnvName,
-            $this->cryptoKeysDir,
-            $this->cryptoBasename,
-            KeyManager::keyByteLen()
-        );
-        if (!is_array($candidates) || empty($candidates)) {
-            throw new RuntimeException('No key material found for FileCache encryption (check ENV ' . $this->cryptoEnvName . ' or keysDir ' . ($this->cryptoKeysDir ?? 'null') . ').');
+            try {
+                KeyManager::requireSodium();
+            } catch (Throwable $e) {
+                throw new RuntimeException('libsodium extension required for FileCache encryption: ' . $e->getMessage());
+            }
+
+            try {
+                $candidates = KeyManager::getAllRawKeys(
+                    $this->cryptoEnvName,
+                    $this->cryptoKeysDir,
+                    $this->cryptoBasename,
+                    KeyManager::keyByteLen()
+                );
+                if (!is_array($candidates) || empty($candidates)) {
+                    throw new RuntimeException('No key material found for FileCache encryption (check ENV ' . $this->cryptoEnvName . ' or keysDir ' . ($this->cryptoKeysDir ?? 'null') . ').');
+                }
+                foreach ($candidates as &$c) {
+                    try { KeyManager::memzero($c); } catch (Throwable $_) {}
+                }
+                unset($candidates);
+            } catch (Throwable $e) {
+                throw new RuntimeException('FileCache encryption initialization failed: ' . $e->getMessage());
+            }
         }
-        // memzero any probe copies (best-effort)
-        foreach ($candidates as &$c) {
-            try { KeyManager::memzero($c); } catch (Throwable $_) {}
-        }
-        unset($candidates);
-    } catch (Throwable $e) {
-        throw new RuntimeException('FileCache encryption initialization failed: ' . $e->getMessage());
-    }
-}
-
     }
 
     /**
-     * Validate PSR-16 key.
+     * Logging wrapper that uses your static Logger.
+     * - If Throwable $e is provided, calls Logger::systemError($e, ...)
+     * - Otherwise calls Logger::systemMessage($level, $msg, null, $context)
      *
-     * @throws PsrInvalidArgumentException
+     * This wrapper never throws.
+     *
+     * @param string $level  'warning'|'error'|'info'|'critical'
+     * @param string $msg
+     * @param Throwable|null $e
+     * @param array|null $context
      */
+    private function log(string $level, string $msg, ?Throwable $e = null, ?array $context = null): void
+    {
+        try {
+            if ($e !== null && class_exists('Logger') && method_exists('Logger', 'systemError')) {
+                // call systemError for exceptions — keep it silent if it fails
+                try {
+                    Logger::systemError($e, null, null, $context ?? ['component' => 'FileCache']);
+                    return;
+                } catch (Throwable $_) {
+                    // swallow and fallback
+                }
+            }
+
+            if (class_exists('Logger') && method_exists('Logger', 'systemMessage')) {
+                try {
+                    $ctx = $context ?? ['component' => 'FileCache'];
+                    Logger::systemMessage($level, $msg, null, $ctx);
+                    return;
+                } catch (Throwable $_) {
+                    // swallow
+                }
+            }
+
+            // final fallback
+            error_log('[FileCache][' . $level . '] ' . $msg);
+        } catch (Throwable $_) {
+            // absolutely silent fallback
+        }
+    }
+
     private function validateKey(string $key): void
     {
         if ($key === '') {
@@ -127,9 +195,32 @@ if ($this->useEncryption) {
         $prefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', mb_substr($key, 0, self::SAFE_PREFIX_LEN));
         if ($prefix === '') $prefix = 'key';
         $hash = hash('sha256', $key);
-        return rtrim($this->cacheDir, '/\\') . '/' . $prefix . '_' . $hash . '.cache';
+
+        if ($this->shardDepth > 0) {
+            // use first N hex chars -> create N/2 directories of two chars each for distribution
+            $parts = [];
+            for ($i = 0; $i < $this->shardDepth * 2; $i+=2) {
+                $parts[] = $hash[$i].$hash[$i+1];
+            }
+            $sub = implode(DIRECTORY_SEPARATOR, $parts);
+            $dir = $this->cacheDirReal . DIRECTORY_SEPARATOR . $sub;
+            // ensure shard dir exists (best-effort, non-fatal)
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0700, true);
+                @chmod($dir, 0700);
+            }
+            return $dir . DIRECTORY_SEPARATOR . $prefix . '_' . $hash . '.cache';
+        }
+
+        return $this->cacheDirReal . DIRECTORY_SEPARATOR . $prefix . '_' . $hash . '.cache';
     }
 
+    /**
+     * Normalize TTL input into seconds.
+     *
+     * @param int|DateInterval|null $ttl
+     * @return int|null seconds or null for unlimited
+     */
     private function normalizeTtl($ttl): ?int
     {
         if ($ttl === null) return null;
@@ -141,37 +232,176 @@ if ($this->useEncryption) {
         return (int)$ttl;
     }
 
+    private function safeFileRead(string $file): string|false {
+        $fp = @fopen($file, 'rb');
+        if ($fp === false) return false;
+        if (!flock($fp, LOCK_SH)) { fclose($fp); return false; }
+        $contents = stream_get_contents($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        return $contents;
+    }
+
+    private function safeAtomicWrite(string $file, string $data): bool {
+        $tmp = @tempnam($this->cacheDirReal, 'fc_');
+        if ($tmp === false) {
+            $this->log('warning', 'tempnam failed for atomic write');
+            return false;
+        }
+        $fp = @fopen($tmp, 'wb');
+        if ($fp === false) { @unlink($tmp); $this->log('warning', 'fopen(tmp) failed'); return false; }
+        if (!flock($fp, LOCK_EX)) { fclose($fp); @unlink($tmp); $this->log('warning', 'flock(tmp) failed'); return false; }
+        $written = fwrite($fp, $data);
+        fflush($fp);
+        flock($fp, LOCK_UN);
+        fclose($fp);
+        if ($written === false) { @unlink($tmp); $this->log('warning', 'fwrite failed'); return false; }
+
+        // Attempt to ensure destination dir exists
+        $destDir = dirname($file);
+        if (!is_dir($destDir)) {
+            @mkdir($destDir, 0700, true);
+            @chmod($destDir, 0700);
+        }
+
+        if (!@rename($tmp, $file)) { @unlink($tmp); $this->log('warning', 'rename tmp->file failed'); return false; }
+
+        // Post-rename sanity: ensure final realpath is inside cacheDirReal
+        $finalReal = realpath($file);
+        if ($finalReal === false || !str_starts_with($finalReal, $this->cacheDirReal . DIRECTORY_SEPARATOR)) {
+            // suspicious: remove file and log critical
+            @unlink($file);
+            $this->log('critical', 'Post-rename realpath outside cacheDir - possible symlink attack', null, ['file' => $file, 'final' => $finalReal]);
+            return false;
+        }
+
+        // Enforce secure perms
+        @chmod($file, 0600);
+        clearstatcache(true, $file);
+        return true;
+    }
+
+    private function isPathInCacheDir(string $path): bool {
+        $real = realpath($path);
+        if ($real === false) return false;
+        return str_starts_with($real, $this->cacheDirReal . DIRECTORY_SEPARATOR);
+    }
+
     /**
-     * Get value or $default.
+     * Returns detailed cache metrics for sharded caches with size breakdown.
      *
-     * IMPORTANT: uses KeyManager exclusively. No global Crypto fallback.
+     * - totalFiles: all cache files including expired
+     * - activeFiles: non-expired cache entries
+     * - expiredFiles: expired cache entries
+     * - totalSize: total size of all cache files in bytes
+     * - activeSize: size of active cache files in bytes
+     * - expiredSize: size of expired cache files in bytes
+     * - evictions: total evictions counter
+     */
+    public function getMetrics(): array {
+        $totalFiles = 0;
+        $activeFiles = 0;
+        $expiredFiles = 0;
+        $totalSize = 0;
+        $activeSize = 0;
+        $expiredSize = 0;
+        $processedExpired = 0;
+        $maxGcPerRun = 1000;
+
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(
+                $this->cacheDirReal,
+                FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO
+            ),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ($it as $f) {
+            if (!$f->isFile() || substr($f->getFilename(), -6) !== '.cache') continue;
+
+            $path = $f->getRealPath();
+            if ($path === false || !$this->isPathInCacheDir($path)) continue;
+
+            $size = $f->getSize();
+            $totalFiles++;
+            $totalSize += $size;
+
+            $expired = false;
+            $raw = $this->safeFileRead($path);
+            if ($raw !== false) {
+                $data = @unserialize($raw, ['allowed_classes' => false]);
+                if (is_array($data) && isset($data['expires'])) {
+                    if ($data['expires'] !== null && $data['expires'] < time()) {
+                        $expired = true;
+                    }
+                }
+            }
+
+            if ($expired) {
+                $expiredFiles++;
+                $expiredSize += $size;
+                // Light GC: remove max 1000 expired files per run
+                if ($processedExpired < $maxGcPerRun) {
+                    if ($this->isPathInCacheDir($path)) {
+                        @unlink($path);
+                    }
+                    $processedExpired++;
+                }
+            } else {
+                $activeFiles++;
+                $activeSize += $size;
+            }
+        }
+
+        return [
+            'totalFiles' => $totalFiles,
+            'activeFiles' => $activeFiles,
+            'expiredFiles' => $expiredFiles,
+            'totalSize' => $totalSize,
+            'activeSize' => $activeSize,
+            'expiredSize' => $expiredSize,
+            'evictions' => $this->counters['evictions'] ?? 0,
+        ];
+    }
+
+    /**
+     * Fetches a value from the cache.
+     *
+     * @param string $key     Cache key
+     * @param mixed $default  Default value to return if not found
+     * @return mixed          Cached value or $default
+     *
+     * @throws CacheInvalidArgumentException If the key is invalid
      */
     public function get(string $key, mixed $default = null): mixed
     {
+        $this->counters['gets']++;
         $this->validateKey($key);
         $file = $this->getPath($key);
         if (!is_file($file)) return $default;
 
-        $raw = @file_get_contents($file);
+        $raw = $this->safeFileRead($file);
         if ($raw === false) return $default;
 
         $data = @unserialize($raw, ['allowed_classes' => false]);
         if (!is_array($data) || !array_key_exists('expires', $data) || !array_key_exists('value', $data)) {
+            $this->counters['misses']++;
             return $default;
         }
         if ($data['expires'] !== null && $data['expires'] < time()) {
-            @unlink($file);
+            if ($this->isPathInCacheDir($file)) @unlink($file);
+            $this->counters['misses']++;
             return $default;
         }
 
         if (empty($data['enc'])) {
+            $this->counters['hits']++;
             return $data['value'];
         }
 
         $payload = $data['value'];
         $version = $data['key_version'] ?? null;
 
-        // 1) if stored version, try it first
         if ($version !== null) {
             try {
                 $info = KeyManager::getRawKeyBytesByVersion(
@@ -183,24 +413,20 @@ if ($this->useEncryption) {
                 );
                 $rawKey = $info['raw'];
                 $plain = Crypto::decryptWithKeyCandidates($payload, [$rawKey]);
-
-                // memzero the rawKey copy
                 try { KeyManager::memzero($rawKey); } catch (Throwable $_) {}
                 unset($rawKey, $info);
 
                 if ($plain !== null) {
                     $val = @unserialize($plain, ['allowed_classes' => false]);
                     if ($val === false && $plain !== serialize(false)) return $default;
+                    $this->counters['hits']++;
                     return $val;
                 }
-                // else fallthrough to try all keys
             } catch (Throwable $e) {
-                // don't expose internals, just log
-                error_log('[FileCache] decrypt_by_version failed: ' . $e->getMessage());
+                $this->log('warning', 'decrypt_by_version failed', $e);
             }
         }
 
-        // 2) try all available keys for this basename/env (newest->oldest)
         try {
             $candidates = KeyManager::getAllRawKeys(
                 $this->cryptoEnvName,
@@ -210,13 +436,12 @@ if ($this->useEncryption) {
             );
 
             if (!is_array($candidates) || empty($candidates)) {
-                error_log('[FileCache] No key material found for cache basename/env');
+                $this->log('warning', 'No key material found for cache basename/env');
                 return $default;
             }
 
             $plain = Crypto::decryptWithKeyCandidates($payload, $candidates);
 
-            // memzero candidate copies (best-effort)
             foreach ($candidates as &$c) {
                 try { KeyManager::memzero($c); } catch (Throwable $_) {}
             }
@@ -225,17 +450,23 @@ if ($this->useEncryption) {
             if ($plain === null) return $default;
             $val = @unserialize($plain, ['allowed_classes' => false]);
             if ($val === false && $plain !== serialize(false)) return $default;
+            $this->counters['hits']++;
             return $val;
         } catch (Throwable $e) {
-            error_log('[FileCache] decrypt_all_keys failed: ' . $e->getMessage());
+            $this->log('warning', 'decrypt_all_keys failed', $e);
             return $default;
         }
     }
 
     /**
-     * Set value.
+     * Persists a value in the cache, optionally with TTL.
      *
-     * IMPORTANT: uses KeyManager + Crypto::encryptWithKeyBytes. No global fallback.
+     * @param string $key
+     * @param mixed $value
+     * @param int|DateInterval|null $ttl
+     * @return bool True on success, false on failure
+     *
+     * @throws CacheInvalidArgumentException
      */
     public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
@@ -247,10 +478,8 @@ if ($this->useEncryption) {
         if (!$this->useEncryption) {
             $data = ['expires' => $expires, 'value' => $value];
         } else {
-            // serialize
             $plain = serialize($value);
 
-            // Obtain raw key + version from KeyManager (strict)
             try {
                 $info = KeyManager::getRawKeyBytes(
                     $this->cryptoEnvName,
@@ -260,8 +489,7 @@ if ($this->useEncryption) {
                     KeyManager::keyByteLen()
                 );
             } catch (Throwable $e) {
-                error_log('[FileCache] failed to obtain raw key: ' . $e->getMessage());
-                $plain = '';
+                $this->log('error', 'failed to obtain raw key', $e);
                 return false;
             }
 
@@ -270,21 +498,18 @@ if ($this->useEncryption) {
 
             if (!is_string($raw) || strlen($raw) !== KeyManager::keyByteLen()) {
                 try { KeyManager::memzero($raw); } catch (Throwable $_) {}
-                $plain = '';
-                error_log('[FileCache] invalid raw key returned by KeyManager');
+                $this->log('error', 'invalid raw key returned by KeyManager');
                 return false;
             }
 
             try {
                 $encrypted = Crypto::encryptWithKeyBytes($plain, $raw, 'compact_base64');
             } catch (Throwable $e) {
-                error_log('[FileCache] encryptWithKeyBytes failed: ' . $e->getMessage());
+                $this->log('error', 'encryptWithKeyBytes failed', $e);
                 try { KeyManager::memzero($raw); } catch (Throwable $_) {}
-                $plain = '';
                 return false;
             }
 
-            // memzero raw key copy
             try { KeyManager::memzero($raw); } catch (Throwable $_) {}
             unset($raw, $info);
 
@@ -294,51 +519,90 @@ if ($this->useEncryption) {
                 'enc' => true,
                 'key_version' => $version,
             ];
-
             $plain = '';
         }
 
-        // atomic write (temp file + rename)
+        // probabilistic GC
         try {
-            $tmp = $file . '.tmp-' . bin2hex(random_bytes(6));
-            $written = @file_put_contents($tmp, serialize($data), LOCK_EX);
-            if ($written === false) {
-                @unlink($tmp);
+            if (random_int(1, $this->gcProbabilityDivisor) <= $this->gcProbability) {
+                $this->gc();
+            }
+        } catch (Throwable $_) {}
+
+        try {
+            $serialized = serialize($data);
+            if ($this->maxEntryBytes > 0 && strlen($serialized) > $this->maxEntryBytes) {
+                $this->log('warning', 'Entry too large for cache (rejected)', null, ['key' => $key, 'size' => strlen($serialized)]);
+                $this->counters['errors']++;
                 return false;
             }
-            if (!@rename($tmp, $file)) {
-                @unlink($tmp);
+            if (!$this->safeAtomicWrite($file, $serialized)) {
+                $this->counters['errors']++;
                 return false;
             }
-            @chmod($file, 0600);
-            clearstatcache(true, $file);
+            // successful write -> counters + quota enforcement
+            $this->counters['sets']++;
+            $this->enforceQuota();
             return true;
         } catch (Throwable $e) {
-            error_log('[FileCache] set() error: ' . $e->getMessage());
+            $this->log('error', 'set() error', $e);
             return false;
         }
     }
 
+    /**
+     * Deletes an item from the cache.
+     *
+     * @param string $key
+     * @return bool True if key was deleted, false if not found
+     *
+     * @throws CacheInvalidArgumentException
+     */
     public function delete(string $key): bool
     {
         $this->validateKey($key);
         $file = $this->getPath($key);
         if (is_file($file)) {
+            if (!$this->isPathInCacheDir($file)) {
+                $this->log('warning', 'delete: path outside cacheDir');
+                return false;
+            }
             try { return unlink($file); } catch (Throwable $_) { return false; }
         }
         return true;
     }
 
+    /**
+     * Wipes the entire cache directory.
+     *
+     * @return bool True on full clear success, false on error
+     */
     public function clear(): bool
     {
         $success = true;
-        $pattern = rtrim($this->cacheDir, '/\\') . '/*.cache';
-        foreach (glob($pattern) as $file) {
-            if (is_file($file) && !@unlink($file)) $success = false;
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->cacheDirReal, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($it as $f) {
+            if (!$f->isFile()) continue;
+            $path = $f->getRealPath();
+            if ($path === false) continue;
+            if (!str_ends_with($path, '.cache')) continue;
+            if (!$this->isPathInCacheDir($path)) { $success = false; continue; }
+            if (!@unlink($path)) $success = false;
         }
         return $success;
     }
 
+    /**
+     * Obtains multiple values by their keys.
+     *
+     * @param iterable<string> $keys
+     * @param mixed $default
+     * @return array<string,mixed>
+     *
+     * @throws CacheInvalidArgumentException
+     */
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
         $out = [];
@@ -353,6 +617,15 @@ if ($this->useEncryption) {
         return $out;
     }
 
+    /**
+     * Stores multiple key/value pairs.
+     *
+     * @param iterable<string,mixed> $values
+     * @param int|DateInterval|null $ttl
+     * @return bool
+     *
+     * @throws CacheInvalidArgumentException
+     */
     public function setMultiple(iterable $values, null|int|DateInterval $ttl = null): bool
     {
         $success = true;
@@ -367,6 +640,14 @@ if ($this->useEncryption) {
         return $success;
     }
 
+    /**
+     * Deletes multiple keys.
+     *
+     * @param iterable<string> $keys
+     * @return bool
+     *
+     * @throws CacheInvalidArgumentException
+     */
     public function deleteMultiple(iterable $keys): bool
     {
         $success = true;
@@ -381,22 +662,105 @@ if ($this->useEncryption) {
         return $success;
     }
 
+    
+    /**
+     * Checks if a cache entry exists and is not expired.
+     *
+     * @param string $key
+     * @return bool
+     *
+     * @throws CacheInvalidArgumentException
+     */
     public function has(string $key): bool
     {
         $this->validateKey($key);
         $file = $this->getPath($key);
         if (!is_file($file)) return false;
 
-        $data = @unserialize(@file_get_contents($file), ['allowed_classes' => false]);
+        $raw = $this->safeFileRead($file);
+        if ($raw === false) return false;
+        $data = @unserialize($raw, ['allowed_classes' => false]);
         if (!is_array($data) || !isset($data['expires'])) return false;
         if ($data['expires'] !== null && $data['expires'] < time()) {
-            @unlink($file);
+            if ($this->isPathInCacheDir($file)) @unlink($file);
             return false;
         }
         return true;
     }
-}
 
+    /**
+    * Remove expired cache files (max 1000 per run).
+    */
+    private function gc(): void {
+        $maxPerRun = 1000; // process limit - adjust as needed
+        $processed = 0;
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->cacheDirReal, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO));
+        foreach ($it as $f) {
+            if ($processed++ >= $maxPerRun) break;
+            if (!$f->isFile()) continue;
+            $path = $f->getRealPath();
+            if ($path === false) continue;
+            if (!str_ends_with($path, '.cache')) continue;
+            $fp = @fopen($path, 'rb');
+            if ($fp === false) continue;
+            if (!flock($fp, LOCK_SH)) { fclose($fp); continue; }
+            $raw = stream_get_contents($fp, 8192, 0);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            $data = @unserialize($raw, ['allowed_classes' => false]);
+            if (is_array($data) && isset($data['expires']) && $data['expires'] !== null && $data['expires'] < time()) {
+                if ($this->isPathInCacheDir($path)) @unlink($path);
+            }
+        }
+    }
+
+    /**
+     * Enforce total size / file count limits by deleting oldest files.
+     */
+    private function enforceQuota(): void {
+        // fast path
+        if ($this->maxTotalSizeBytes <= 0 && $this->maxFiles <= 0) return;
+
+        $pattern = $this->cacheDirReal . DIRECTORY_SEPARATOR . ($this->shardDepth > 0 ? '**/*.cache' : '*.cache'); // globstar pseudo - handled manually
+        // collect files recursively (safe)
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($this->cacheDirReal, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO));
+        $files = [];
+        $total = 0;
+        $count = 0;
+        foreach ($it as $f) {
+            if (!$f->isFile()) continue;
+            $path = $f->getRealPath();
+            if ($path === false) continue;
+            if (!str_starts_with($path, $this->cacheDirReal . DIRECTORY_SEPARATOR)) continue;
+            if (substr($path, -6) !== '.cache') continue;
+            $size = $f->getSize();
+            $mtime = $f->getMTime();
+            $files[] = ['path' => $path, 'size' => $size, 'mtime' => $mtime];
+            $total += $size;
+            $count++;
+        }
+
+        if ($this->maxTotalSizeBytes > 0 || $this->maxFiles > 0) {
+            // sort by oldest mtime first (LRU-ish)
+            usort($files, function($a, $b){ return $a['mtime'] <=> $b['mtime']; });
+
+            $i = 0;
+            while (($this->maxTotalSizeBytes > 0 && $total > $this->maxTotalSizeBytes)
+                || ($this->maxFiles > 0 && $count > $this->maxFiles)) {
+                if (!isset($files[$i])) break;
+                $f = $files[$i];
+                // double-check path is inside cache dir
+                if ($this->isPathInCacheDir($f['path'])) {
+                    @unlink($f['path']);
+                    $this->counters['evictions']++;
+                    $total -= $f['size'];
+                    $count--;
+                }
+                $i++;
+            }
+        }
+    }
+} 
 /**
  * PSR-16 compatible InvalidArgumentException for this file cache.
  */

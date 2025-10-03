@@ -183,7 +183,7 @@ if (!is_dir($gopayCacheDir)) {
 }
 
 // FileCache instance (už se šifrováním)
-$gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR);
+$gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KEY', 'cache_crypto', 2, 500*1024*1024, 200000, 2*1024*1024);
 
 // -------------------- GoPay wrapper + adapter --------------------
 $gopayWrapper = new GoPaySdkWrapper($gopayCfg, $gopayFileCache);
