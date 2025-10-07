@@ -30,14 +30,58 @@ body.dark-theme { --color-bg:#0b0b10; --color-paper:#0f1724; --color-text:#e6e6e
 html,body{height:100%;}
 body{
   margin:0;
-  font-family: Georgia, "Times New Roman", serif;
-  background: radial-gradient(circle at 10% 10%, rgba(212,175,55,0.03), transparent 8%),
-              linear-gradient(180deg, var(--color-bg), var(--color-paper));
-  color:var(--color-text);
-  line-height:1.45;
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;
+  background: url('/eshop/assets/app/app-bg.png');
+  background-size: cover;
+  line-height:1.35;
   font-size:16px;
   -webkit-font-smoothing:antialiased;
   -moz-osx-font-smoothing:grayscale;
+}
+
+/* ===== SCROLLBAR — UNIVERZÁLNÍ VARIANTA ===== */
+
+/* Chrome, Edge, Safari (WebKit) */
+::-webkit-scrollbar {
+  width: 14px;                 /* šířka svislého */
+  height: 14px;                /* výška vodorovného */
+}
+
+::-webkit-scrollbar-track {
+  background: linear-gradient(180deg, #f3e4c3 0%, #e1c89f 100%);
+  border-left: 1px solid rgba(60, 35, 10, 0.4);
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.15);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #8b5a2b 0%, #5a3519 100%);
+  border: 2px solid #d8b686;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 1px 2px rgba(255,255,255,0.3),
+    inset 0 -1px 2px rgba(0,0,0,0.4);
+  transition: all 0.25s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #a16833 0%, #633c1a 100%);
+  box-shadow:
+    inset 0 1px 3px rgba(255,255,255,0.35),
+    inset 0 -1px 3px rgba(0,0,0,0.45),
+    0 0 6px rgba(255, 210, 150, 0.4);
+  filter: drop-shadow(0 0 4px rgba(255,200,120,0.5));
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin; /* thin | auto */
+  scrollbar-color: #8b5a2b #e1c89f; /* thumb | track */
+}
+
+/* Volitelné — jemné vyhlazení a efekt při najetí */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 10px;
 }
 
 /* ---------- WRAPPER ---------- */
@@ -183,10 +227,6 @@ body{
   from{ transform: scale(0.7);}
   to{ transform: scale(1);}
 }
-
-/* ---------- FOOTER ---------- */
-.site-footer.epic-footer{ background: linear-gradient(180deg,#0b0610,#081018); color:#dcd6c9; padding:1.5rem 0; margin-top:2rem; font-size:.95rem; text-align:center;}
-.site-footer a{ color:#f5e7b0; text-decoration:none;}
 
 /* ---------- RESPONSIVE ---------- */
 @media (max-width:900px){

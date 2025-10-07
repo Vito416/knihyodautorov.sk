@@ -1,0 +1,344 @@
+:root{
+    --epic-light: #f6ead2;
+    --edge-dark: rgba(35,22,12,0.86);
+    --soft-sepia: #b98a52;
+    --accent-glow: rgba(255,238,200,0.18);
+    --btn-bg-top: #e3b77a;        /* svetlý horný gradient */
+    --btn-bg-bot: #b77b3f;        /* tmavší spodok */
+    --btn-edge: #55331a;          /* okraj */
+    --btn-glow: rgba(255,236,189,0.12);
+    --btn-text: #fff8eb;
+    --btn-padding: 16px 28px;
+    --btn-radius: 12px;
+    --btn-font: "Cinzel", Georgia, "Times New Roman", serif;
+    --btn-shadow: 0 10px 30px rgba(18,10,6,0.45);
+    --parchment-light: #f6ead2;
+    --sepia-dark: #3a2a1f;
+    --accent: #b98a52;
+    --panel: rgba(255,255,255,0.03);
+    --gap: 18px;
+    --radius: 10px;
+    --card-shadow: 0 8px 28px rgba(20,12,8,0.32);
+    --font-epic: "Cinzel", Georgia, serif;
+}
+
+/* ---------- HEADER CONTAINER ---------- */
+.container-main-page-header {
+    background: url('/eshop/assets/main-page/drak.png');
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    aspect-ratio: 912 / 458;
+    padding:3rem 1rem;
+    color:var(--color-text);
+    position:relative;
+    overflow:visible;
+    transition: transform 0.4s ease;
+    z-index: 2;
+}
+.container-main-page-header:hover{
+    transform: translateY(-4px) scale(1.01);
+}
+.main-page {
+    background: url('/eshop/assets/main-page/maincg.png');
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+    aspect-ratio: 912 / 827;
+    overflow: visible;
+    position: relative;
+    transform: translateY(-11%);
+    z-index: 1;
+}
+.co-wrap{
+    max-width: 1200px;
+    margin:0 auto;
+    padding:0 1rem;
+}
+
+.container-main-page-header .co-inner{
+    padding:2rem;
+}
+
+.co-inner{ max-width: 575px; text-align:center; margin:0 auto; position:relative; }
+
+/* hlavní nadpis (epic) */
+.main-page-title{
+  font-family: "Cinzel", Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  line-height: 1.02;
+  margin: 6px 0 8px;
+  padding: 0 10px;
+  font-size: clamp(36px, 6.6vw, 84px);
+
+  color: var(--epic-light);
+  background-image: linear-gradient(180deg, rgba(255,250,240,0.98), rgba(245,226,180,0.92));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  -webkit-text-stroke: 1.6px var(--edge-dark);
+  text-shadow:
+     0 2px 0 rgba(0,0,0,0.25),
+     0 6px 24px rgba(19,10,5,0.35),
+     0 -1px 0 rgba(255,255,255,0.04);
+
+  letter-spacing: -0.02em;
+  word-spacing: 0.08em;
+  transform-origin: center;
+  display: inline-block;
+  position: relative;
+  padding-bottom: 8px;
+  z-index: 2;
+  cursor: default;
+}
+
+/* dekorativní „flourish“ SVG nad nadpisem */
+.main-page-title::before{
+  content: "";
+  display:block;
+  width: min(62%, 680px);
+  height: 46px;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%) translateY(-66%);
+  top: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 40'><path d='M0 20 C80 0 120 40 200 20 C280 0 320 40 400 20' stroke='%238b5a2b' stroke-width='4.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: center center;
+  opacity: 0.95;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 12px rgba(20,10,6,0.22));
+}
+
+/* spodní dekor (linie pod titulkem) */
+.main-page-title::after{
+  content: "";
+  display:block;
+  width: min(42%, 420px);
+  height: 6px;
+  margin: 14px auto 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255,245,230,0.0), var(--soft-sepia) 40%, rgba(255,245,230,0.0));
+  box-shadow: 0 2px 10px var(--accent-glow);
+  opacity: 0.95;
+}
+
+/* animace fade (JS upravuje třídy) */
+.fade-out { animation: fadeOut 420ms ease-in forwards; }
+.fade-in  { animation: fadeIn 520ms cubic-bezier(.22,.9,.33,1) forwards; }
+
+@keyframes fadeOut {
+  0% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 0; transform: translateY(6px) scale(0.995); filter: blur(3px); }
+}
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(-6px) scale(1.02); filter: blur(4px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+/* hover efekt (jemný) */
+.main-page-title:hover{
+  text-shadow:
+     0 2px 0 rgba(0,0,0,0.28),
+     0 10px 36px rgba(19,10,5,0.45),
+     0 -1px 0 rgba(255,255,255,0.08);
+  transform: translateY(-2px) scale(1.005);
+}
+
+/* responzivní drobné úpravy */
+@media (max-width:520px){
+  .main-page-title{
+    -webkit-text-stroke: 1.2px var(--edge-dark);
+    text-shadow: 0 2px 6px rgba(10,8,6,0.35);
+    letter-spacing: 0;
+  }
+  .main-page-title::before{ height: 34px; transform: translateX(-50%) translateY(-44%); width: 78%; }
+  .main-page-title::after{ margin-top:10px; height:5px; width: 60%; }
+}
+
+/* základ tlačidla */
+.btn { text-decoration:none; display:inline-flex; align-items:center; gap:.9rem; cursor:pointer; border:0; box-sizing:border-box; }
+
+.btn-main-page{
+  font-family: var(--btn-font);
+  font-weight: 700;
+  font-size: clamp(16px, 2.1vw, 20px);
+  line-height: 1;
+  color: var(--btn-text);
+
+  /* dvojvrstvý efekt (vrchný svetlejší + spodný tmavší) */
+  padding: var(--btn-padding);
+  border-radius: var(--btn-radius);
+
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.06)),
+    linear-gradient(180deg, var(--btn-bg-top), var(--btn-bg-bot));
+  box-shadow:
+    0 2px 0 rgba(255,255,255,0.06) inset,  /* light bevel */
+    0 -2px 6px rgba(0,0,0,0.08) inset,     /* inner shade */
+    var(--btn-shadow);                     /* outer dramatic shadow */
+
+  border: 2px solid rgba(85,51,26,0.95);  /* carved edge */
+  text-shadow: 0 2px 0 rgba(0,0,0,0.35), 0 -1px 0 rgba(255,255,255,0.06);
+
+  transition: transform .18s cubic-bezier(.2,.9,.3,1), box-shadow .18s ease, filter .18s ease;
+  -webkit-text-stroke: .6px rgba(28,18,12,0.85);
+  transform-origin: center;
+  position: relative;
+  overflow: visible;
+  will-change: transform, box-shadow;
+}
+
+/* ikona kniha */
+.btn-icon{ width:1.25em; height:1.25em; flex:0 0 auto; color: rgba(255,255,255,0.95); filter: drop-shadow(0 2px 6px rgba(0,0,0,0.35)); }
+
+/* hover / focus efekt */
+.btn-main-page:hover,
+.btn-main-page:focus{
+  transform: translateY(-4px) scale(1.01);
+  box-shadow:
+    0 4px 10px rgba(28,16,8,0.55),
+    0 0 46px var(--btn-glow);
+  filter: saturate(1.03);
+  outline: none;
+}
+
+/* aktivní/pressed efekt */
+.btn-main-page:active{
+  transform: translateY(1px) scale(.995);
+  box-shadow: 0 3px 8px rgba(18,10,6,0.45);
+}
+
+/* varianty: primárny zvýraznený (current) a neaktívny */
+.btn-main-page.is-active{
+  /* vyrezaný efekt - tak vyzerá že je zapnutý */
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.06)),
+    linear-gradient(180deg, #d99e5f, #8a522a);
+  border-color: #3f2410;
+  box-shadow: 0 12px 36px rgba(28,12,6,0.55), inset 0 -8px 18px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+}
+
+/* neaktívna varianta (disabled-like look) */
+.btn-main-page.is-muted{
+  opacity: .62;
+  filter: grayscale(.08);
+  pointer-events: auto; /* umožniť aj klik, len vizuálne je utlmené */
+}
+
+/* full-width adaptácia (pre mobil alebo veľké CTA) */
+.btn-main-page.full-width{
+  display:inline-flex;
+  justify-content:center;
+  width:100%;
+  padding:18px 22px;
+}
+
+/* responzívne drobnosti */
+@media (max-width:560px){
+  .btn-main-page{ font-size: 15px; padding:12px 16px; gap:0.6rem; }
+  .btn-badge{ right:8px; bottom:6px; font-size:10px; padding:5px 6px; }
+}
+
+/* Tabs */
+.mp-tabs{ display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+.mp-tab{
+  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.04));
+  border: none;
+  color: var(--parchment-light);
+  padding:10px 16px;
+  font-family: var(--font-epic);
+  font-weight:700;
+  letter-spacing:.01em;
+  border-radius: 8px;
+  cursor:pointer;
+  transition: transform .14s ease, box-shadow .14s ease;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+  position:relative;
+  font-size: 15px;
+}
+
+.mp-tab.is-active{
+  background: url('/eshop/assets/header/btn-act.png') center center;
+  background-repeat: no-repeat;
+  background-size: 99% 99%;
+  aspect-ratio: 344 / 145;
+  color:var(--ink); 
+  font-weight:700; 
+}
+
+/* muted (non-interactive) - if needed later */
+.mp-tab.is-muted{ opacity:.6; filter:grayscale(.05); }
+
+/* ---------- GRID ---------- */
+.main-page-grid-container{
+  padding: 7.5% 5% 22.5% 5%;
+}
+.main-page-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill,minmax(200px,1fr));
+  gap:1.25rem;
+}
+
+/* ---------- BOOK CARD ---------- */
+.book-card{
+  background: linear-gradient(180deg,#fffefc,#fcf8f2);
+  border-radius:var(--radius);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  border:1px solid rgba(0,0,0,0.06);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  cursor:pointer;
+  position:relative;
+}
+.book-card:hover{
+  transform: translateY(-6px);
+  box-shadow:0 12px 40px rgba(0,0,0,0.3), 0 0 20px gold;
+}
+
+/* IMAGE HOVER EFFECT */
+.book-card .cover img{
+  width:100%;
+  height:240px;
+  object-fit:cover;
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+  border-bottom:1px solid rgba(0,0,0,0.04);
+}
+.book-card .cover:hover img{
+  transform: scale(1.2) rotate(-1deg);
+  box-shadow:0 15px 50px rgba(0,0,0,0.4), 0 0 20px gold;
+}
+
+/* RIBBON & BADGES */
+.ribbon{
+  position:absolute;
+  left:0; top:8px;
+  background: linear-gradient(180deg,#a76f1a,#6a3d05);
+  color:#fff;
+  padding:.25rem .6rem;
+  font-weight:700;
+  border-top-right-radius:6px;
+  border-bottom-right-radius:6px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12);
+}
+.ribbon-owned{ background: linear-gradient(180deg,#2b7a3a,#1f4f2a); left:8px; top:12px; font-size:.8rem; padding:.2rem .5rem; border-radius:6px;}
+.card-badge{ position:absolute; right:8px; top:8px; background:var(--color-paper); padding:.25rem .5rem; border-radius:6px; font-weight:700; font-size:.8rem; border:1px solid rgba(0,0,0,0.04);}
+.badge-digital{ background: linear-gradient(180deg,#eef8ff,#deefff); color:#0051a3; border:1px solid rgba(0,81,163,0.06);}
+.badge-epic{ background: linear-gradient(180deg,#1b1b1b,#0d0d0d); color:#f8e9b4;}
+
+/* CARD BODY & META */
+.card-body{ padding:.75rem; flex:1 1 auto; }
+.title{ margin:0 0 .25rem; font-size:1.05rem; font-weight:700; }
+.author{ color:var(--color-muted); margin-bottom:.5rem; font-size:.9rem; }
+.excerpt{ color:var(--color-muted); font-size:.88rem; }
+.meta{ padding:.75rem; display:flex; gap:.5rem; justify-content:space-between; border-top:1px solid rgba(0,0,0,0.03);}
+.card-actions{ display:flex; gap:.5rem; align-items:center; }
+.card-actions .btn { padding: .45rem .7rem; font-size: .92rem; border-radius: 10px; }
+.card-actions .btn-add { background: linear-gradient(90deg, #f3c26b, #7dd3fc); color:#071421; border:none; }
+.card-actions .btn-buy-now { background: transparent; border:1px solid rgba(8,12,20,0.06); color: #2d2a24; }
+
+@media (max-width:900px){
+  .catalog-layout{ grid-template-columns:1fr;}
+}

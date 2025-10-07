@@ -2,80 +2,66 @@
 declare(strict_types=1);
 
 $year = date('Y');
-$appName = $_ENV['APP_NAME'] ?? 'Knižnica Stratégov';
+$appName = $_ENV['APP_DOMAIN'] ?? 'Knižnica Stratégov';
 ?>
 </main> <!-- #content -->
-
-<footer class="site-footer epic-footer" role="contentinfo">
-  <div class="wrap">
-    <div class="footer-left">
-      <div class="footer-brand">
-        <img src="/assets/crest-small.png" alt="" class="footer-crest">
-        <span>&copy; <?= (int)$year ?> <?= htmlspecialchars($appName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>.</span>
+<link rel="stylesheet" href="/eshop/css/footer.css">
+<footer class="site-footer" role="contentinfo">
+  <div class="container-footer">
+    <div class="footer-grid">
+      <div class="footer-card">
+        <div class="footer-icon">
+          <img src="/eshop/assets/footer/kapuce.png" alt="kapuce" class="footer-kapuce-icon">
+        </div>
+          <div class="footer-text">
+            <p>Vydavateľstvo a internetový obchod</p>
+            <h2>Knihy od autorov</h2>
+            <p>Originálne knihy od slovenských a českých autorov z oblasti osobného rozvoja, biznisu, marketingu, psychológie a zdravia.</p>
+          </div>
+        </div>
+      <div class="footer-card">
+        <div class="footer-icon">
+          <img src="/eshop/assets/footer/informace.png" alt="informace" class="footer-informace-icon">
+        </div>
+          <div class="footer-navigation">
+            <a href="/eshop/gdpr">Ochrana osobných údajov</a>
+            <a href="/eshop/vop">Obchodné podmienky</a>
+            <a href="/eshop/reklamacie">Reklamačný poriadok</a>
+            <a href="/eshop/contact">Kontakt</a>
+          </div>
+        </div>
+      <div class="footer-card">
+        <div class="footer-icon">
+          <img src="/eshop/assets/footer/kategorie.png" alt="kategorie" class="footer-kategorie-icon">
+        </div>
+          <form action="">
+            <label for="newsletter-email" class="footer-newsletter-label">Prihláste sa na odber noviniek:</label>
+            <input type="email" id="newsletter-email" name="email" placeholder="Váš e-mail" required>
+            <button type="submit" class="btn btn-newsletter">Odoberať</button>
+          </form>
+        </div>
+      <div class="footer-card no-border">
+        <div class="footer-icon">
+          <img src="/eshop/assets/footer/obalka.png" alt="obalka" class="footer-obalka-icon">
+        </div>
+          <!-- Firemní informace -->
+          <div class="footer-contact-info">
+            <p><strong>Obchodné meno:</strong> Black Cat Academy s. r. o.</p>
+            <p><strong>Sídlo:</strong> Dolná ulica 1C, Kunerad 013 13</p>
+            <p><strong>IČO:</strong> 55 396 461</p>
+            <p><strong>Kontakt:</strong> 
+            <a href="mailto:info@knihyodautorov.sk" style="color:#ccc;">info@knihyodautorov.sk</a>, 
+            <a href="tel:+421901770666" style="color:#ccc;">+421 901 770 666</a></p>
+          </div>
+        </div>
       </div>
-      <div class="footer-desc">Historické knihy • Herné prvky • Epický zážitok</div>
-
-      <!-- Firemní informace -->
-      <div class="footer-info" style="margin-top: 1rem; font-size: 0.85rem; color:#ccc;">
-        <strong>Obchodné meno:</strong> Black Cat Academy s. r. o.<br>
-        <strong>Sídlo:</strong> Dolná ulica 1C, Kunerad 013 13<br>
-        <strong>IČO:</strong> 55 396 461<br>
-        <strong>Kontakt:</strong> 
-        <a href="mailto:info@knihyodautorov.sk" style="color:#ccc;">info@knihyodautorov.sk</a>, 
-        <a href="tel:+421901770666" style="color:#ccc;">+421 901 770 666</a>
-      </div>
-
-      <div class="payment-methods" style="margin-top:1rem;">
-        <a href="https://www.gopay.cz" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=6839a31109d2573ce58c6b2b52a099aae7d7c047a8fe0bdd54ebbc10b54b49bb.png" alt="GoPay" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.gopay.cz" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=3f16ee624dcff569b03ab83c0bc797561eeac7c6103ec90783f6d37390921eab.png" alt="GoPay" style="height:32px; margin-right:0.5rem;">
-        </a>
-      </div>
-      <!-- Loga platebních metod přes odkaz -->
-      <div class="payment-methods" style="margin-top:1rem;">
-        <a href="https://www.visa.com" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=f4ff2c1d9aa413c4d1e314c46ad715ad19c1abde59ae1f109271cc35610169d0.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.visa.com" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=474ac07c97a45fa24445c9ee8713089491c861c066c86f1a1c5818e94f5d96d5.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.mastercard.com" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=9229adf70f3a25146c64f477392b8b17c5ec9333285b6e6229fdd89e5ad55047.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.mastercard.com" target="_blank">
-          <img src="https://help.gopay.com/cs/img.php?hash=9faf331b11e48cb7e13a95ecd22ffa5fa1e42dfdfe6705f8e4e20b235a1e8ccd.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.maestro.com" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=d2f8644e6ede034dede054af6957f17ee984b5e29de33d8d104657cf5bbac984.png" alt="Maestro" style="height:32px;">
-        </a>
-      </div>
-    </div>
-          <div class="payment-methods" style="margin-top:1rem;">
-        <a href="https://www.visa.com" target="_blank">
-          <img src="https://help.gopay.com/cs/img.php?hash=6efd47e6022b111fee1d9fb862a93c57d279a0a060adc354c4de49308a23f572.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
-        </a>
-        <a href="https://www.mastercard.com" target="_blank">
-          <img src="https://help.gopay.com/img.php?hash=bc6253cf22823dc847c98dc3623af7f3bd7ba712371a7dcfd7882f56dbc933b2.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
-        </a>
-      </div>
-    </div>
-
-    <div class="footer-right">
-      <a href="/eshop/gdpr">Ochrana osobných údajov</a> |
-      <a href="/eshop/vop">Obchodné podmienky</a> |
-      <a href="/eshop/reklamacie">Reklamačný poriadok</a> |
-      <a href="/eshop/contact">Kontakt</a>
-      <div style="margin-top:.5rem;">
-        <button id="ambient-toggle" class="btn btn-ghost" aria-pressed="false" title="Ambientná hudba">🎵 Ambient</button>
-        <a href="/eshop/rss.php" class="btn btn-ghost" title="RSS">📡 RSS</a>
-      </div>
-    </div>
-
     <div style="clear:both;"></div>
   </div>
-
+  <div class="footer-copyright">
+    <div class="footer-copyright-text">
+      <span>&copy; <?= (int)$year ?></br><?= htmlspecialchars($appName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></span>
+    </div>
+  </div>
   <!-- Modal -->
   <div id="bookModal" class="modal" aria-hidden="true">
     <div class="modal-overlay" aria-hidden="true"></div>
@@ -86,9 +72,11 @@ $appName = $_ENV['APP_NAME'] ?? 'Knižnica Stratégov';
       </div></div>
     </div>
   </div>
+  </div>
 </footer>
 
 <script defer src="/eshop/js/app.js"></script>
+<script defer src="/eshop/js/main-page.js"></script>
 <script defer src="/eshop/js/header.js"></script>
 <script defer src="/eshop/js/header-cart.js"></script>
 <script defer src="/eshop/js/catalog.js"></script>

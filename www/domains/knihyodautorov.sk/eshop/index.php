@@ -1,5 +1,24 @@
 <?php
 declare(strict_types=1);
+// index.php — frontcontroller
+if (php_sapi_name() === 'cli') return; // prevent CLI accidental run
+
+// --- very early bypass for GoPay notify (minimal bootstrap only) ---
+$uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$uriPath = rtrim($uriPath, '/');
+
+// adjust according to where you expose the notify endpoint
+if ($uriPath === '/eshop/notify') {
+    // minimal bootstrap that only initializes Database (or whatever minimal libs you need)
+    require_once __DIR__ . '/inc/bootstrap_database_minimal.php'; // nebo path kde máš minimal_bootstrap.php
+
+    // include the lightweight handler (the file you already prepared)
+    // make sure this file expects minimal_bootstrap to have run
+    require __DIR__ . '/gopay/notify.php';
+
+    // terminate — don't load full frontcontroller
+    exit;
+}
 
 require_once __DIR__ . '/inc/bootstrap.php'; // bootstrap by měl inicializovat Database::init(...) + session + CSRF apod.
 
@@ -22,7 +41,7 @@ $user = $user ?? null;
 $uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '', '/');
 $base = trim('eshop', '/'); // adjust pokud je jiný base
 $route = preg_replace('#^' . preg_quote($base, '#') . '/?#i', '', $uri);
-$route = $route ?: 'catalog';
+$route = $route ?: 'home'; // default route
 $route = preg_replace('/[^a-z0-9_\-]/i', '', $route);
 
 // --- detect fragment/ajax request (to return only content without header/footer) ---
@@ -37,6 +56,7 @@ if (isset($_SERVER['HTTP_ACCEPT']) && stripos($_SERVER['HTTP_ACCEPT'], 'text/htm
 
 // --- Routes: string = handler file (default share true), array = ['file'=>..., 'share'=> true|false|[keys]] ---
 $routes = [
+    'home'        => 'main-page.php',
     'catalog'        => 'catalog.php',
     'contact'           => 'contact.php',
     'detail'         => 'detail.php',
@@ -61,7 +81,6 @@ $routes = [
     'gdpr'           => 'gdpr.php',
     'vop'            => 'vop.php',
     'reklamacie'     => 'reklamacie.php',
-    'notify'         => '/gopay/notify.php',
     'gopay_return'         => '/gopay_return.php',
 ];
 
@@ -163,6 +182,15 @@ $sharedForTemplate = TrustedShared::select($trustedShared, $shareSpec);
 // We want to PROTECT trustedShared from being overwritten by handler vars,
 // so we merge handler vars first, then sharedForTemplate (shared wins).
 $contentVars = array_merge($result['vars'], $sharedForTemplate);
+
+// --- Ensure navActive is available to header/footer ---
+// Priority: handler-provided -> contentVars fallback -> route fallback
+if (!empty($contentVars['navActive'])) {
+    $trustedShared['navActive'] = $contentVars['navActive'];
+} else {
+    // fallback: použij route jako výchozí aktivní položku (nebo nastav '' pokud nechceš žádnou)
+    $trustedShared['navActive'] = $route;
+}
 
 // --- Render selection logic ---
 $contentHtml = '';

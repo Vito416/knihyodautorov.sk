@@ -61,7 +61,7 @@ $gopayCfg = [
     'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
     'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
     'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com',
-    'language' => $_ENV['GOPAY_LANGUAGE'] ?? Language::CZECH,
+    'language' => $_ENV['GOPAY_LANGUAGE'] ?? Language::SLOVAK,
     'scope' => $_ENV['GOPAY_SCOPE'] ?? TokenScope::ALL,
 ];
 

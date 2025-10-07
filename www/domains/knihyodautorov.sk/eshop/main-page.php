@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$perPageDefault = 20;
+$perPageDefault = 4;
 
 try {
     $database = Database::getInstance();
@@ -132,9 +132,9 @@ unset($b);
 
 /* --- return template + vars to index.php (index will render header/footer) --- */
 return [
-    'template' => 'pages/catalog.php',
+    'template' => 'pages/main-page.php',
     'vars' => [
-        'navActive' => 'catalog',
+        'navActive' => 'home',
         'books' => $books,
         'page' => $page,
         'perPage' => $perPage,

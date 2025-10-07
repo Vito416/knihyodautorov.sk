@@ -141,6 +141,40 @@ foreach ($cart as $item) {
 
                 <div class="smallprint muted" style="margin-top:12px;font-size:0.86rem">
                     Bezpečná platba — prijímame GoPay, PayBySquare a ďalšie. Po odoslaní budete presmerovaný na stránku platobnej brány.
+                          <div class="payment-methods" style="margin-top:1rem;">
+                                <a href="https://www.gopay.cz" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=6839a31109d2573ce58c6b2b52a099aae7d7c047a8fe0bdd54ebbc10b54b49bb.png" alt="GoPay" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.gopay.cz" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=3f16ee624dcff569b03ab83c0bc797561eeac7c6103ec90783f6d37390921eab.png" alt="GoPay" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                            </div>
+                            <!-- Loga platebních metod přes odkaz -->
+                            <div class="payment-methods" style="margin-top:1rem;">
+                                <a href="https://www.visa.com" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=f4ff2c1d9aa413c4d1e314c46ad715ad19c1abde59ae1f109271cc35610169d0.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.visa.com" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=474ac07c97a45fa24445c9ee8713089491c861c066c86f1a1c5818e94f5d96d5.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.mastercard.com" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=9229adf70f3a25146c64f477392b8b17c5ec9333285b6e6229fdd89e5ad55047.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.mastercard.com" target="_blank">
+                                <img src="https://help.gopay.com/cs/img.php?hash=9faf331b11e48cb7e13a95ecd22ffa5fa1e42dfdfe6705f8e4e20b235a1e8ccd.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.maestro.com" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=d2f8644e6ede034dede054af6957f17ee984b5e29de33d8d104657cf5bbac984.png" alt="Maestro" style="height:32px;">
+                                </a>
+                            </div>
+                                <div class="payment-methods" style="margin-top:1rem;">
+                                <a href="https://www.visa.com" target="_blank">
+                                <img src="https://help.gopay.com/cs/img.php?hash=6efd47e6022b111fee1d9fb862a93c57d279a0a060adc354c4de49308a23f572.png" alt="Visa" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                                <a href="https://www.mastercard.com" target="_blank">
+                                <img src="https://help.gopay.com/img.php?hash=bc6253cf22823dc847c98dc3623af7f3bd7ba712371a7dcfd7882f56dbc933b2.png" alt="MasterCard" style="height:32px; margin-right:0.5rem;">
+                                </a>
+                            </div>
                 </div>
             <?php endif; ?>
         </aside>

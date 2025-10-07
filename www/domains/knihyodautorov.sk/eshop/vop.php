@@ -55,6 +55,8 @@ $fullHtml = '<article class="page-article legal-article container"><header class
 
 return [
     'template' => null,
-    'vars' => [],
+    'vars' => [
+        'navActive' => 'vop',
+    ],
     'content' => $fullHtml,
 ];

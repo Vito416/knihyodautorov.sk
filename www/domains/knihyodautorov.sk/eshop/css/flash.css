@@ -11,7 +11,7 @@
   --flash-min-w: 260px;
   --flash-max-w: 420px;
   --flash-padding: 1rem 1.15rem;
-  --flash-radius: 14px;
+  --flash-radius: 0;
   --flash-shadow: 0 10px 40px rgba(6,6,6,.55);
   --flash-font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   --flash-accent: rgba(255, 215, 0, 0.12);
@@ -47,8 +47,10 @@
   font-size: 0.98rem;
   line-height: 1.25;
   display: flex;
-  align-items: flex-start;
-  gap: 0.85rem;
+  align-items: flex-end;
+  gap: 0;
+  flex-direction: column;
+  columns: 3;
   transform-origin: 100% 100%;
   opacity: 0;
   transform: translateY(10px) scale(.98) rotateX(1deg);
@@ -64,20 +66,6 @@
   transform: translateY(0) scale(1) rotateX(0);
 }
 
-/* icon area (optional) */
-.flash-icon {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
-  border-radius: 10px;
-  display: inline-grid;
-  place-items: center;
-  font-weight: 700;
-  color: #fff;
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
-  box-shadow: inset 0 -4px 12px rgba(0,0,0,0.25);
-}
-
 /* body and dismiss */
 .flash-body {
   flex: 1;
@@ -87,12 +75,12 @@
   margin: 0;
   /* clamp to max 3 lines */
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow: visible;
   text-overflow: ellipsis;
-  white-space: normal;
+  white-space: no-wrap;
 }
 
 /* small detail line (subtotal etc) */
@@ -106,15 +94,15 @@
 
 /* dismiss button */
 .flash-dismiss {
+  flex: 0 0 auto;
   background: transparent;
   border: none;
   color: rgba(255,255,255,0.92);
   font-size: 1.05rem;
   cursor: pointer;
-  padding: 0.15rem 0.4rem;
   line-height: 1;
   border-radius: 7px;
-  align-self: start;
+  align-self: end;
 }
 
 /* subtle hover for dismiss */
@@ -122,8 +110,8 @@
 
 /* progress bar (thin epic) */
 .flash-progress {
-  width: 100%;
-  height: 6px;
+  width: 60%;
+  height: 10%;
   background: rgba(255,255,255,0.04);
   border-radius: 999px;
   overflow: hidden;
@@ -141,20 +129,30 @@
 
 /* color themes (epic accents) */
 .flash-success {
-  background: linear-gradient(180deg, #0b7a3e, #0a6a35);
-  box-shadow: 0 12px 40px rgba(7,120,55,0.28);
+  background: url('/eshop/assets/app/flash-pass.png') no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 400 / 118;
   border: none;
 }
 
 .flash-error {
-  background: linear-gradient(180deg, #a1272b, #7f1f22);
-  box-shadow: 0 12px 40px rgba(161,33,44,0.28);
+  background: url('/eshop/assets/app/flash-error.png') no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 400 / 118;
   border: none;
 }
 
 .flash-info {
-  background: linear-gradient(180deg, #222, #111);
-  box-shadow: 0 12px 40px rgba(34,34,34,0.24);
+  background: url('/eshop/assets/app/flash-info.png') no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 400 / 118;
+  border: none;
+}
+
+.flash-warning {
+  background: url('/eshop/assets/app/flash-warning.png') no-repeat center center;
+  background-size: contain;
+  aspect-ratio: 400 / 118;
   border: none;
 }
 

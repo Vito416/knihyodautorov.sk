@@ -19,6 +19,14 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
     private ?object $client = null;
     private FileCache $cache;
     private string $cacheKey = 'gopay_oauth_token';
+    private const PERMANENT_TOKEN_ERRORS = [
+    'invalid_client',
+    'invalid_grant',
+    'unauthorized_client',
+    'invalid_request',
+    'unsupported_grant_type',
+    'invalid_scope',
+    ];
 
     public function __construct(array $cfg, FileCache $cache)
     {
@@ -118,19 +126,28 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
         }
 
         // 2) fallback to file lock if cache lock not available
-        $tempLockPath = __DIR__ . '/tmp/gopay_token_lock_' . md5($this->cfg['clientId']);
+        $tempLockPath = sys_get_temp_dir() . '/gopay_token_lock_' . md5($this->cfg['clientId']);
         if (!$haveCacheLock) {
             $fp = @fopen($tempLockPath, 'c+');
             if ($fp !== false) {
-                // block for up to the cache lock TTL - here we do blocking flock
-                if (!flock($fp, LOCK_EX)) {
-                    fclose($fp);
-                    $fp = null;
+                $waitUntil = microtime(true) + 10.0; // 10s
+                $got = false;
+                while (microtime(true) < $waitUntil) {
+                    if (flock($fp, LOCK_EX | LOCK_NB)) { $got = true; break; }
+                    usleep(100_000 + random_int(0, 50_000));
+                }
+                if (!$got) {
+                    try { Logger::info('Could not acquire file lock for token fetch, proceeding without it', null, ['lock' => $tempLockPath]); } catch (\Throwable $_) {}
+                    fclose($fp); $fp = null;
                 }
             }
         }
 
         try {
+            if (!$haveCacheLock && $fp === null) {
+                // we couldn't get a lock — short randomized sleep to reduce contention
+                usleep((100000 + random_int(0, 200000))); // 100-300 ms
+            }
             // double-check cache while holding lock
             try { $tokenData = $this->cache->get($this->cacheKey); } catch (\Throwable $_) { $tokenData = null; }
             if (is_array($tokenData) && isset($tokenData['token'], $tokenData['expires_at']) && $tokenData['expires_at'] > time()) {
@@ -144,40 +161,70 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             $attempts = 3;
             $backoffMs = 200;
             $lastEx = null;
-            for ($i = 0; $i < $attempts; $i++) {
-                try {
-                    $headers = $this->buildHeaders([
-                        'Authorization' => 'Basic ' . $credentials,
-                        'Content-Type' => 'application/x-www-form-urlencoded',
-                        'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
-                        'Expect' => '',
-                        'Content-Length' => (string)strlen($body),
-                    ]);
-                    $resp = $this->doRequest('POST', $url, $headers, $body, ['raw' => true, 'expect_json' => true, 'attempts' => 1]);
-                    $httpCode = $resp['http_code'] ?? 0;
-                    $decoded = $resp['json'] ?? null;
-                    $raw = $resp['body'] ?? '';
+        for ($i = 0; $i < $attempts; $i++) {
+            try {
+                $headers = $this->buildHeaders([
+                    'Authorization' => 'Basic ' . $credentials,
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                    'Accept'        => 'application/json',
+                    'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
+                    'Expect' => '',
+                    'Content-Length' => (string)strlen($body),
+                ]);
+                $resp = $this->doRequest('POST', $url, $headers, $body, ['raw' => true, 'expect_json' => true, 'attempts' => 1]);
+                $httpCode = $resp['http_code'] ?? 0;
+                $decoded = $resp['json'] ?? null;
+                $raw = $resp['body'] ?? '';
 
-                    if ($httpCode >= 200 && $httpCode < 300 && is_array($decoded) && isset($decoded['access_token'], $decoded['expires_in'])) {
-                        $expiresIn = (int)$decoded['expires_in'];
-                        try {
-                            $this->cache->set($this->cacheKey, [
-                                'token' => (string)$decoded['access_token'],
-                                'expires_at' => time() + $expiresIn - ($this->cfg['tokenTtlSafety'] ?? 10),
-                            ], $expiresIn);
-                        } catch (\Throwable $_) {}
-                        return (string)$decoded['access_token'];
+                // Successful response
+                if ($httpCode >= 200 && $httpCode < 300 && is_array($decoded) && isset($decoded['access_token'], $decoded['expires_in'])) {
+                    $expiresIn = (int)$decoded['expires_in'];
+                    $safety = max(1, (int)($this->cfg['tokenTtlSafety'] ?? 10));
+                    $ttl = max(1, $expiresIn - $safety);
+                    try {
+                        $this->cache->set($this->cacheKey, [
+                            'token' => (string)$decoded['access_token'],
+                            'expires_at' => time() + $expiresIn - $safety,
+                        ], $ttl);
+                    } catch (\Throwable $_) {}
+                    return (string)$decoded['access_token'];
+                }
+
+                // If 4xx -> likely permanent (invalid client/credentials/etc.) — do not retry
+                if ($httpCode >= 400 && $httpCode < 500) {
+                    // try to extract specific error code from response body if available
+                    $err = is_array($decoded) ? ($decoded['error'] ?? null) : null;
+                    $errDesc = is_array($decoded) ? ($decoded['error_description'] ?? null) : null;
+
+                    // treat common OAuth permanent errors as non-retriable
+                    if ($err !== null && in_array($err, self::PERMANENT_TOKEN_ERRORS, true)) {
+                        $msg = $errDesc ?: json_encode($decoded);
+                        $ex = new GoPayTokenException("Permanent token error {$httpCode}: {$err} - {$msg}");
+                        try { Logger::systemError($ex, null, null, ['phase' => 'getToken', 'http_code' => $httpCode, 'error' => $err]); } catch (\Throwable $_) {}
+                        throw $ex;
                     }
 
+                    // If we don't know the error code, still don't brute-force retry too much.
+                    // Treat other 4xx as permanent to avoid useless retries.
                     $msg = is_array($decoded) ? ($decoded['error_description'] ?? json_encode($decoded)) : $raw;
-                    throw new GoPayTokenException("GoPay token endpoint returned HTTP {$httpCode}: {$msg}");
-                } catch (\Throwable $e) {
-                    $lastEx = $e;
-                    try { Logger::warn('getToken attempt failed', null, ['attempt' => $i + 1, 'exception' => (string)$e]); } catch (\Throwable $_) {}
+                    $ex = new GoPayTokenException("GoPay token endpoint returned HTTP {$httpCode}: {$msg}");
+                    try { Logger::systemError($ex, null, null, ['phase' => 'getToken', 'http_code' => $httpCode]); } catch (\Throwable $_) {}
+                    throw $ex;
+                }
+
+                // For 5xx or unexpected status codes -> throw to outer catch and retry (transient)
+                $msg = is_array($decoded) ? ($decoded['error_description'] ?? json_encode($decoded)) : $raw;
+                throw new GoPayTokenException("GoPay token endpoint returned HTTP {$httpCode}: {$msg}");
+            } catch (\Throwable $e) {
+                $lastEx = $e;
+                try { Logger::warn('getToken attempt failed', null, ['attempt' => $i + 1, 'exception' => (string)$e]); } catch (\Throwable $_) {}
+                // exponential backoff for transient failures (but don't sleep after last attempt)
+                if ($i < $attempts - 1) {
                     $backoffMs = min($backoffMs * 2, 2000);
                     usleep(($backoffMs + random_int(0, 250)) * 1000);
                 }
             }
+        }
 
             $ex = $lastEx ?? new GoPayTokenException('Unknown error obtaining token');
             try { Logger::systemError($ex, null, null, ['phase' => 'getToken']); } catch (\Throwable $_) {}
@@ -237,6 +284,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
         $headerAssoc = [
             'Authorization' => 'Bearer ' . $token,
             'Content-Type'  => 'application/json',
+            'Accept'        => 'application/json',
             'User-Agent'    => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
             // avoid "Expect: 100-continue" delays
             'Expect'        => '',
@@ -410,7 +458,8 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
         $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment/' . rawurlencode($gatewayPaymentId) . '/refund';
         $headers = $this->buildHeaders([
             'Authorization' => 'Bearer ' . $token,
-            'Content-Type' => 'application/json',
+            'Content-Type'  => 'application/x-www-form-urlencoded',
+            'Accept'        => 'application/json',
             'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
             'Expect' => '',
         ]);

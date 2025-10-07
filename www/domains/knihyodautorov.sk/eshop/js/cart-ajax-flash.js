@@ -40,12 +40,6 @@
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
 
-    // icon
-    const icon = document.createElement('div');
-    icon.className = 'flash-icon';
-    icon.innerHTML = (type === 'success') ? '✓' : (type === 'error') ? '✕' : 'ℹ';
-    el.appendChild(icon);
-
     // body
     const body = document.createElement('div');
     body.className = 'flash-body';
@@ -219,15 +213,15 @@
         const qty = cart ? (Number(cart.items_total_qty || cart.items_count || 1)) : 1;
         const word = pluralPolozka(qty);
         const currency = cart ? (cart.currency || '') : '';
-        const subtotal = cart && cart.subtotal ? ` — ${escapeHtml(String(cart.subtotal))} ${escapeHtml(currency)}` : '';
+        const subtotal = cart && cart.subtotal ? ` za ${escapeHtml(String(cart.subtotal))} ${escapeHtml(currency)}` : '';
 
-        const message = `Pridané do košíka (${qty} ${word})${subtotal}`;
+        const message = `Pridané do košíka`;
 
         const f = createFlash(message, { type: 'success' });
         if (f && f.el) {
           const metaNode = f.el.querySelector('.flash-meta');
           if (metaNode && cart) {
-            metaNode.textContent = `${qty} ${word} — ${cart.subtotal || ''} ${cart.currency || ''}`.trim();
+            metaNode.textContent = `${qty} ${word} ${subtotal || ''}`.trim();
           }
         }
         // --- CSRF token update (drop-in) ---

@@ -743,7 +743,7 @@ if (isset($_POST['create_db'])) {
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         order_id BIGINT UNSIGNED NULL,
         gateway VARCHAR(100) NOT NULL,
-        transaction_id VARCHAR(255),
+        transaction_id BIGINT UNSIGNED NULL,
         provider_event_id VARCHAR(255) NULL,
         status ENUM('pending','authorized','paid','failed','refunded') NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
@@ -891,6 +891,22 @@ if (isset($_POST['create_db'])) {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
     createTable($pdo, $sql, "webhook_outbox");
+
+    // Tabuľka gopay_notify_log (pre asynchrónne notifikácie, retry, monitoring)
+    $sql = "CREATE TABLE IF NOT EXISTS gopay_notify_log (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        order_id BIGINT UNSIGNED NOT NULL,
+        received_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        processing_by VARCHAR(100) NULL,
+        processing_until DATETIME(6) NULL,
+        attempts INT UNSIGNED NOT NULL DEFAULT 0,
+        last_error VARCHAR(255) NULL,
+        status ENUM('pending','processing','done','failed') NOT NULL DEFAULT 'pending',
+        UNIQUE KEY ux_notify_order (order_id),
+        INDEX idx_status_received (status, received_at),
+        CONSTRAINT fk_notify_order FOREIGN KEY (order_id) REFERENCES payments(transaction_id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
+        createTable($pdo, $sql, "gopay_notify_log");
 
     // Tabuľka email_verifications (required pre register/verify/resend)
     $sql = "CREATE TABLE IF NOT EXISTS email_verifications (

@@ -4,7 +4,7 @@ declare(strict_types=1);
 // fallback proměnné
 $pageTitleSafe = isset($pageTitle) && is_string($pageTitle) ? trim($pageTitle) : 'E-shop knihy';
 $appName       = $_ENV['APP_NAME'] ?? 'Knižnica Stratégov';
-$navActive     = $navActive ?? 'catalog';
+$navActive     = $navActive ?? 'home';
 $user          = is_array($user ?? null) ? $user : null;
 $cart_count    = isset($cart_count) ? (int) $cart_count : 0;
 $csrf_token    = isset($csrf_token) ? (string) $csrf_token : null;
@@ -12,7 +12,7 @@ $csrf_token    = isset($csrf_token) ? (string) $csrf_token : null;
 $displayName = $user['display_name'] ?? (($user['given_name'] ?? '') . ' ' . ($user['family_name'] ?? ''));
 $displayName = trim($displayName) ?: null;
 $avatarUrl   = $user['avatar_url'] ?? null;
-$logoUrl     = $logo_url ?? '/assets/logo.png';
+$logoUrl     = $logo_url ?? '/eshop/assets/app/logo-header.png';
 
 $categories = is_array($categories) ? $categories : [];
 $activeClass = fn(string $k) => $navActive === $k ? ' active header_nav-item--active' : '';
@@ -26,6 +26,8 @@ $mobile_nav_id = 'header_nav_mobile';
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="icon" href="/eshop/assets/app/favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="/eshop/assets/app/favicon.ico" type="image/x-icon">
   <title><?= htmlspecialchars($pageTitleSafe, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> — <?= htmlspecialchars($appName, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <link rel="stylesheet" href="/eshop/css/app.css" media="screen">
   <link rel="stylesheet" href="/eshop/css/header.css" media="screen">
@@ -35,7 +37,6 @@ $mobile_nav_id = 'header_nav_mobile';
   <?php if ($csrf_token): ?>
     <meta name="csrf-token" content="<?= htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
   <?php endif; ?>
-  <link rel="icon" href="/assets/favicon-epic.png" type="image/png">
 </head>
 <body class="page-<?= htmlspecialchars(preg_replace('/[^a-z0-9_-]/', '', strtolower($navActive)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> epic-theme">
 
@@ -133,6 +134,7 @@ $mobile_nav_id = 'header_nav_mobile';
     </button>
 
     <ul id="<?= htmlspecialchars($nav_list_id, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" class="header_nav-list" role="menubar" aria-label="Hlavné menu" data-header-list>
+      <li role="none" class="header_nav-item<?= $activeClass('home') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/" <?= $navActive==='home'?'aria-current="page"':'' ?>>Domov</a></li>
       <li role="none" class="header_nav-item<?= $activeClass('catalog') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/catalog" <?= $navActive==='catalog'?'aria-current="page"':'' ?>>Katalóg</a></li>
       <li role="none" class="header_nav-item<?= $activeClass('authors') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/authors" <?= $navActive==='authors'?'aria-current="page"':'' ?>>Autori</a></li>
 
@@ -168,15 +170,16 @@ $mobile_nav_id = 'header_nav_mobile';
 
       <li role="none" class="header_nav-item<?= $activeClass('new') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/new" <?= $navActive==='new'?'aria-current="page"':'' ?>>Novinky <span class="header_badge header_badge--new" aria-hidden="true">Nové</span></a></li>
       <li role="none" class="header_nav-item<?= $activeClass('events') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/events" <?= $navActive==='events'?'aria-current="page"':'' ?>>Akcie <span class="header_badge header_badge--epic" aria-hidden="true">Zľavy</span></a></li>
-      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/gdpr">Ochrana osobných údajov</a></li>
-      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/vop">Obchodné podmienky</a></li>
-      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/reklamacie">Reklamačný poriadok</a></li>
-      <li role="none" class="header_nav-item"><a role="menuitem" class="header_nav-link" href="/eshop/contact">Kontakt</a></li>
+      <li role="none" class="header_nav-item<?= $activeClass('gdpr') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/gdpr"<?= $navActive==='gdpr'?'aria-current="page"':'' ?>>Ochrana osobných údajov</a></li>
+      <li role="none" class="header_nav-item<?= $activeClass('vop') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/vop"<?= $navActive==='vop'?'aria-current="page"':'' ?>>Obchodné podmienky</a></li>
+      <li role="none" class="header_nav-item<?= $activeClass('reklamacie') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/reklamacie"<?= $navActive==='reklamacie'?'aria-current="page"':'' ?>>Reklamačný poriadok</a></li>
+      <li role="none" class="header_nav-item<?= $activeClass('contact') ?>"><a role="menuitem" class="header_nav-link" href="/eshop/contact"<?= $navActive==='contact'?'aria-current="page"':'' ?>>Kontakt</a></li>
     </ul>
   </div>
 
   <div id="<?= htmlspecialchars($mobile_nav_id, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" class="header_nav-mobile" aria-hidden="true" data-header-mobile>
     <ul class="header_nav-mobile-list" role="menu" aria-label="Mobilné menu">
+      <li role="none"><a role="menuitem" href="/eshop/">Domov</a></li>
       <li role="none"><a role="menuitem" href="/eshop/catalog">Katalóg</a></li>
       <li role="none"><a role="menuitem" href="/eshop/authors">Autori</a></li>
       <li role="none"><a role="menuitem" href="/eshop/new">Novinky</a></li>

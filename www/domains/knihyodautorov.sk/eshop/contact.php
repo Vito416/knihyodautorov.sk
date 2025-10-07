@@ -220,6 +220,8 @@ $fullHtml = $article;
 
 return [
     'template' => null,
-    'vars' => [],
+    'vars' => [
+        'navActive' => 'contact',
+    ],
     'content' => $fullHtml,
 ];
