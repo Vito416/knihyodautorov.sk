@@ -338,101 +338,102 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
     }
 
     /**
-     * Get status of payment.
+     * Get status of payment (cached + fallback).
      *
      * @param string $gatewayPaymentId
-     * @return array
+     * @return array{status: array, from_cache: bool}
+     * @throws \RuntimeException on failure
      */
     public function getStatus(string $gatewayPaymentId): array
     {
         // --- safe cache key (no reserved chars) ---
         $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gatewayPaymentId), 0, 32);
-        $cached = null;
+
+        // Try to get from cache first
         try {
             $cached = $this->cache->get($statusCacheKey);
+            if (is_array($cached)) {
+                try { Logger::info('Returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+                return ['status' => $cached, 'from_cache' => true];
+            }
         } catch (\Throwable $e) {
             try { Logger::warn('Status cache get failed', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
-            $cached = null;
-        }
-        if (is_array($cached)) {
-            Logger::info('Returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gatewayPaymentId]);
-            return $cached;
         }
 
-        // SDK path (unchanged)
+        $fromCache = false;
+        $respArray = null;
+
+        // SDK path (preferred)
         if ($this->client !== null && method_exists($this->client, 'getStatus')) {
             try {
                 $resp = $this->client->getStatus($gatewayPaymentId);
                 if (is_object($resp)) $resp = json_decode(json_encode($resp), true);
                 if (!is_array($resp)) throw new \RuntimeException('Unexpected SDK response type for getStatus');
-                try {
-                    $this->cache->set($statusCacheKey, $resp, null);
-                } catch (\Throwable $e) {
+
+                $respArray = $resp;
+
+                // Save permanent cache
+                try { $this->cache->set($statusCacheKey, $respArray, null); } catch (\Throwable $e) {
                     try { Logger::warn('Failed to set status cache (SDK path)', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e]); } catch (\Throwable $_) {}
                 }
-                return $resp;
             } catch (\Throwable $e) {
                 try { Logger::warn('SDK getStatus failed, falling back to HTTP', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
             }
         }
 
         // HTTP fallback
-        $token = $this->getToken();
-        $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment/' . rawurlencode($gatewayPaymentId);
-
-        // NOTE: do NOT send Content-Type on GET — causes RESTEasy "Cannot consume content type" 500
-        $headers = $this->buildHeaders([
-            'Authorization' => 'Bearer ' . $token,
-            'Accept' => 'application/json',
-            'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
-            'Expect' => '',
-        ]);
-
-        $resp = $this->doRequest('GET', $url, $headers, null, ['expect_json' => true, 'raw' => true]);
-        $httpCode = $resp['http_code'] ?? 0;
-        $json = $resp['json'] ?? null;
-        $raw = $resp['body'] ?? '';
-
-        // retry once on 401 (token might be stale)
-        if ($httpCode === 401) {
-            try { Logger::info('getStatus received 401, clearing token and retrying', null, []); } catch (\Throwable $_) {}
-            $this->clearTokenCache();
+        if ($respArray === null) {
             $token = $this->getToken();
+            $url = rtrim($this->cfg['gatewayUrl'], '/') . '/api/payments/payment/' . rawurlencode($gatewayPaymentId);
+
             $headers = $this->buildHeaders([
                 'Authorization' => 'Bearer ' . $token,
                 'Accept' => 'application/json',
                 'User-Agent' => 'KnihyOdAutorov/GoPaySdkWrapper/1.0',
                 'Expect' => '',
             ]);
+
             $resp = $this->doRequest('GET', $url, $headers, null, ['expect_json' => true, 'raw' => true]);
             $httpCode = $resp['http_code'] ?? 0;
             $json = $resp['json'] ?? null;
             $raw = $resp['body'] ?? '';
+
+            // Retry once if 401
+            if ($httpCode === 401) {
+                try { Logger::info('getStatus received 401, clearing token and retrying', null, []); } catch (\Throwable $_) {}
+                $this->clearTokenCache();
+                $token = $this->getToken();
+                $headers['Authorization'] = 'Bearer ' . $token;
+                $resp = $this->doRequest('GET', $url, $headers, null, ['expect_json' => true, 'raw' => true]);
+                $httpCode = $resp['http_code'] ?? 0;
+                $json = $resp['json'] ?? null;
+                $raw = $resp['body'] ?? '';
+            }
+
+            try { Logger::info('GoPay getStatus response', null, [$this->sanitizeForLog($json ?? $raw)]); } catch (\Throwable $_) {}
+
+            if ($httpCode < 200 || $httpCode >= 300) {
+                $msg = is_array($json) ? ($json['error_description'] ?? ($json['message'] ?? json_encode($json))) : $raw;
+                $ex = new \RuntimeException("GoPay getStatus returned HTTP {$httpCode}: {$msg}");
+                try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId, 'http_code' => $httpCode]); } catch (\Throwable $_) {}
+                throw $ex;
+            }
+
+            if (!is_array($json)) {
+                $ex = new \RuntimeException("GoPay getStatus returned non-JSON body (HTTP {$httpCode}): {$raw}");
+                try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+                throw $ex;
+            }
+
+            $respArray = $json;
+
+            // Save permanent cache
+            try { $this->cache->set($statusCacheKey, $respArray, null); } catch (\Throwable $e) {
+                try { Logger::warn('Failed to set status cache', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
+            }
         }
 
-        try { Logger::info('GoPay getStatus response', null, [$this->sanitizeForLog($json ?? $raw)]); } catch (\Throwable $_) {}
-
-        if ($httpCode < 200 || $httpCode >= 300) {
-            $msg = is_array($json) ? ($json['error_description'] ?? ($json['message'] ?? json_encode($json))) : $raw;
-            $ex = new \RuntimeException("GoPay getStatus returned HTTP {$httpCode}: {$msg}");
-            try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId, 'http_code' => $httpCode]); } catch (\Throwable $_) {}
-            throw $ex;
-        }
-
-        if (!is_array($json)) {
-            $ex = new \RuntimeException("GoPay getStatus returned non-JSON body (HTTP {$httpCode}): {$raw}");
-            try { Logger::systemError($ex, null, null, ['phase' => 'getStatus', 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
-            throw $ex;
-        }
-
-        // Safely try to set cache, but do not fail the call if cache set errors
-        try {
-            $this->cache->set($statusCacheKey, $json, null);
-        } catch (\Throwable $e) {
-            try { Logger::warn('Failed to set status cache', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
-        }
-
-        return $json;
+        return ['status' => $respArray, 'from_cache' => $fromCache];
     }
 
     /**

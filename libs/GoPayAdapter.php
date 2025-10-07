@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/GoPayStatus.php';
 /**
  * Final adapter for GoPay integration.
  *
@@ -18,6 +19,7 @@ final class GoPayAdapter
     private string $returnUrl;
     private int $reservationTtlSec = 900; // 15 minutes default
     private ?FileCache $cache = null; // optional FileCache for idempotency/status caching
+    private bool $allowCreate = false;
 
     public function __construct(
         Database $db,
@@ -291,299 +293,281 @@ final class GoPayAdapter
     }
 
     /**
-     * Handle incoming webhook/notification raw body and headers.
-     * Returns array with processing outcome.
+     * Handle GoPay notification by gateway transaction id.
      *
-     * This method will:
-     *  - verify the notification by fetching authoritative status from GoPay
-     *  - deduplicate by payload hash
-     *  - atomically update payments/orders/reservations
-     *  - AFTER commit generate download tokens for digital assets and enqueue email(s)
+     * @param string $gwId Gateway payment id (transaction id)
+     * @param ?bool $allowCreate When false (worker mode) DO NOT INSERT new payments, only update existing ones.
      */
-    public function handleNotify(string $rawBody, array $headers = []): array
+    public function handleNotify(string $gwId, ?bool $allowCreate = null): array
     {
-        $payloadHash = $this->computePayloadHash($rawBody);
-        // Optional webhook signature verification (enable by setting GOPAY_WEBHOOK_SECRET)
-        $secret = (string)($_ENV['GOPAY_WEBHOOK_SECRET'] ?? '');
-        if ($secret !== '') {
-            $sigHeader = $headers['X-GOPAY-SIGN'] ?? $headers['x-gopay-sign'] ?? $headers['Gopay-Signature'] ?? null;
-            if ($sigHeader === null) {
-                try { $this->logger->warn('Missing webhook signature header', null, ['hash' => $payloadHash]); } catch (\Throwable $_) {}
-                throw new \RuntimeException('Missing webhook signature');
-            }
-            $expected = hash_hmac('sha256', $rawBody, $secret);
-            if (!hash_equals($expected, $sigHeader)) {
-                try { $this->logger->warn('Invalid webhook signature', null, ['hash' => $payloadHash]); } catch (\Throwable $_) {}
-                throw new \RuntimeException('Invalid webhook signature');
-            }
-        }
-        // dedupe based on payments.webhook_payload_hash or payment_logs
-        $exists = $this->db->fetch('SELECT id FROM payments WHERE webhook_payload_hash = :h LIMIT 1', [':h' => $payloadHash]);
-        if ($exists !== null) {
-            try { $this->logger->info('Duplicate webhook ignored', null, ['hash' => $payloadHash]); } catch (\Throwable $_) {}
-            return ['status' => 'ignored', 'reason' => 'duplicate'];
-        }
+        $lastError = null;
+        $allowCreate = $allowCreate ?? $this->allowCreate;
+        $gwId = trim((string)$gwId);
 
-        $decoded = json_decode($rawBody, true);
-        $gwId = $decoded['paymentId'] ?? $decoded['id'] ?? null;
-
-        // Always verify via GoPay API (authoritative)
-        try {
-            try { $this->logger->info('Verifying webhook via GoPay getStatus', null, ['gopay_id' => $gwId]); } catch (\Throwable $_) {}
-            if (empty($gwId)) {
-            try { $this->logger->warn('Webhook missing gateway id (paymentId/id)', null, ['payload_hash' => $payloadHash, 'raw' => $rawBody]); } catch (\Throwable $_) {}
+        if ($gwId === '') {
+            try { $this->logger->warn('Notify called without gateway id', null, ['gwId' => $gwId]); } catch (\Throwable $_) {}
             throw new \RuntimeException('Webhook missing gateway payment id');
         }
-        $status = $this->gopayClient->getStatus($gwId);
-        } catch (\Throwable $e) {
-            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]); } catch (\Throwable $_) {}
-            throw $e;
-        }
+        Logger::info('Processing GoPay notify for gateway id: ' . $gwId);
+        // Always verify via GoPay API (authoritative) and use cache when possible
+        $status = null;
+        $fromCache = false;
+        $cacheKey = 'gopay_status_' . substr(hash('sha256', $gwId), 0, 32);
 
-        $mapping = $this->mapGatewayStatusToLocal($status);
+        try {
+            // první pokus: nefiltrujeme lokální cache tady, protože wrapper vrací informaci o tom,
+            // odkud status pochází (from_cache). wrapper sám používá stejný cacheKey.
+            $resp = $this->gopayClient->getStatus($gwId);
 
-        // Prepare data to be used AFTER transaction (email + tokens)
-        $postActions = ['emails' => []];
-
-        // Atomically update payment/order and confirm reservations if paid
-        $this->db->transaction(function (Database $d) use ($gwId, $status, $payloadHash, $mapping, &$postActions) {
-            $payment = $d->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw', [':tx' => $gwId, ':gw' => 'gopay']);
-            if ($payment === null) {
-                // create a payment record if missing (best effort)
-                $d->prepareAndRun('INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, webhook_payload_hash, raw_webhook, created_at) VALUES (NULL, :gw, :tx, :st, 0, :cur, :det, :h, :raw, NOW())', [
-                    ':gw' => 'gopay',
-                    ':tx' => $gwId,
-                    ':st' => $mapping['payment_status'],
-                    ':cur' => 'EUR',
-                    ':det' => json_encode($status),
-                    ':h' => $payloadHash,
-                    ':raw' => json_encode($status)
-                ]);
-                $paymentId = (int)$d->lastInsertId();
-                $payment = $d->fetch('SELECT * FROM payments WHERE id = :id', [':id' => $paymentId]);
+            // podporujeme dvě varianty návratu: 
+            // 1) ['status'=>..., 'from_cache'=>bool]  (preferovaná)
+            // 2) raw status array (fallback)
+            if (is_array($resp) && array_key_exists('status', $resp) && is_array($resp['status'])) {
+                $status = $resp['status'];
+                $fromCache = !empty($resp['from_cache']);
             } else {
-                $d->prepareAndRun('UPDATE payments SET status = :st, webhook_payload_hash = :h, raw_webhook = :raw, updated_at = NOW() WHERE id = :id', [':st' => $mapping['payment_status'], ':h' => $payloadHash, ':raw' => json_encode($status), ':id' => $payment['id']]);
-                $paymentId = (int)$payment['id'];
+                $status = $resp;
+                $fromCache = false;
             }
+        } catch (\Throwable $e) {
+            $lastError = $e;
+            // pokud getStatus selže, logujeme a propadneme (caller očekává výjimku)
+            $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]);
+        }
 
-            // if mapped to paid and payment.order_id is set, confirm reservations and decrement stock
-            $orderId = $payment['order_id'] ?? null;
-            if ($orderId !== null && $mapping['order_status'] === 'paid') {
-                // mark reservations and decrement stock
-                $reservations = $d->fetchAll('SELECT * FROM inventory_reservations WHERE order_id = :oid AND status = "pending"', [':oid' => $orderId]);
-                foreach ($reservations as $r) {
-                // lock the book row and check stock atomically
-                $bookRow = $d->fetch('SELECT stock_quantity FROM books WHERE id = :bid FOR UPDATE', [
-                    ':bid' => $r['book_id']
-                ]);
-
-                if ($bookRow === null) {
-                    throw new \RuntimeException('Book not found for book_id=' . $r['book_id']);
-                }
-
-                $currentStock = (int)($bookRow['stock_quantity'] ?? 0);
-                $qty = (int)($r['qty'] ?? 0);
-
-                if ($currentStock < $qty) {
-                    // insufficient stock -> rollback transaction by throwing
-                    throw new \RuntimeException('Insufficient stock for book_id=' . $r['book_id']);
-                }
-
-                // now safe to decrement
-                $d->prepareAndRun('UPDATE books SET stock_quantity = stock_quantity - :q WHERE id = :bid', [
-                    ':q' => $qty,
-                    ':bid' => $r['book_id']
-                ]);
-                            // mark reservation confirmed
-                            $d->prepareAndRun('UPDATE inventory_reservations SET status = :st WHERE id = :id', [
-                                ':st' => 'confirmed',
-                                ':id' => $r['id']
-                            ]);
-                }
-
-                $d->prepareAndRun('UPDATE orders SET status = "paid", updated_at = NOW() WHERE id = :id', [':id' => $orderId]);
-
-                // Prepare download token generation: find downloadable assets for this order
-                $assets = $d->fetchAll('SELECT ba.id AS asset_id, ba.book_id, ba.filename FROM book_assets ba JOIN order_items oi ON oi.book_id = ba.book_id WHERE oi.order_id = :oid AND ba.asset_type IN ("pdf","epub","mobi","sample")', [':oid' => $orderId]);
-
-                if (!empty($assets)) {
-                    // Try to get customer email: prefer order.encrypted_customer_blob or user table
-                    $email = null;
-                    $orderRow = $d->fetch('SELECT * FROM orders WHERE id = :id', [':id' => $orderId]);
-
-                    if (!empty($orderRow['encrypted_customer_blob'])) {
-                        try {
-                            $plain = Crypto::decrypt($orderRow['encrypted_customer_blob']);
-                            $customer = json_decode($plain, true);
-                            $email = $customer['email'] ?? null;
-                        } catch (\Throwable $_) {
-                            // decryption failed — fallback
-                            $email = null;
-                        }
-                    }
-
-                    if ($email === null && !empty($orderRow['user_id'])) {
-                        $user = $d->fetch('SELECT email_enc FROM pouzivatelia WHERE id = :id', [':id' => $orderRow['user_id']]);
-                        if (!empty($user['email_enc'])) {
-                            try {
-                                $email = Crypto::decrypt($user['email_enc']);
-                            } catch (\Throwable $_) {
-                                $email = null;
-                            }
-                        }
-                    }
-
-                    // Build download tokens and insert to order_item_downloads
-                    $downloadEntries = [];
-                    foreach ($assets as $a) {
-                        // generate plaintext token (url-safe)
-                        $tokenRaw = bin2hex(random_bytes(32));
-                        // derive HMAC using KeyManager
-                        try {
-                            $hinfo = KeyManager::deriveHmacWithLatest('DOWNLOAD_TOKEN_KEY', null, 'download_token', $tokenRaw);
-                            $tokenHash = $hinfo['hash']; // binary
-                            $tokenKeyVer = $hinfo['version'] ?? null;
-                        } catch (\Throwable $_) {
-                            // fallback to sha256 if KeyManager unavailable
-                            $tokenHash = hash('sha256', $tokenRaw, true);
-                            $tokenKeyVer = null;
-                        }
-
-                        $expiresAt = (new \DateTimeImmutable('+30 days'))->format('Y-m-d H:i:s');
-                        $maxUses = 5;
-
-                        // ensure $tokenHash is binary; store hex
-                        $tokenHashHex = is_string($tokenHash) ? bin2hex($tokenHash) : bin2hex((string)$tokenHash);
-                        $d->prepareAndRun('INSERT INTO order_item_downloads (order_id, book_id, asset_id, download_token_hash, encryption_key_version, token_key_version, max_uses, used, expires_at, created_at) VALUES (:oid, :bid, :aid, :hash, NULL, :tkv, :max, 0, :exp, NOW())', [
-                            ':oid' => $orderId,
-                            ':bid' => $a['book_id'],
-                            ':aid' => $a['asset_id'],
-                            ':hash' => $tokenHashHex,
-                            ':tkv' => $tokenKeyVer,
-                            ':max' => $maxUses,
-                            ':exp' => $expiresAt
-                        ]);
-
-                        $downloadEntries[] = [
-                            'book_id' => $a['book_id'],
-                            'asset_id' => $a['asset_id'],
-                            'filename' => $a['filename'],
-                            'token_plain' => $tokenRaw,
-                            'expires_at' => $expiresAt,
-                            'max_uses' => $maxUses,
-                            'token_key_version' => $tokenKeyVer
-                        ];
-                    }
-
-                    // prepare email action data only if we have an address
-                    if (!empty($email)) {
-                        $postActions['emails'][] = ['order_id' => $orderId, 'email' => $email, 'downloads' => $downloadEntries, 'bill_name' => $orderRow['bill_full_name'] ?? null];
-                    }
-                }
-            }
-        }); // end transaction
-
-        // After commit: send emails (if any)
-        foreach ($postActions['emails'] as $em) {
+        $gwState = $status['state'] ?? null;
+        $statusEnum = GoPayStatus::tryFrom($gwState); // vrací null pokud neplatný stav
+        // Pokud byl status vrácen z cache a je NON-PERMANENT, smažeme cache a načteme fresh status.
+        // Toto přesně respektuje tvou podmínku — cache je mazána JEN když to wrapper potvrdí.
+        if ($fromCache && $statusEnum !== null && $statusEnum->isNonPermanent()) {
+            try { $this->logger->info('Cached non-permanent status detected, refreshing from GoPay', null, ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey, 'status'=>$status]); } catch (\Throwable $_) {}
+            // pokus o smazání cache (best-effort)
             try {
-                $this->enqueueOrderDownloadsEmail($em['order_id'], $em['email'], $em['downloads'], $em['bill_name'] ?? null);
+                if (isset($this->cache) && $this->cache instanceof \Psr\SimpleCache\CacheInterface) {
+                    $this->cache->delete($cacheKey);
+                    try { $this->logger->info('Deleted non-permanent cached status and will refresh from GoPay', null, ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey]); } catch (\Throwable $_) {}
+                } else {
+                    try { $this->logger->info('Wrapper returned from_cache but local cache instance missing - refreshing from GoPay anyway', null, ['gopay_id'=>$gwId]); } catch (\Throwable $_) {}
+                }
             } catch (\Throwable $e) {
-                try { $this->logger->systemMessage('error', 'Failed to enqueue order downloads email', null, ['order_id' => $em['order_id'], 'exception' => (string)$e]); } catch (\Throwable $_) {}
+                $lastError = $e;
+                try { $this->logger->warn('Failed to delete status cache', null, ['cache_key'=>$cacheKey, 'exception'=>(string)$e]); } catch (\Throwable $_) {}
+                // pokračujeme i přesto — pokusíme se načíst fresh status níže
+            }
+
+            // znovu načti stav z GoPay (opět tolerujeme obal i raw tvar)
+            try {
+                $resp2 = $this->gopayClient->getStatus($gwId);
+                if (is_array($resp2) && array_key_exists('status', $resp2) && is_array($resp2['status'])) {
+                    $status = $resp2['status'];
+                    // zde už nás "from_cache" nezajímá (je fresh)
+                    $fromCache = !empty($resp2['from_cache']);
+                } else {
+                    $status = $resp2;
+                    $fromCache = false;
+                }
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus.refresh', 'gopay_id' => $gwId]);
+            }
+        }
+        Logger::info('GoPay status fetched for notify', null, ['gopay_id' => $gwId, 'from_cache' => $fromCache, 'status' => $status]);
+        if ($status === null) {
+            try {
+                $status = $this->gopayClient->getStatus($gwId);
+            } catch (\Throwable $e) {
+                $lastError = $e;
+                $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]);
+            }
+            if (isset($this->cache) && $this->cache instanceof \Psr\SimpleCache\CacheInterface) {
+                $this->cache->set($cacheKey, $status, 3600);
             }
         }
 
-        try { $this->logger->info('Webhook processed', null, ['gopay_id' => $gwId, 'payload_hash' => $payloadHash]); } catch (\Throwable $_) {}
-        return ['status' => 'processed', 'gopay_id' => $gwId];
+        // compute payload hash from the authoritative status (used for dedupe) asdasdasdasdasd
+        $payloadHash = hash('sha256', json_encode($status));
+
+        // dedupe: pokud už někdo viděl stejný payload hash, ignoruj
+        try {
+            $exists = $this->db->fetch('SELECT id FROM payments WHERE webhook_payload_hash = :h LIMIT 1', [':h' => $payloadHash]);
+        } catch (\Throwable $e) {
+            $lastError = $e;
+            // v případě DB problému logujeme a pokračujeme (nebo přerušíme dle potřeby)
+            try { $this->logger->systemError($e, null, null, ['phase' => 'db.dedupe_check']); } catch (\Throwable $_) {}
+        }
+        if ($exists !== null) {
+            try { $this->logger->info('Duplicate webhook ignored', null, ['hash' => $payloadHash, 'gopay_id' => $gwId]); } catch (\Throwable $_) {}
+            if ($statusEnum?->isNonPermanent() === true) {
+                    $action = 'delete'; // Worker smaže záznam, aby další pokus mohl proběhnout
+                } else {
+                    $action = 'done';   // Worker označí jako done, další pokusy se nebudou dělat
+                }
+            if (!empty($lastError)) {
+                $action = 'fail';
+            }
+            return ['action'=> $action];
+        }
+        Logger::info('Processing GoPay notify for gateway id: ' . $gwId . ' with new payload hash: ' . $payloadHash);
+        // mapování statusu
+            $gwState = $status['state'] ?? null;
+            $statusEnum = GoPayStatus::tryFrom($gwState);
+
+            if ($statusEnum === null) {
+                $this->logger->warn('Unhandled GoPay status', null, ['gw_state' => $gwState]);
+            } else {
+                switch ($statusEnum) {
+                    case GoPayStatus::CREATED:
+                        // Flow pro CREATED
+                        break;
+
+                    case GoPayStatus::PAYMENT_METHOD_CHOSEN:
+                        // Flow pro PAYMENT_METHOD_CHOSEN
+                        break;
+
+                    case GoPayStatus::PAID:
+                        // Flow pro PAID
+                        break;
+
+                    case GoPayStatus::AUTHORIZED:
+                        // Flow pro AUTHORIZED
+                        break;
+
+                    case GoPayStatus::CANCELED:
+                        // Flow pro CANCELED
+                        break;
+
+                    case GoPayStatus::TIMEOUTED:
+                        // Flow pro TIMEOUTED
+                        break;
+
+                    case GoPayStatus::REFUNDED:
+                        // Flow pro REFUNDED
+                        break;
+
+                    case GoPayStatus::PARTIALLY_REFUNDED:
+                        // Flow pro PARTIALLY_REFUNDED
+                        break;
+                }
+            }
+
+        $action = 'done';
+
+        // Non-permanent status vrácený z cache, dedupe ignoroval payload → umožníme další pokus
+        if ($statusEnum !== null && $statusEnum->isNonPermanent()) {
+            $action = 'delete'; // Worker smaže záznam, aby další pokus mohl proběhnout
+        }
+
+        // Pokud nějaký permanentní status, nebo dedupe ignoroval, ale status je permanentní → done
+        elseif ($statusEnum !== null && !$statusEnum->isNonPermanent()) {
+            $action = 'done';
+        }
+
+        // Pokud nějaký fail (např. API error nebo DB insert fail), zvýšit attempts → fail
+        elseif (!empty($lastError)) {
+            $action = 'fail';
+        }
+        return [
+            'action'       => $action,
+        ];
     }
 
     public function fetchStatus(string $gopayPaymentId): array
     {
-        // cache-only: never call external gateway from here.
-        try {
-            // cache key MUST match wrapper/worker key scheme
-            $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gopayPaymentId), 0, 32);
+        // cache-only: never call external gateway from here and never write to cache.
+        $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gopayPaymentId), 0, 32);
 
-            // require PSR-16 cache instance on adapter as $this->cache
-            if (!isset($this->cache) || !($this->cache instanceof \Psr\SimpleCache\CacheInterface)) {
-                // no cache available -> log and return safe pseudo-state
-                try {
-                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
-                        $this->logger->warning('fetchStatus: no cache instance available, returning pseudo CREATED', ['id' => $gopayPaymentId]);
-                    }
-                } catch (\Throwable $_) {}
-                return [
-                    'state' => 'CREATED',
-                    '_pseudo' => true,
-                    '_cached' => false,
-                    '_message' => 'No cache instance available; returning pseudo CREATED.',
-                ];
-            }
-
-            // Try to read cached status
+        // Require PSR-16 cache instance
+        if (!isset($this->cache) || !($this->cache instanceof \Psr\SimpleCache\CacheInterface)) {
             try {
-                $cached = $this->cache->get($statusCacheKey);
-            } catch (\Psr\SimpleCache\InvalidArgumentException $e) {
-                // invalid cache key — log & fallback to pseudo
-                try {
-                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
-                        $this->logger->warning('fetchStatus: cache invalid argument', ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                    }
-                } catch (\Throwable $_) {}
-                $cached = null;
-            } catch (\Throwable $e) {
-                // cache read error — log & fallback
-                try {
-                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
-                        $this->logger->warning('fetchStatus: cache read failed', ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                    } 
-                } catch (\Throwable $_) {}
-                $cached = null;
-            }
-
-            if (is_array($cached)) {
-                // found cached gateway response -> return it (annotate)
-                try {
-                    if (isset($this->logger) && method_exists($this->logger, 'info')) {
-                        $this->logger->info('fetchStatus: returning cached status', ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
-                    } elseif (class_exists('Logger')) {
-                        Logger::info('fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
-                    }
-                } catch (\Throwable $_) {}
-                $cached['_cached'] = true;
-                return $cached;
-            }
-
-            // nothing in cache -> safe pseudo state (CREATED)
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'info')) {
-                    $this->logger->info('fetchStatus: cache empty, returning pseudo CREATED', ['id' => $gopayPaymentId]);
+                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
+                    $this->logger->warn('fetchStatus: no cache instance available, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
                 } elseif (class_exists('Logger')) {
-                    Logger::info('fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
+                    Logger::systemMessage('warning', 'fetchStatus: no cache instance available, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
                 }
             } catch (\Throwable $_) {}
+            return [
+                'state' => 'CREATED',
+                '_pseudo' => true,
+                '_cached' => false,
+                '_message' => 'No cache instance available; returning pseudo CREATED.',
+            ];
+        }
 
+        // Try to read cached status (do NOT write to cache here)
+        try {
+            $cached = $this->cache->get($statusCacheKey);
+        } catch (\Psr\SimpleCache\InvalidArgumentException $e) {
+            // invalid cache key — log & return pseudo (do not write or modify cache)
+            try {
+                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
+                    $this->logger->warn('fetchStatus: cache invalid argument', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                } elseif (class_exists('Logger')) {
+                    Logger::systemMessage('warning', 'fetchStatus: cache invalid argument', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                }
+            } catch (\Throwable $_) {}
+            $cached = null;
+        } catch (\Throwable $e) {
+            // generic cache read error — log & fallback to pseudo (no writes)
+            try {
+                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
+                    $this->logger->warn('fetchStatus: cache read failed', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                } elseif (class_exists('Logger')) {
+                    Logger::systemMessage('warning', 'fetchStatus: cache read failed', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                }
+            } catch (\Throwable $_) {}
+            $cached = null;
+        }
+
+        // If nothing cached -> pseudo CREATED
+        if ($cached === null) {
+            try {
+                if (isset($this->logger) && method_exists($this->logger, 'info')) {
+                    $this->logger->info('fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
+                } elseif (class_exists('Logger')) {
+                    Logger::systemMessage('info', 'fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
+                }
+            } catch (\Throwable $_) {}
             return [
                 'state' => 'CREATED',
                 '_pseudo' => true,
                 '_cached' => false,
                 '_message' => 'No cached gateway status available yet.'
             ];
-        } catch (\Throwable $e) {
-            // defensive: log unexpected error but return pseudo-created
+        }
+
+        // If cached value exists, perform basic validation (must be array and include 'state')
+        if (!is_array($cached) || !array_key_exists('state', $cached)) {
+            // treat as miss (do not mutate or write)
             try {
-                if (isset($this->logger) && method_exists($this->logger, 'systemError')) {
-                    $this->logger->systemError($e, null, null, ['phase' => 'adapter.fetchStatus', 'id' => $gopayPaymentId]);
+                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
+                    $this->logger->warn('fetchStatus: cached value invalid shape, treating as miss', null, ['id' => $gopayPaymentId]);
                 } elseif (class_exists('Logger')) {
-                    Logger::systemError($e, null, null, ['phase' => 'adapter.fetchStatus', 'id' => $gopayPaymentId]);
+                    Logger::systemMessage('warning', 'fetchStatus: cached value invalid shape, treating as miss', null, ['id' => $gopayPaymentId]);
                 }
             } catch (\Throwable $_) {}
             return [
                 'state' => 'CREATED',
                 '_pseudo' => true,
                 '_cached' => false,
-                '_message' => 'Error reading cache; returning pseudo CREATED.'
+                '_message' => 'Cached value invalid or malformed; returning pseudo CREATED.'
             ];
         }
+
+        // Return a defensive copy and annotate as cached (no writes)
+        $out = $cached;
+        $out['_cached'] = true;
+        // ensure minimal canonical keys exist
+        $out['state'] = (string)($out['state'] ?? 'CREATED');
+
+        try {
+            if (isset($this->logger) && method_exists($this->logger, 'info')) {
+                $this->logger->info('fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
+            } elseif (class_exists('Logger')) {
+                Logger::systemMessage('info', 'fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
+            }
+        } catch (\Throwable $_) {}
+
+        return $out;
     }
 
     public function refundPayment(string $gopayPaymentId, float $amount): array
@@ -716,11 +700,6 @@ final class GoPayAdapter
         }
     }
 
-    private function computePayloadHash(string $body): string
-    {
-        return hash('sha256', $body);
-    }
-
     private function sanitizeForLog(array $a): array
     {
         // remove sensitive fields if present
@@ -765,103 +744,5 @@ final class GoPayAdapter
     private function safeDecimal($v): string
     {
         return number_format((float)$v, 2, '.', '');
-    }
-
-    private function mapGatewayStatusToLocal($status): array
-    {
-        // naive mapping — adapt after inspecting GoPay status object
-        $state = null;
-        if (is_array($status)) {
-            $state = strtolower($status['state'] ?? $status['paymentState'] ?? '') ;
-        } elseif (is_object($status)) {
-            $state = strtolower($status->state ?? $status->paymentState ?? '');
-        }
-
-        if (in_array($state, ['paid', 'completed', 'ok'], true)) {
-            return ['payment_status' => 'paid', 'order_status' => 'paid'];
-        }
-        if ($state === 'authorized') {
-            return ['payment_status' => 'authorized', 'order_status' => 'pending'];
-        }
-        if (in_array($state, ['cancelled', 'failed', 'declined'], true)) {
-            return ['payment_status' => 'failed', 'order_status' => 'cancelled'];
-        }
-
-        return ['payment_status' => 'pending', 'order_status' => 'pending'];
-    }
-
-    /**
-     * Enqueue an email with download links using your Mailer::enqueue format
-     */
-    private function enqueueOrderDownloadsEmail(int $orderId, string $toEmail, array $downloads, ?string $billName = null): void
-    {
-        if (!class_exists('Mailer') || !method_exists('Mailer', 'enqueue')) {
-            try { $this->logger->warn('Mailer::enqueue not available, cannot enqueue order downloads email', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
-            return;
-        }
-
-        // Prepare variables for template
-        $givenName = '';
-        if (!empty($billName)) {
-            $parts = preg_split('/\s+/', trim($billName));
-            $givenName = $parts[0] ?? '';
-        }
-
-        $links = [];
-        foreach ($downloads as $d) {
-            $links[] = $this->buildDownloadUrl($orderId, $d['token_plain']);
-        }
-
-        $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
-        $subject = 'Vaša objednávka je spracovaná — stiahnite si zakúpené súbory';
-
-        $payloadArr = [
-            'user_id' => null,
-            'to' => $toEmail,
-            'subject' => $subject,
-            'template' => 'order_downloads',
-            'vars' => [
-                'given_name' => $givenName,
-                'order_id' => $orderId,
-                'download_links' => $links,
-            ],
-            'attachments' => [
-                [
-                    'type' => 'inline_remote',
-                    'src'  => ($base . '/assets/logo.png'),
-                    'name' => 'logo.png',
-                    'cid'  => 'logo'
-                ]
-            ],
-            'meta' => [
-                'cipher_format' => 'aead_xchacha20poly1305_v1_binary'
-            ],
-        ];
-
-        try {
-            if ($this->mailer !== null && method_exists($this->mailer, 'enqueue')) {
-                $notifId = $this->mailer->enqueue($payloadArr);
-            } else {
-                // fallback to static
-                $notifId = Mailer::enqueue($payloadArr);
-            }
-            try { $this->logger->systemMessage('notice', 'Order downloads email enqueued', null, ['order_id' => $orderId, 'notification_id' => $notifId]); } catch (\Throwable $_) {}
-        } catch (\Throwable $e) {
-            try { $this->logger->systemMessage('error', 'Mailer enqueue failed during order downloads', null, ['order_id' => $orderId, 'exception' => (string)$e]); } catch (\Throwable $_) {}
-            // do not throw — email failure is non-fatal for payment processing
-        }
-    }
-
-    private function buildDownloadUrl(int $orderId, string $token): string
-    {
-        $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
-        // public endpoint that will validate token and stream file
-        return $base . '/download?order_id=' . rawurlencode((string)$orderId) . '&token=' . rawurlencode($token);
-    }
-
-    private function fetchOrderTotal(int $orderId): float
-    {
-        $row = $this->db->fetch('SELECT total FROM orders WHERE id = :id', [':id' => $orderId]);
-        return $row ? (float)$row['total'] : 0.0;
     }
 }

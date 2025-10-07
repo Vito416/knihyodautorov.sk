@@ -91,48 +91,54 @@ try {
 $mapped = $mapGatewayStatusToLocal($gatewayStatus);
 
 // persist minimal payment row (idempotent)
-try {
-    $db->transaction(function ($d) use ($gopayId, $gatewayStatus, $mapped) {
-        $p = $d->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw LIMIT 1', [
-            ':tx' => $gopayId,
-            ':gw' => 'gopay',
-        ]);
-
-        $details = json_encode($gatewayStatus);
-
-        if ($p === null) {
-            $d->prepareAndRun('INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, webhook_payload_hash, created_at)
-                VALUES (NULL, :gw, :tx, :st, 0, :cur, :det, NULL, NOW())', [
-                ':gw' => 'gopay',
+// ONLY persist when we have an authoritative gateway response (not a pseudo/cache-miss).
+if (is_array($gatewayStatus) && empty($gatewayStatus['_pseudo'])) {
+    try {
+        $db->transaction(function ($d) use ($gopayId, $gatewayStatus, $mapped) {
+            $p = $d->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw LIMIT 1', [
                 ':tx' => $gopayId,
-                ':st' => $mapped['payment_status'],
-                ':cur' => 'EUR',
-                ':det' => $details,
+                ':gw' => 'gopay',
             ]);
-        } else {
-            $d->prepareAndRun('UPDATE payments SET status = :st, details = :det, updated_at = NOW() WHERE id = :id', [
-                ':st' => $mapped['payment_status'],
-                ':det' => $details,
-                ':id' => $p['id'],
-            ]);
-        }
-    });
-} catch (\Throwable $e) {
-    try { 
-        if (isset($logger) && method_exists($logger, 'systemError')) {
-            $logger->systemError($e, null, null, ['phase' => 'return.db_update', 'gopay_id' => $gopayId]);
-        } elseif (class_exists('Logger')) {
-            Logger::systemError($e, null, null, ['phase' => 'return.db_update', 'gopay_id' => $gopayId]);
-        }
-    } catch (\Throwable $_) {}
-    // swallow — UX should continue even if DB update fails
-}
 
-// fetch payment row for display (best-effort)
-try {
-    $paymentRow = $db->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw LIMIT 1', [':tx' => $gopayId, ':gw' => 'gopay']);
-} catch (\Throwable $_) {
-    $paymentRow = null;
+            $details = json_encode($gatewayStatus);
+
+            if ($p === null) {
+                $d->prepareAndRun('INSERT INTO payments (order_id, gateway, transaction_id, status, amount, currency, details, webhook_payload_hash, created_at)
+                    VALUES (NULL, :gw, :tx, :st, 0, :cur, :det, NULL, NOW())', [
+                    ':gw' => 'gopay',
+                    ':tx' => $gopayId,
+                    ':st' => $mapped['payment_status'],
+                    ':cur' => 'EUR',
+                    ':det' => $details,
+                ]);
+            } else {
+                $d->prepareAndRun('UPDATE payments SET status = :st, details = :det, updated_at = NOW() WHERE id = :id', [
+                    ':st' => $mapped['payment_status'],
+                    ':det' => $details,
+                    ':id' => $p['id'],
+                ]);
+            }
+        });
+    } catch (\Throwable $e) {
+        try {
+            if (isset($logger) && method_exists($logger, 'systemError')) {
+                $logger->systemError($e, null, null, ['phase' => 'return.db_update', 'gopay_id' => $gopayId]);
+            } elseif (class_exists('Logger')) {
+                Logger::systemError($e, null, null, ['phase' => 'return.db_update', 'gopay_id' => $gopayId]);
+            }
+        } catch (\Throwable $_) {}
+        // swallow — UX should continue even if DB update fails
+    }
+} 
+
+// fetch payment row for display (best-effort) — only when we had an authoritative gateway response
+$paymentRow = null;
+if (is_array($gatewayStatus) && empty($gatewayStatus['_pseudo'])) {
+    try {
+        $paymentRow = $db->fetch('SELECT * FROM payments WHERE transaction_id = :tx AND gateway = :gw LIMIT 1', [':tx' => $gopayId, ':gw' => 'gopay']);
+    } catch (\Throwable $_) {
+        $paymentRow = null;
+    }
 }
 
 // Prepare data for template

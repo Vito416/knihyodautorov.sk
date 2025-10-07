@@ -22,13 +22,22 @@ final class Worker
     private static bool $inited = false;
     private static array $jobs = [];
 
+    /** @var mixed|null */
+    private static $gopayWrapper = null;
+
+    /** @var mixed|null */
+    private static $gopayAdapter = null;
+
     /** lock prefix to avoid colliding with other processes */
     private const LOCK_PREFIX = 'worker_lock_';
 
-    public static function init(PDO $pdo): void
+    public static function init(PDO $pdo, $gopayWrapper = null, $gopayAdapter = null): void
     {
-        self::$pdo = $pdo;
-        self::$inited = true;
+        self::$pdo        = $pdo;
+        self::$gopayWrapper = $gopayWrapper;
+        self::$gopayAdapter = $gopayAdapter;
+        self::$inited     = true;
+
         if (class_exists('Logger')) {
             try { Logger::systemMessage('notice', 'Worker initialized'); } catch (\Throwable $_) {}
         }
@@ -36,7 +45,22 @@ final class Worker
 
     private static function ensureInited(): void
     {
-        if (!self::$inited || !self::$pdo) throw new RuntimeException('Worker not initialized.');
+        if (!self::$inited || !self::$pdo) {
+            throw new RuntimeException('Worker not initialized.');
+        }
+    }
+
+    /** volitelné, pokud je chceš využít interně */
+    public static function getGoPayWrapper()
+    {
+        self::ensureInited();
+        return self::$gopayWrapper;
+    }
+
+    public static function getGoPayAdapter()
+    {
+        self::ensureInited();
+        return self::$gopayAdapter;
     }
 
     // -------------------- Notifications --------------------
@@ -316,5 +340,115 @@ final class Worker
         } catch (\Throwable $e) {
             if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
         }
+    }
+    
+    public static function processGoPayNotify(int $limit = 5, int $claimTtlSec = 120): array
+    {
+        self::ensureInited();
+
+        $me = getmypid() . '@' . gethostname();
+        $processingUntil = (new \DateTimeImmutable('+' . $claimTtlSec . ' seconds'))->format('Y-m-d H:i:s');
+
+        $report = ['claimed' => 0, 'done' => 0, 'skipped' => 0, 'failed' => 0, 'errors' => []];
+
+        // -----------------------------
+        // 1) Claim rows atomically
+        // -----------------------------
+        try {
+            self::$pdo->beginTransaction();
+
+            $sql = '
+                SELECT id, order_id, received_at, processing_by, processing_until, attempts, status
+                FROM gopay_notify_log
+                WHERE status = :status
+                AND (processing_until IS NULL OR processing_until < NOW())
+                ORDER BY received_at ASC
+                LIMIT :limit FOR UPDATE
+            ';
+            $sel = self::$pdo->prepare($sql);
+            $sel->bindValue(':status', 'pending', PDO::PARAM_STR);
+            $sel->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $sel->execute();
+            $rows = $sel->fetchAll(PDO::FETCH_ASSOC);
+
+            if (!$rows) {
+                self::$pdo->commit();
+                return $report;
+            }
+
+            $updClaim = self::$pdo->prepare('
+                UPDATE gopay_notify_log
+                SET status = ?, processing_by = ?, processing_until = ?, attempts = attempts + 1
+                WHERE id = ?
+            ');
+
+            foreach ($rows as $r) {
+                $updClaim->execute(['processing', $me, $processingUntil, $r['id']]);
+                if ($updClaim->rowCount() > 0) {
+                    $report['claimed']++;
+                    $r['status'] = 'processing';
+                    $r['attempts']++; // synchronizace pro další logiku
+
+                }
+            }
+
+            self::$pdo->commit();
+        } catch (\Throwable $e) {
+            try { self::$pdo->rollBack(); } catch (\Throwable $_) {}
+            $report['errors'][] = 'claim_failed: ' . $e->getMessage();
+            if (class_exists('Logger')) try { Logger::systemError($e); } catch (\Throwable $_) {}
+            return $report;
+        }
+
+        foreach ($rows as $r) {
+            $orderId = $r['order_id'];
+            if (empty($orderId)) {
+                continue; // skip if order_id missing
+            }
+
+        try {
+            $res = self::getGoPayAdapter()->handleNotify((string)$orderId, false);
+            $action = $res['action'] ?? 'done';
+            
+            $updStatus = self::$pdo->prepare('
+                UPDATE gopay_notify_log
+                SET status = ?, processing_by = NULL, processing_until = NULL
+                WHERE id = ?
+            ');
+
+            $lastError = $res['last_error'] ?? null;
+            if (!empty($lastError) && class_exists('Logger')) {
+                Logger::systemError(new \RuntimeException($lastError), null, null, ['order_id' => $orderId]);
+            }
+
+            switch ($action) {
+                case 'done':
+                    $updStatus->execute(['done', $r['id']]);
+                    $report['done']++;
+                    break;
+
+                case 'delete':
+                    // reset row, worker může zpracovat znovu
+                    $updStatus->execute(['pending', $r['id']]);
+                    $report['skipped']++;
+                    break;
+
+                case 'fail':
+                    $updStatus->execute(['failed', $r['id']]);
+                    $report['failed']++;
+                    break;
+            }
+
+        } catch (\Throwable $e) {
+            if (class_exists('Logger')) {
+                try {
+                    Logger::systemError($e, null, null, ['order_id' => $orderId]);
+                } catch (\Throwable $_) {}
+            }
+            $report['failed']++;
+        }
+        }
+
+        return $report;
     }
 }

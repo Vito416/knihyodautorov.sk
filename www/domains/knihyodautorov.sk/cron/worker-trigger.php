@@ -24,6 +24,7 @@ $response = [
     'rotation_jobs' => null,
     'cleanup_notifications_deleted' => null,
     'cleanup_sessions_deleted' => null,
+    'gopay_notify' => null,
     'report' => null,
     'errors' => [],
     'logs' => [],
@@ -98,7 +99,7 @@ if (!class_exists('Logger')) {
 // BOOTSTRAP Worker
 // -------------------------------------------------
 try {
-    Worker::init($db);
+    Worker::init($db, $gopayWrapper, $gopayAdapter);
 } catch (\Throwable $e) {
     $response['errors'][] = 'Bootstrap failed: ' . $e->getMessage();
     echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -158,6 +159,15 @@ try {
     $response['cleanup_sessions_deleted'] = Worker::cleanupSessions(24, 90);
 } catch (\Throwable $e) {
     $response['errors'][] = 'Cleanup of sessions failed: ' . $e->getMessage();
+}
+
+// -------------------------------------------------
+// Handle GoPay notify queue
+// -------------------------------------------------
+try {
+    $response['gopay_notify'] = Worker::processGoPayNotify(5, 120);
+} catch (\Throwable $e) {
+    $response['errors'][] = 'Processing GoPay notifications failed: ' . $e->getMessage();
 }
 
 // -------------------------------------------------
