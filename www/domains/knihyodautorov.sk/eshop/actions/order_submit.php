@@ -145,7 +145,15 @@ if ($bill_full_name === '' || $email === '' || !filter_var($email, FILTER_VALIDA
     respondJson(['ok' => false, 'error' => 'invalid_billing', 'message' => 'Neplatné fakturační údaje']);
 }
 
+// require client-supplied idempotency key for safe deduplication
 $clientIdempotencyKey = !empty($input['idempotency_key']) ? (string)$input['idempotency_key'] : null;
+if ($clientIdempotencyKey === null || $clientIdempotencyKey === '') {
+    respondJson([
+        'ok' => false,
+        'error' => 'idempotency_key_required',
+        'message' => 'Požadován idempotency_key v requestu (pro bezpečné opakování požadavků).'
+    ]);
+}
 
 /* ---------- normalize cart, collect book IDs ---------- */
 $normalized = [];
@@ -201,24 +209,46 @@ foreach ($normalized as $line) {
 }
 $total = round($total, 2);
 
-/* ---------- idempotency quick-check (client-sent key) ---------- */
-$idempotencyKey = $clientIdempotencyKey ?? bin2hex(random_bytes(16));
+// idempotency quick-check (client-sent key) - prefer adapter.lookupIdempotency if available
+$idempotencyKey = $clientIdempotencyKey;
 $idempHash = hash('sha256', (string)$idempotencyKey);
 
-if ($clientIdempotencyKey !== null) {
-    try {
-        $row = $db->fetch('SELECT response FROM idempotency_keys WHERE key_hash = :k LIMIT 1', [':k' => $idempHash]);
-        if (!empty($row['response'])) {
-            $cached = json_decode($row['response'], true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                // Pokud dorazila cached odpověď, vrať ji (frontend zachytí redirect_url a přesměruje)
-                $out = array_merge(['ok' => true, 'idempotency_cached' => true], $cached);
-                respondJson($out);
+try {
+    $cached = null;
+    if (isset($gopayAdapter) && method_exists($gopayAdapter, 'lookupIdempotency')) {
+        $cached = $gopayAdapter->lookupIdempotency($idempotencyKey);
+    } else {
+        // fallback to DB lookup for older installations
+        $row = $db->fetch('SELECT payment_id FROM idempotency_keys WHERE key_hash = :k LIMIT 1', [':k' => $idempHash]);
+        if (!empty($row['payment_id'])) {
+            $p = $db->fetch('SELECT id, details FROM payments WHERE id = :id LIMIT 1', [':id' => $row['payment_id']]);
+            if ($p !== null) {
+                $gopay = null;
+                $redirect_url = null;
+                if (!empty($p['details'])) {
+                    $gopay = json_decode($p['details'], true);
+                    if (json_last_error() !== JSON_ERROR_NONE) $gopay = null;
+                }
+                if (is_array($gopay)) {
+                    if (isset($gopay[0]['gw_url'])) $redirect_url = $gopay[0]['gw_url'];
+                    $redirect_url = $redirect_url ?? ($gopay['gw_url'] ?? $gopay['payment_redirect'] ?? $gopay['redirect_url'] ?? null);
+                }
+                $cached = [
+                    'payment_id' => (int)$p['id'],
+                    'redirect_url' => $redirect_url,
+                    'gopay' => $gopay,
+                ];
             }
         }
-    } catch (\Throwable $e) {
-        if (class_exists('Logger')) try { Logger::warn('order_submit: idempotency lookup failed', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
     }
+
+    if (!empty($cached)) {
+        $out = array_merge(['ok' => true, 'idempotency_cached' => true], $cached);
+        respondJson($out);
+    }
+} catch (\Throwable $e) {
+    if (class_exists('Logger')) try { Logger::warn('order_submit: idempotency lookup failed', null, ['exception' => (string)$e]); } catch (\Throwable $e) {}
+    // continue, treat as cache miss
 }
 /* ---------- encrypt customer blob helper ---------- */
 function encryptCustomerBlob(string $customerBlob): array {
@@ -363,42 +393,30 @@ if (empty($redirect)) {
 
 /* ---------- persist real idempotency response (best-effort) ---------- */
 try {
-    // Pokusíme se vytvořit deterministický hash requestu (pokud máme raw body nebo parsed input).
-    $requestHash = null;
-    if (!empty($raw) && is_string($raw)) {
-        $requestHash = hash('sha256', $raw);
-    } else {
-        // Fallback: serializovat parsed input (pokud je dostupný) — lepší než NULL.
-        try {
-            $requestHash = is_array($input) ? hash('sha256', json_encode($input, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)) : null;
-        } catch (\Throwable $e) {
-            $requestHash = null;
-        }
-    }
-
-    $toStore = json_encode([
+    $payloadArr = [
         'order_id'    => $orderId,
         'payment_id'  => $paymentId,
         'redirect_url'=> $redirect,
-        'gopay'       => $gopayRes['gopay'] ?? null
-    ]);
+        'gopay'       => $gopayRes['gopay'] ?? $gopayRes['gopay'] ?? null
+    ];
 
-    $db->prepareAndRun(
-        'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
-        VALUES (:k, :uid, :req, :r, :ttl, NOW())
-        ON DUPLICATE KEY UPDATE response = :r2, ttl_seconds = :ttl2',
-        [
-            ':k'    => $idempHash,
-            ':uid'  => $user['id'] ?? null,
-            ':req'  => $requestHash,
-            ':r'    => $toStore,
-            ':ttl'  => 86400,
-            ':r2'   => $toStore,
-            ':ttl2' => 86400
-        ]
-    );
+    // Prefer adapter.persistIdempotency if available
+    if (isset($gopayAdapter) && method_exists($gopayAdapter, 'persistIdempotency')) {
+        $gopayAdapter->persistIdempotency($idempotencyKey, $payloadArr, (int)$paymentId);
+    } else {
+        // fallback to direct DB upsert
+        $db->prepareAndRun(
+            'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
+            VALUES (:k, :pid, :ttl, NOW())
+            ON DUPLICATE KEY UPDATE payment_id = VALUES(payment_id), ttl_seconds = VALUES(ttl_seconds)',
+            [
+                ':k'   => $idempHash,
+                ':pid' => $paymentId,
+                ':ttl' => 86400
+            ]
+        );
+    }
 } catch (\Throwable $e) {
-    // Best-effort: nedovolíme, aby to zlomilo checkout.
     if (class_exists('Logger')) {
         try {
             Logger::warn('order_submit: idempotency write failed', null, [
@@ -408,7 +426,6 @@ try {
             ]);
         } catch (\Throwable $e) {}
     }
-    // pokračujeme dál bez přerušení
 }
 
 /* ---------- set last_order_id in session if session active (UX) ---------- */

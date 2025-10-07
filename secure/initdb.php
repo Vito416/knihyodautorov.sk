@@ -581,12 +581,10 @@ if (isset($_POST['create_db'])) {
     // Tabuľka idempotency_keys
     $sql = "CREATE TABLE IF NOT EXISTS idempotency_keys (
         key_hash CHAR(64) PRIMARY KEY,              -- sha256 hex of provided key
-        user_id BIGINT UNSIGNED NULL,
-        request_hash CHAR(64) NULL,                 -- sha256 hex of normalized request body
+        payment_id BIGINT UNSIGNED NOT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        response JSON NULL,                         -- cached response or reference
         ttl_seconds INT NOT NULL DEFAULT 86400,
-        INDEX idx_idemp_user (user_id),
+        INDEX idx_idemp_payment (payment_id),
         INDEX idx_idemp_created_at (created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     createTable($pdo, $sql, "idempotency_keys");

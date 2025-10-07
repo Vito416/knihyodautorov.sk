@@ -355,6 +355,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
             $cached = null;
         }
         if (is_array($cached)) {
+            Logger::info('Returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gatewayPaymentId]);
             return $cached;
         }
 
@@ -365,7 +366,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
                 if (is_object($resp)) $resp = json_decode(json_encode($resp), true);
                 if (!is_array($resp)) throw new \RuntimeException('Unexpected SDK response type for getStatus');
                 try {
-                    $this->cache->set($statusCacheKey, $resp, 60);
+                    $this->cache->set($statusCacheKey, $resp, null);
                 } catch (\Throwable $e) {
                     try { Logger::warn('Failed to set status cache (SDK path)', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e]); } catch (\Throwable $_) {}
                 }
@@ -426,7 +427,7 @@ final class GoPaySdkWrapper implements PaymentGatewayInterface
 
         // Safely try to set cache, but do not fail the call if cache set errors
         try {
-            $this->cache->set($statusCacheKey, $json, 60);
+            $this->cache->set($statusCacheKey, $json, null);
         } catch (\Throwable $e) {
             try { Logger::warn('Failed to set status cache', null, ['cache_key' => $statusCacheKey, 'exception' => (string)$e, 'id' => $gatewayPaymentId]); } catch (\Throwable $_) {}
         }

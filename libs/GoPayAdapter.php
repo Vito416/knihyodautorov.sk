@@ -101,22 +101,17 @@ final class GoPayAdapter
      */
     public function createPaymentFromOrder(int $orderId, string $idempotencyKey): array
     {
+        // require non-empty idempotency key (caller must provide it)
+        if (trim((string)$idempotencyKey) === '') {
+            throw new \InvalidArgumentException('idempotencyKey is required and must be non-empty');
+        }
         $idempHash = hash('sha256', (string)$idempotencyKey);
 
-        // 1) idempotency quick-check via FileCache (prefer), fallback to DB
-        $cacheKey = 'gopay:idemp:' . md5(($this->notificationUrl ?? '') . '|' . ($this->returnUrl ?? '') . '|' . $idempHash);
-        if (!empty($this->cache)) {
-            $cached = $this->cache->get($cacheKey);
-            if (is_string($cached) && $cached !== '') {
-                try { $this->logger->info('Idempotent createPaymentFromOrder hit (cache)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
-                return json_decode($cached, true);
-            }
-        } else {
-            $cached = $this->db->fetch('SELECT response FROM idempotency_keys WHERE key_hash = :k', [':k' => $idempHash]);
-            if ($cached !== null && !empty($cached['response'])) {
-                try { $this->logger->info('Idempotent createPaymentFromOrder hit (db)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
-                return json_decode($cached['response'], true);
-            }
+        // unified idempotency quick-check via helper
+        $cached = $this->lookupIdempotency($idempotencyKey);
+        if ($cached !== null) {
+            try { $this->logger->info('Idempotent createPaymentFromOrder hit (lookupIdempotency)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
+            return $cached;
         }
 
         // Load order (non-locking). We'll re-check & lock inside the short DB transaction
@@ -215,9 +210,12 @@ final class GoPayAdapter
         }
 
         // 4) Persist gateway id/details and idempotency inside transaction
-        $this->db->transaction(function (Database $d) use ($orderId, $gopayResponse, $provisionPaymentId, $idempHash, $cacheKey) {
+        $this->db->transaction(function (Database $d) use ($orderId, $gopayResponse, $provisionPaymentId, $idempHash) {
             $gwId = $this->extractGatewayPaymentId($gopayResponse);
             $detailsJson = json_encode($gopayResponse);
+            if ($detailsJson === false) {
+                $detailsJson = json_encode(['note' => 'unserializable_gopay_response']);
+            }
 
             $d->prepareAndRun(
                 'UPDATE payments SET transaction_id = :tx, status = :st, details = :det, updated_at = NOW() WHERE id = :id',
@@ -230,29 +228,49 @@ final class GoPayAdapter
             );
 
             // persist idempotency key in DB (best-effort)
-            $redirectUrl = $this->extractRedirectUrl($gopayResponse);
-            $payloadResp = json_encode([
-                'payment_id' => $provisionPaymentId,
-                'redirect_url' => $redirectUrl,
-                'gopay' => $gopayResponse
-            ]);
-
             try {
                 $d->prepareAndRun(
-                    'INSERT INTO idempotency_keys (key_hash, user_id, request_hash, response, ttl_seconds, created_at)
-                    VALUES (:k, NULL, NULL, :r, 86400, NOW())
-                    ON DUPLICATE KEY UPDATE response = :r2',
-                    [':k' => $idempHash, ':r' => $payloadResp, ':r2' => $payloadResp]
+                    'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
+                    VALUES (:k, :pid, :ttl, NOW())
+                    ON DUPLICATE KEY UPDATE payment_id = VALUES(payment_id), ttl_seconds = VALUES(ttl_seconds)',
+                    [':k' => $idempHash, ':pid' => $provisionPaymentId, ':ttl' => 86400]
                 );
             } catch (\Throwable $_) {
                 // ignore duplicate key / DB issues
             }
 
-            // store in FileCache if available
-            if (!empty($this->cache) && method_exists($this->cache, 'set')) {
-                try { $this->cache->set($cacheKey, $payloadResp, 86400); } catch (\Throwable $_) {}
-            }
+            // DO NOT write FileCache inside DB transaction — write cache after commit using persistIdempotency()
+
         });
+        // AFTER COMMIT: best-effort persist to FileCache (store structured array)
+        try {
+            $gopayForCache = null;
+            if (is_array($gopayResponse)) {
+                $gopayForCache = $gopayResponse;
+            } elseif (is_object($gopayResponse)) {
+                // convert object to array in safe way
+                $gopayForCache = json_decode(json_encode($gopayResponse), true);
+            } else {
+                $gopayForCache = $gopayResponse;
+            }
+
+            $payloadArr = [
+                'payment_id' => $provisionPaymentId,
+                'redirect_url' => $this->extractRedirectUrl($gopayResponse),
+                'gopay' => $gopayForCache,
+                'order_id' => $orderId
+            ];
+
+            // persist both DB (already done) and FileCache (best-effort)
+            if (!empty($provisionPaymentId) && (int)$provisionPaymentId > 0) {
+                $this->persistIdempotency($idempotencyKey, $payloadArr, (int)$provisionPaymentId);
+            } else {
+                try { $this->logger->warn('persistIdempotency skipped: invalid provisionPaymentId', null, ['provisionPaymentId' => $provisionPaymentId, 'order_id' => $orderId]); } catch (\Throwable $_) {}
+            }
+
+        } catch (\Throwable $e) {
+            try { $this->logger->warn('persistIdempotency after commit failed', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+        }
 
         // 5) Return structured response
         $gwId = $this->extractGatewayPaymentId($gopayResponse);
@@ -480,11 +498,91 @@ final class GoPayAdapter
 
     public function fetchStatus(string $gopayPaymentId): array
     {
+        // cache-only: never call external gateway from here.
         try {
-            return $this->gopayClient->getStatus($gopayPaymentId);
+            // cache key MUST match wrapper/worker key scheme
+            $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gopayPaymentId), 0, 32);
+
+            // require PSR-16 cache instance on adapter as $this->cache
+            if (!isset($this->cache) || !($this->cache instanceof \Psr\SimpleCache\CacheInterface)) {
+                // no cache available -> log and return safe pseudo-state
+                try {
+                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
+                        $this->logger->warning('fetchStatus: no cache instance available, returning pseudo CREATED', ['id' => $gopayPaymentId]);
+                    }
+                } catch (\Throwable $_) {}
+                return [
+                    'state' => 'CREATED',
+                    '_pseudo' => true,
+                    '_cached' => false,
+                    '_message' => 'No cache instance available; returning pseudo CREATED.',
+                ];
+            }
+
+            // Try to read cached status
+            try {
+                $cached = $this->cache->get($statusCacheKey);
+            } catch (\Psr\SimpleCache\InvalidArgumentException $e) {
+                // invalid cache key — log & fallback to pseudo
+                try {
+                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
+                        $this->logger->warning('fetchStatus: cache invalid argument', ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                    }
+                } catch (\Throwable $_) {}
+                $cached = null;
+            } catch (\Throwable $e) {
+                // cache read error — log & fallback
+                try {
+                    if (isset($this->logger) && method_exists($this->logger, 'warning')) {
+                        $this->logger->warning('fetchStatus: cache read failed', ['id' => $gopayPaymentId, 'exception' => (string)$e]);
+                    } 
+                } catch (\Throwable $_) {}
+                $cached = null;
+            }
+
+            if (is_array($cached)) {
+                // found cached gateway response -> return it (annotate)
+                try {
+                    if (isset($this->logger) && method_exists($this->logger, 'info')) {
+                        $this->logger->info('fetchStatus: returning cached status', ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
+                    } elseif (class_exists('Logger')) {
+                        Logger::info('fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
+                    }
+                } catch (\Throwable $_) {}
+                $cached['_cached'] = true;
+                return $cached;
+            }
+
+            // nothing in cache -> safe pseudo state (CREATED)
+            try {
+                if (isset($this->logger) && method_exists($this->logger, 'info')) {
+                    $this->logger->info('fetchStatus: cache empty, returning pseudo CREATED', ['id' => $gopayPaymentId]);
+                } elseif (class_exists('Logger')) {
+                    Logger::info('fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
+                }
+            } catch (\Throwable $_) {}
+
+            return [
+                'state' => 'CREATED',
+                '_pseudo' => true,
+                '_cached' => false,
+                '_message' => 'No cached gateway status available yet.'
+            ];
         } catch (\Throwable $e) {
-            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'id' => $gopayPaymentId]); } catch (\Throwable $_) {}
-            throw $e;
+            // defensive: log unexpected error but return pseudo-created
+            try {
+                if (isset($this->logger) && method_exists($this->logger, 'systemError')) {
+                    $this->logger->systemError($e, null, null, ['phase' => 'adapter.fetchStatus', 'id' => $gopayPaymentId]);
+                } elseif (class_exists('Logger')) {
+                    Logger::systemError($e, null, null, ['phase' => 'adapter.fetchStatus', 'id' => $gopayPaymentId]);
+                }
+            } catch (\Throwable $_) {}
+            return [
+                'state' => 'CREATED',
+                '_pseudo' => true,
+                '_cached' => false,
+                '_message' => 'Error reading cache; returning pseudo CREATED.'
+            ];
         }
     }
 
@@ -500,6 +598,123 @@ final class GoPayAdapter
     }
 
     /* ---------------- helper methods ---------------- */
+    
+    /**
+     * Safe cache key builder (PSR-16 safe: žádné ":" atd.)
+     */
+    private function makeCacheKey(string $idempHash): string
+    {
+        // používáme md5 pro krátký, PSR-16-safe prefix bez zakázaných znaků
+        return 'gopay_idemp_' . md5(($this->notificationUrl ?? '') . '|' . ($this->returnUrl ?? '') . '|' . $idempHash);
+    }
+
+    /**
+     * Lookup idempotency (tries FileCache first, DB fallback).
+     * Returns associative array with keys: payment_id, redirect_url, gopay, order_id (optional) or null.
+     */
+    public function lookupIdempotency(string $idempotencyKey): ?array
+    {
+        if (trim((string)$idempotencyKey) === '') {
+            throw new \InvalidArgumentException('lookupIdempotency requires a non-empty idempotencyKey');
+        }
+        $idempHash = hash('sha256', (string)$idempotencyKey);
+        $cacheKey = $this->makeCacheKey($idempHash);
+
+        // 1) try FileCache
+        if (!empty($this->cache) && method_exists($this->cache, 'get')) {
+            try {
+                $cached = $this->cache->get($cacheKey);
+                if (is_array($cached) && !empty($cached['payment_id'])) {
+                    // verify payment still exists
+                    $p = $this->db->fetch('SELECT id, details FROM payments WHERE id = :id LIMIT 1', [':id' => $cached['payment_id']]);
+                    if ($p !== null) {
+                        // ensure redirect/gopay present
+                        if (empty($cached['gopay']) && !empty($p['details'])) {
+                            $cached['gopay'] = json_decode($p['details'], true) ?: null;
+                        }
+                        if (empty($cached['redirect_url']) && !empty($cached['gopay']) && is_array($cached['gopay'])) {
+                            $g = $cached['gopay'];
+                            if (isset($g[0]['gw_url'])) $cached['redirect_url'] = $g[0]['gw_url'];
+                            $cached['redirect_url'] = $cached['redirect_url'] ?? ($g['gw_url'] ?? $g['payment_redirect'] ?? $g['redirect_url'] ?? null);
+                        }
+                        return $cached;
+                    }
+                    // stale cache -> try delete
+                    if (method_exists($this->cache, 'delete')) {
+                        try { $this->cache->delete($cacheKey); } catch (\Throwable $_) {}
+                    }
+                }
+            } catch (\Throwable $_) {
+                // cache read problems -> fallback to DB
+            }
+        }
+
+        // 2) DB fallback
+        try {
+            $row = $this->db->fetch('SELECT payment_id FROM idempotency_keys WHERE key_hash = :k LIMIT 1', [':k' => $idempHash]);
+            if (!empty($row['payment_id'])) {
+                $p = $this->db->fetch('SELECT id, details, order_id FROM payments WHERE id = :id LIMIT 1', [':id' => $row['payment_id']]);
+                if ($p !== null) {
+                    $gopay = null;
+                    if (!empty($p['details'])) {
+                        $gopay = json_decode($p['details'], true);
+                        if (json_last_error() !== JSON_ERROR_NONE) $gopay = null;
+                    }
+                    $redirect = null;
+                    if (is_array($gopay)) {
+                        if (isset($gopay[0]['gw_url'])) $redirect = $gopay[0]['gw_url'];
+                        $redirect = $redirect ?? ($gopay['gw_url'] ?? $gopay['payment_redirect'] ?? $gopay['redirect_url'] ?? null);
+                    }
+                    $out = [
+                        'payment_id' => (int)$p['id'],
+                        'redirect_url' => $redirect,
+                        'gopay' => $gopay,
+                        'order_id' => isset($p['order_id']) ? (int)$p['order_id'] : null
+                    ];
+                    // repopulate cache (best-effort)
+                    if (!empty($this->cache) && method_exists($this->cache, 'set')) {
+                        try { $this->cache->set($cacheKey, $out, 86400); } catch (\Throwable $_) {}
+                    }
+                    return $out;
+                }
+            }
+        } catch (\Throwable $_) {
+            // DB read failed -> miss
+        }
+        return null;
+    }
+
+    /**
+     * Persist idempotency: write DB (best-effort) and set FileCache (best-effort).
+     * $payload should be an array with payment_id, redirect_url, gopay, etc.
+     */
+    public function persistIdempotency(string $idempotencyKey, array $payload, int $paymentId): void
+    {
+        if (trim((string)$idempotencyKey) === '') {
+            throw new \InvalidArgumentException('persistIdempotency requires a non-empty idempotencyKey');
+        }
+        $idempHash = hash('sha256', (string)$idempotencyKey);
+        $cacheKey = $this->makeCacheKey($idempHash);
+
+        // 1) DB upsert (best-effort)
+        try {
+            $this->db->prepareAndRun(
+                'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
+                VALUES (:k, :pid, :ttl, NOW())
+                ON DUPLICATE KEY UPDATE payment_id = VALUES(payment_id), ttl_seconds = VALUES(ttl_seconds)',
+                [':k' => $idempHash, ':pid' => $paymentId, ':ttl' => 86400]
+            );
+        } catch (\Throwable $e) {
+            try { $this->logger->warn('persistIdempotency: DB write failed', null, ['exception' => (string)$e, 'key' => $idempHash]); } catch (\Throwable $_) {}
+        }
+
+        // 2) File cache (store array, not JSON)
+        if (!empty($this->cache) && method_exists($this->cache, 'set')) {
+            try { $this->cache->set($cacheKey, $payload, 86400); } catch (\Throwable $e) {
+                try { $this->logger->warn('persistIdempotency: cache set failed', null, ['exception' => (string)$e, 'cacheKey' => $cacheKey]); } catch (\Throwable $_) {}
+            }
+        }
+    }
 
     private function computePayloadHash(string $body): string
     {

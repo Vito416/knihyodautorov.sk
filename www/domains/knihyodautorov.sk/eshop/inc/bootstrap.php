@@ -186,12 +186,13 @@ $gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KE
 $gopayWrapper = new GoPaySdkWrapper($gopayCfg, $gopayFileCache);
 
 $gopayAdapter = new GoPayAdapter(
-    $database,       // DB instance
-    $gopayWrapper,   // wrapper
-    $loggerShim,     // logger
-    null,
-    $notificationUrl, 
-    $returnUrl
+    $database,
+    $gopayWrapper,
+    $loggerShim,
+    null,            // mailer
+    $notificationUrl,
+    $returnUrl,
+    $gopayFileCache
 );
 
 // Return $db for backwards compatibility (keep old code working)

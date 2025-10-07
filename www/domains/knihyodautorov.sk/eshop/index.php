@@ -66,7 +66,6 @@ $routes = [
     'cart_mini'           => '/actions/cart_mini.php',
     'checkout'       => 'checkout.php',
     'order_submit'       => '/actions/order_submit.php',
-    'gopay_callback' => 'gopay_callback.php',
     'order'          => 'order.php',
     'login'          => 'login.php',
     'logout'         => 'logout.php',
