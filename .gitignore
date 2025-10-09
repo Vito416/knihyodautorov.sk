@@ -1,2 +1,14 @@
 .vscode/sftp.json
+.libs/blackcat-core
+.libs/htmlpurifier
+.libs/markbaker
+.libs/pcre
+.libs/PHPMailer
+.libs/phpspreadsheet
+.libs/psr-http-client
+.libs/psr-http-message
+.libs/spr-log
+.libs/random_compat
+.libs/simple-cache
+.libs/ZipStream-PHP-main
 .env
