@@ -1,7 +1,3 @@
-[submodule "libs/blackcat-core"]
-	path = libs/blackcat-core
-	url = https://github.com/blackcatacademy/blackcat-core
-	branch = main
 [submodule "libs/htmlpurifier"]
 	path = libs/htmlpurifier
 	url = https://github.com/ezyang/htmlpurifier
