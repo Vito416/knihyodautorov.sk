@@ -1,0 +1,39 @@
+[submodule "libs/blackcat-core"]
+	path = libs/blackcat-core
+	url = https://github.com/blackcatacademy/blackcat-core
+[submodule "libs/htmlpurifier"]
+	path = libs/htmlpurifier
+	url = https://github.com/ezyang/htmlpurifier
+[submodule "libs/PHPMailer"]
+	path = libs/PHPMailer
+	url = https://github.com/PHPMailer/PHPMailer
+[submodule "libs/simple-cache"]
+	path = libs/simple-cache
+	url = https://github.com/php-fig/simple-cache
+[submodule "libs/psr-log"]
+	path = libs/psr-log
+	url = https://github.com/php-fig/log
+[submodule "libs/ZipStream-PHP-main"]
+	path = libs/ZipStream-PHP-main
+	url = https://github.com/maennchen/ZipStream-PHP
+[submodule "libs/pcre"]
+	path = libs/pcre
+	url = https://github.com/composer/pcre
+[submodule "libs/markbaker/complex"]
+	path = libs/markbaker/complex
+	url = https://github.com/MarkBaker/PHPComplex
+[submodule "libs/markbaker/matrix"]
+	path = libs/markbaker/matrix
+	url = https://github.com/MarkBaker/PHPMatrix
+[submodule "libs/psr-http-client"]
+	path = libs/psr-http-client
+	url = https://github.com/php-fig/http-client
+[submodule "libs/psr-http-message"]
+	path = libs/psr-http-message
+	url = https://github.com/php-fig/http-message
+[submodule "libs/phpspreadsheet"]
+	path = libs/phpspreadsheet
+	url = https://github.com/PHPOffice/PhpSpreadsheet
+[submodule "libs/random_compat"]
+	path = libs/random_compat
+	url = https://github.com/paragonie/random_compat
