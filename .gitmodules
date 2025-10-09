@@ -1,39 +1,52 @@
 [submodule "libs/blackcat-core"]
 	path = libs/blackcat-core
 	url = https://github.com/blackcatacademy/blackcat-core
+	branch = master
 [submodule "libs/htmlpurifier"]
 	path = libs/htmlpurifier
 	url = https://github.com/ezyang/htmlpurifier
+	branch = master
 [submodule "libs/PHPMailer"]
 	path = libs/PHPMailer
 	url = https://github.com/PHPMailer/PHPMailer
+	branch = master
 [submodule "libs/simple-cache"]
 	path = libs/simple-cache
 	url = https://github.com/php-fig/simple-cache
+	branch = master
 [submodule "libs/psr-log"]
 	path = libs/psr-log
 	url = https://github.com/php-fig/log
+	branch = master
 [submodule "libs/ZipStream-PHP-main"]
 	path = libs/ZipStream-PHP-main
 	url = https://github.com/maennchen/ZipStream-PHP
+	branch = main
 [submodule "libs/pcre"]
 	path = libs/pcre
 	url = https://github.com/composer/pcre
+	branch = main
 [submodule "libs/markbaker/complex"]
 	path = libs/markbaker/complex
 	url = https://github.com/MarkBaker/PHPComplex
+	branch = 3.0
 [submodule "libs/markbaker/matrix"]
 	path = libs/markbaker/matrix
 	url = https://github.com/MarkBaker/PHPMatrix
+	branch = 3.0
 [submodule "libs/psr-http-client"]
 	path = libs/psr-http-client
 	url = https://github.com/php-fig/http-client
+	branch = master
 [submodule "libs/psr-http-message"]
 	path = libs/psr-http-message
 	url = https://github.com/php-fig/http-message
+	branch = master
 [submodule "libs/phpspreadsheet"]
 	path = libs/phpspreadsheet
 	url = https://github.com/PHPOffice/PhpSpreadsheet
+	branch = master
 [submodule "libs/random_compat"]
 	path = libs/random_compat
 	url = https://github.com/paragonie/random_compat
+	branch = master
