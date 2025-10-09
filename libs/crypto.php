@@ -264,42 +264,53 @@ final class Crypto
         return chr(self::VERSION) . chr($nonceSize) . $nonce . $combined;
     }
 
-    /**
-     * Try to decrypt payload using a list of candidate raw keys (newest->oldest).
-     * Useful when you store key versions separately and want to support rotation.
-     *
-     * @param string $payload
-     * @param array<int,string> $candidateKeys raw keys, order: oldest..newest OR newest..oldest
-     *        Function will try newest->oldest (so pass newest last OR reverse in method).
-     * @return string|null decrypted plaintext or null
-     */
     public static function decryptWithKeyCandidates(string $payload, array $candidateKeys): ?string
     {
         KeyManager::requireSodium();
         if ($payload === '') return null;
 
-        // normalize order: ensure newest is last -> iterate reverse
         $expectedLen = KeyManager::keyByteLen();
 
-        // handle versioned binary or compact_base64 via existing decrypt logic,
-        // but using *given* keys rather than self::$keys.
-        // If payload is compact_base64:
+        // Security: limit number of candidate keys to avoid DoS via huge arrays
+        $maxCandidates = 16;
+        if (count($candidateKeys) > $maxCandidates) {
+            $candidateKeys = array_slice($candidateKeys, 0, $maxCandidates);
+        }
+
+        // normalize: EXPECT candidateKeys to be ordered newest-first (index 0 = newest).
+        // Try keys in order (newest -> oldest)
+        $tryKeys = $candidateKeys;
+
+        // compact_base64 path (nonce + combined)
         $decoded = base64_decode($payload, true);
         if ($decoded !== false) {
-            // compact_base64 path
             if (strlen($decoded) < SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES + SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_ABYTES) {
+                // too short to be valid
+                // log: invalid format/too short
                 return null;
             }
+
             $nonceLen = SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_NPUBBYTES;
             $nonce = substr($decoded, 0, $nonceLen);
             $cipher = substr($decoded, $nonceLen);
 
-            for ($i = count($candidateKeys) - 1; $i >= 0; $i--) {
-                $k = $candidateKeys[$i];
+            foreach ($tryKeys as $k) {
                 if (!is_string($k) || strlen($k) !== $expectedLen) continue;
-                $plain = @sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
-                if ($plain !== false) return $plain;
+                $plain = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
+                // zero-out key copy quickly
+                KeyManager::memzero($k);
+                if ($plain !== false) {
+                    // wipe candidateKeys before returning
+                    foreach ($candidateKeys as &$c) { try { KeyManager::memzero($c); } catch (Throwable $_) {} }
+                    unset($c);
+                    return $plain;
+                }
             }
+
+            // wipe candidateKeys after attempts
+            foreach ($candidateKeys as &$c) { try { KeyManager::memzero($c); } catch (Throwable $_) {} }
+            unset($c);
+
             return null;
         }
 
@@ -313,12 +324,20 @@ final class Crypto
             $nonce = substr($payload, $ptr, $nonce_len);
             $ptr += $nonce_len;
             $cipher = substr($payload, $ptr);
-            for ($i = count($candidateKeys) - 1; $i >= 0; $i--) {
-                $k = $candidateKeys[$i];
+
+            foreach ($tryKeys as $k) {
                 if (!is_string($k) || strlen($k) !== $expectedLen) continue;
-                $plain = @sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
-                if ($plain !== false) return $plain;
+                $plain = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt($cipher, self::AD, $nonce, $k);
+                try { KeyManager::memzero($k); } catch (Throwable $_) {}
+                if ($plain !== false) {
+                    foreach ($candidateKeys as &$c) { try { KeyManager::memzero($c); } catch (Throwable $_) {} }
+                    unset($c);
+                    return $plain;
+                }
             }
+
+            foreach ($candidateKeys as &$c) { try { KeyManager::memzero($c); } catch (Throwable $_) {} }
+            unset($c);
             return null;
         }
 

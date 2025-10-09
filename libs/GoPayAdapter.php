@@ -9,26 +9,29 @@ require_once __DIR__ . '/GoPayStatus.php';
  *
  * NOTE: adapt GoPay SDK method names if they differ (createPayment, getStatus, refundPayment).
  */
+use Psr\Log\LoggerInterface;
+use Psr\SimpleCache\CacheInterface;
+
 final class GoPayAdapter
 {
     private Database $db;
-    private object $gopayClient; // instance of your GoPay SDK client
-    private object $logger;      // expected methods: info(), warn(), systemError(), systemMessage()
+    private PaymentGatewayInterface $gopayClient; // instance of your GoPay SDK client (wrapper implementing expected methods)
+    private LoggerInterface $logger;
     private ?object $mailer;     // optional Mailer for notifications
     private string $notificationUrl;
     private string $returnUrl;
     private int $reservationTtlSec = 900; // 15 minutes default
-    private ?FileCache $cache = null; // optional FileCache for idempotency/status caching
+    private ?CacheInterface $cache = null;
     private bool $allowCreate = false;
 
     public function __construct(
         Database $db,
         PaymentGatewayInterface $gopayClient,
-        object $logger,
+        LoggerInterface $logger,
         ?object $mailer = null,
         string $notificationUrl = '',
         string $returnUrl = '',
-        ?FileCache $cache = null
+        ?CacheInterface $cache = null
     ) {
         $this->db = $db;
         $this->gopayClient = $gopayClient;
@@ -66,23 +69,10 @@ final class GoPayAdapter
 
             $out = [];
             foreach ($rows as $r) {
-                $title = $r['book_title'] 
-                        ?? $r['title'] 
-                        ?? $r['name'] 
-                        ?? ($r['product_name'] ?? 'item');
+                $title = $r['book_title'] ?? $r['title'] ?? $r['name'] ?? $r['product_name'] ?? 'item';
 
-                // možná máš ukládáno jako string decimal nebo integer (cents) — snažíme se být tolerantní
-                $price = 0.0;
-                if (isset($r['price_snapshot']) && $r['price_snapshot'] !== null) {
-                    $price = (float)$r['price_snapshot'];
-                } elseif (isset($r['unit_price']) && $r['unit_price'] !== null) {
-                    $price = (float)$r['unit_price'];
-                } elseif (isset($r['price']) && $r['price'] !== null) {
-                    $price = (float)$r['price'];
-                }
-
+                $price = (float)($r['price_snapshot'] ?? $r['unit_price'] ?? $r['price'] ?? 0.0);
                 $qty = (int)($r['qty'] ?? $r['quantity'] ?? 1);
-
                 $out[] = [
                     'title' => (string)$title,
                     'price_snapshot' => $price,
@@ -93,7 +83,7 @@ final class GoPayAdapter
             return $out;
         } catch (\Throwable $e) {
             // non-fatal: loguj a vrať prázdné pole
-            try { $this->logger->systemError($e, null, null, ['phase' => 'fetchOrderItemsForPayload', 'order_id' => $orderId]); } catch (\Throwable $_) {}
+            $this->logSafe('error', 'fetchOrderItemsForPayload failed', ['phase' => 'fetchOrderItemsForPayload', 'order_id' => $orderId, 'exception'=>$e]);
             return [];
         }
     }
@@ -112,7 +102,7 @@ final class GoPayAdapter
         // unified idempotency quick-check via helper
         $cached = $this->lookupIdempotency($idempotencyKey);
         if ($cached !== null) {
-            try { $this->logger->info('Idempotent createPaymentFromOrder hit (lookupIdempotency)', null, ['order_id' => $orderId]); } catch (\Throwable $_) {}
+            $this->logSafe('info', 'Idempotent createPaymentFromOrder hit (lookupIdempotency)', ['order_id' => $orderId]);
             return $cached;
         }
 
@@ -155,10 +145,30 @@ final class GoPayAdapter
         }
         if ($sumItems !== $payload['amount']) {
             // buď loguj a throw (STRICT), nebo jen warn
-            try { $this->logger->warn('Payment amount mismatch between items and total', null, ['order_id'=>$orderId,'items_sum'=>$sumItems,'amount'=>$payload['amount']]); } catch (\Throwable $_) {}
+            $this->logSafe('warning', 'Payment amount mismatch between items and total', ['order_id'=>$orderId,'items_sum'=>$sumItems,'amount'=>$payload['amount']]);
             // volitelně: throw new \RuntimeException('Payment amount mismatch');
         }
-
+        // ===== Idempotency reservation (prevents race) =====
+        try {
+            $this->db->prepareAndRun(
+                'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
+                VALUES (:k, NULL, :ttl, NOW())
+                ON DUPLICATE KEY UPDATE key_hash = key_hash',
+                [':k' => $idempHash, ':ttl' => 86400]
+            );
+        } catch (\Throwable $e) {
+            // if duplicate -> someone else reserved/created; fallback to lookup
+            $this->logSafe('info', 'Idempotency reservation exists, falling back to lookup', ['order_id'=>$orderId]);
+            $cached = $this->lookupIdempotency($idempotencyKey);
+            if ($cached !== null) return $cached;
+            // otherwise, continue (race not resolved) — but at least we tried
+        }
+        // emergency: re-check idempotency one more time under DB lock
+        $existing = $this->lookupIdempotency($idempotencyKey);
+        if ($existing !== null) {
+            $this->logSafe('info', 'Idempotency hit during createPaymentFromOrder second-check', ['order_id'=>$orderId]);
+            return $existing;
+        }
         // 2) Provisionální payment row (with re-check & FOR UPDATE lock)
         $provisionPaymentId = null;
         try {
@@ -186,13 +196,13 @@ final class GoPayAdapter
                 $provisionPaymentId = (int)$d->lastInsertId();
             });
         } catch (\Throwable $e) {
-            try { $this->logger->systemError($e, null, null, ['phase'=>'provision_payment']); } catch (\Throwable $_) {}
+            $this->logSafe('error', 'provision_payment failed', ['phase'=>'provision_payment','exception'=>(string)$e]);
             throw $e;
         }
 
         // 3) Call GoPay
         try {
-            try { $this->logger->info('Calling GoPay createPayment', null, ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]); } catch (\Throwable $_) {}
+            $this->logSafe('info', 'Calling GoPay createPayment', ['order_id' => $orderId, 'payload' => $this->sanitizeForLog($payload)]);
             $gopayResponse = $this->gopayClient->createPayment($payload);
         } catch (\Throwable $e) {
             // Attempt to mark provisioned payment as failed to aid reconciliation
@@ -200,24 +210,29 @@ final class GoPayAdapter
                 if ($provisionPaymentId !== null) {
                     $this->db->prepareAndRun('UPDATE payments SET status = :st, details = :det, updated_at = NOW() WHERE id = :id', [
                         ':st' => 'failed',
-                        ':det' => json_encode(['error' => (string)$e]),
+                        ':det' => $this->jsonEncodeSafe(['error' => (string)$e]) ?? '{"error":"encoding_failed"}',
                         ':id' => $provisionPaymentId
                     ]);
                 } else {
-                    try { $this->logger->warn('Attempted to mark provisioned payment as failed but provisionPaymentId is null', null, ['order_id'=>$orderId]); } catch (\Throwable $_) {}
+                    $this->logSafe('warning', 'Attempted to mark provisioned payment as failed but provisionPaymentId is null', ['order_id'=>$orderId]);
                 }
             } catch (\Throwable $_) {}
-            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.createPayment', 'order_id' => $orderId]); } catch (\Throwable $_) {}
+            $this->logSafe('error', 'gopay.createPayment failed', ['phase' => 'gopay.createPayment', 'order_id' => $orderId, 'exception'=>$e]);
             throw $e;
         }
 
         // 4) Persist gateway id/details and idempotency inside transaction
         $this->db->transaction(function (Database $d) use ($orderId, $gopayResponse, $provisionPaymentId, $idempHash) {
             $gwId = $this->extractGatewayPaymentId($gopayResponse);
-            $detailsJson = json_encode($gopayResponse);
-            if ($detailsJson === false) {
-                $detailsJson = json_encode(['note' => 'unserializable_gopay_response']);
-            }
+
+            // Do payments.details ukládáme JEN kratkou poznámku (ne celý gateway payload).
+            // Pokud je něco špatně, detail bude obsahovat chybovou poznámku — jinak malý fingerprint/timestamp.
+            $note = [
+                'note' => 'gopay_payload_cached',
+                'cached_at' => (int)time(),
+                'gw_id' => $this->extractGatewayPaymentId($gopayResponse),
+            ];
+            $detailsJson = $this->jsonEncodeSafe($note) ?? '{}';
 
             $d->prepareAndRun(
                 'UPDATE payments SET transaction_id = :tx, status = :st, details = :det, updated_at = NOW() WHERE id = :id',
@@ -228,12 +243,11 @@ final class GoPayAdapter
                     ':id' => $provisionPaymentId
                 ]
             );
-
             // persist idempotency key in DB (best-effort)
             try {
                 $d->prepareAndRun(
                     'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
-                    VALUES (:k, :pid, :ttl, NOW())
+                    VALUES (:k, :pid, :ttl, NOW(6))
                     ON DUPLICATE KEY UPDATE payment_id = VALUES(payment_id), ttl_seconds = VALUES(ttl_seconds)',
                     [':k' => $idempHash, ':pid' => $provisionPaymentId, ':ttl' => 86400]
                 );
@@ -242,37 +256,33 @@ final class GoPayAdapter
             }
 
             // DO NOT write FileCache inside DB transaction — write cache after commit using persistIdempotency()
+            });
 
-        });
-        // AFTER COMMIT: best-effort persist to FileCache (store structured array)
-        try {
-            $gopayForCache = null;
-            if (is_array($gopayResponse)) {
-                $gopayForCache = $gopayResponse;
-            } elseif (is_object($gopayResponse)) {
-                // convert object to array in safe way
-                $gopayForCache = json_decode(json_encode($gopayResponse), true);
-            } else {
-                $gopayForCache = $gopayResponse;
+            // AFTER COMMIT: best-effort persist to FileCache (store structured array)
+            try {
+                $gopayForCache = $this->normalizeGopayResponseToArray($gopayResponse);
+                if (empty($gopayForCache)) $gopayForCache = null;
+
+                $payloadArr = [
+                    'payment_id'   => $provisionPaymentId,
+                    'redirect_url' => $this->extractRedirectUrl($gopayResponse),
+                    'gopay'        => $gopayForCache,
+                    'order_id'     => $orderId,
+                ];
+
+                // persist both DB (already done) and FileCache (best-effort)
+                if (!empty($provisionPaymentId) && (int)$provisionPaymentId > 0) {
+                    $this->persistIdempotency($idempotencyKey, $payloadArr, $provisionPaymentId);
+                } else {
+                    $this->logSafe('warning', 'persistIdempotency skipped: invalid provisionPaymentId', [
+                        'provisionPaymentId' => $provisionPaymentId,
+                        'order_id' => $orderId,
+                    ]);
+                }
+
+            } catch (\Throwable $e) {
+                $this->logSafe('warning', 'persistIdempotency after commit failed', ['exception' => $e]);
             }
-
-            $payloadArr = [
-                'payment_id' => $provisionPaymentId,
-                'redirect_url' => $this->extractRedirectUrl($gopayResponse),
-                'gopay' => $gopayForCache,
-                'order_id' => $orderId
-            ];
-
-            // persist both DB (already done) and FileCache (best-effort)
-            if (!empty($provisionPaymentId) && (int)$provisionPaymentId > 0) {
-                $this->persistIdempotency($idempotencyKey, $payloadArr, (int)$provisionPaymentId);
-            } else {
-                try { $this->logger->warn('persistIdempotency skipped: invalid provisionPaymentId', null, ['provisionPaymentId' => $provisionPaymentId, 'order_id' => $orderId]); } catch (\Throwable $_) {}
-            }
-
-        } catch (\Throwable $e) {
-            try { $this->logger->warn('persistIdempotency after commit failed', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-        }
 
         // 5) Return structured response
         $gwId = $this->extractGatewayPaymentId($gopayResponse);
@@ -281,7 +291,7 @@ final class GoPayAdapter
 
         // fallback: pokud nelze najít row podle gateway id, vrať provision id (alespoň něco pro reconciliaci)
         if ($paymentId === null && isset($provisionPaymentId) && $provisionPaymentId !== null) {
-            try { $this->logger->warn('Could not find payment by gateway id, returning provisional payment id as fallback', null, ['gw_id'=>$gwId,'provision_id'=>$provisionPaymentId]); } catch (\Throwable $_) {}
+            $this->logSafe('warning', 'Could not find payment by gateway id, returning provisional payment id as fallback', ['gw_id'=>$gwId,'provision_id'=>$provisionPaymentId]);
             $paymentId = $provisionPaymentId;
         }
 
@@ -294,9 +304,6 @@ final class GoPayAdapter
 
     /**
      * Handle GoPay notification by gateway transaction id.
-     *
-     * @param string $gwId Gateway payment id (transaction id)
-     * @param ?bool $allowCreate When false (worker mode) DO NOT INSERT new payments, only update existing ones.
      */
     public function handleNotify(string $gwId, ?bool $allowCreate = null): array
     {
@@ -305,23 +312,17 @@ final class GoPayAdapter
         $gwId = trim((string)$gwId);
 
         if ($gwId === '') {
-            try { $this->logger->warn('Notify called without gateway id', null, ['gwId' => $gwId]); } catch (\Throwable $_) {}
+            $this->logSafe('warning', 'Notify called without gateway id', ['gwId' => $gwId]);
             throw new \RuntimeException('Webhook missing gateway payment id');
         }
-        Logger::info('Processing GoPay notify for gateway id: ' . $gwId);
-        // Always verify via GoPay API (authoritative) and use cache when possible
+
         $status = null;
         $fromCache = false;
         $cacheKey = 'gopay_status_' . substr(hash('sha256', $gwId), 0, 32);
 
         try {
-            // první pokus: nefiltrujeme lokální cache tady, protože wrapper vrací informaci o tom,
-            // odkud status pochází (from_cache). wrapper sám používá stejný cacheKey.
             $resp = $this->gopayClient->getStatus($gwId);
 
-            // podporujeme dvě varianty návratu: 
-            // 1) ['status'=>..., 'from_cache'=>bool]  (preferovaná)
-            // 2) raw status array (fallback)
             if (is_array($resp) && array_key_exists('status', $resp) && is_array($resp['status'])) {
                 $status = $resp['status'];
                 $fromCache = !empty($resp['from_cache']);
@@ -331,36 +332,32 @@ final class GoPayAdapter
             }
         } catch (\Throwable $e) {
             $lastError = $e;
-            // pokud getStatus selže, logujeme a propadneme (caller očekává výjimku)
-            $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]);
+            $this->logSafe('error', 'gopay.getStatus failed', ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId, 'exception'=>$e]);
         }
 
-        $gwState = $status['state'] ?? null;
-        $statusEnum = GoPayStatus::tryFrom($gwState); // vrací null pokud neplatný stav
-        // Pokud byl status vrácen z cache a je NON-PERMANENT, smažeme cache a načteme fresh status.
-        // Toto přesně respektuje tvou podmínku — cache je mazána JEN když to wrapper potvrdí.
+        // compute state from the current status
+        $gwState = is_array($status) ? ($status['state'] ?? null) : null;
+        $statusEnum = GoPayStatus::tryFrom($gwState);
+
+        // If cached and non-permanent -> delete cache and refresh
         if ($fromCache && $statusEnum !== null && $statusEnum->isNonPermanent()) {
-            try { $this->logger->info('Cached non-permanent status detected, refreshing from GoPay', null, ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey, 'status'=>$status]); } catch (\Throwable $_) {}
-            // pokus o smazání cache (best-effort)
+            $this->logSafe('info', 'Cached non-permanent status detected, refreshing from GoPay', ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey, 'status'=>$status]);
             try {
                 if (isset($this->cache) && $this->cache instanceof \Psr\SimpleCache\CacheInterface) {
                     $this->cache->delete($cacheKey);
-                    try { $this->logger->info('Deleted non-permanent cached status and will refresh from GoPay', null, ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey]); } catch (\Throwable $_) {}
+                    $this->logSafe('info', 'Deleted non-permanent cached status and will refresh from GoPay', ['gopay_id'=>$gwId, 'cache_key'=>$cacheKey]);
                 } else {
-                    try { $this->logger->info('Wrapper returned from_cache but local cache instance missing - refreshing from GoPay anyway', null, ['gopay_id'=>$gwId]); } catch (\Throwable $_) {}
+                    $this->logSafe('info', 'Wrapper returned from_cache but local cache instance missing - refreshing from GoPay anyway', ['gopay_id'=>$gwId]);
                 }
             } catch (\Throwable $e) {
                 $lastError = $e;
-                try { $this->logger->warn('Failed to delete status cache', null, ['cache_key'=>$cacheKey, 'exception'=>(string)$e]); } catch (\Throwable $_) {}
-                // pokračujeme i přesto — pokusíme se načíst fresh status níže
+                try { $this->logSafe('warning', 'Failed to delete status cache', ['cache_key'=>$cacheKey, 'exception'=>$e]); } catch (\Throwable $_) {}
             }
 
-            // znovu načti stav z GoPay (opět tolerujeme obal i raw tvar)
             try {
                 $resp2 = $this->gopayClient->getStatus($gwId);
                 if (is_array($resp2) && array_key_exists('status', $resp2) && is_array($resp2['status'])) {
                     $status = $resp2['status'];
-                    // zde už nás "from_cache" nezajímá (je fresh)
                     $fromCache = !empty($resp2['from_cache']);
                 } else {
                     $status = $resp2;
@@ -368,123 +365,106 @@ final class GoPayAdapter
                 }
             } catch (\Throwable $e) {
                 $lastError = $e;
-                $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus.refresh', 'gopay_id' => $gwId]);
+                $this->logSafe('error', 'gopay.getStatus.refresh failed', ['phase' => 'gopay.getStatus.refresh', 'gopay_id' => $gwId, 'exception'=>$e]);
             }
         }
-        Logger::info('GoPay status fetched for notify', null, ['gopay_id' => $gwId, 'from_cache' => $fromCache, 'status' => $status]);
+
+        $this->logSafe('info', 'GoPay status fetched for notify', ['gopay_id' => $gwId, 'from_cache' => $fromCache, 'status' => $status]);
+
+        // final fallback: if still null, attempt one more time and cache
         if ($status === null) {
             try {
                 $status = $this->gopayClient->getStatus($gwId);
             } catch (\Throwable $e) {
                 $lastError = $e;
-                $this->logger->systemError($e, null, null, ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId]);
+                $this->logSafe('error', 'gopay.getStatus failed', ['phase' => 'gopay.getStatus', 'gopay_id' => $gwId, 'exception'=>$e]);
             }
             if (isset($this->cache) && $this->cache instanceof \Psr\SimpleCache\CacheInterface) {
-                $this->cache->set($cacheKey, $status, 3600);
+                try { $this->cache->set($cacheKey, $status, 3600); } catch (\Throwable $_) {}
             }
         }
 
-        // compute payload hash from the authoritative status (used for dedupe) asdasdasdasdasd
-        $payloadHash = hash('sha256', json_encode($status));
+        // IMPORTANT: recompute gwState/statusEnum from the final authoritative $status
+        $gwState = is_array($status) ? ($status['state'] ?? null) : null;
+        $statusEnum = GoPayStatus::tryFrom($gwState);
 
-        // dedupe: pokud už někdo viděl stejný payload hash, ignoruj
+        // safe JSON encode for dedupe hash (avoid warnings if $status is not encodable)
+        $jsonForHash = $this->jsonEncodeSafe($status) ?? '';
+        $payloadHash = hash('sha256', $jsonForHash);
+
+        // dedupe check — kontrola existujícího webhooku v payment_webhooks
         try {
-            $exists = $this->db->fetch('SELECT id FROM payments WHERE webhook_payload_hash = :h LIMIT 1', [':h' => $payloadHash]);
+            $exists = $this->db->fetch(
+                'SELECT id FROM payment_webhooks WHERE payload_hash = :h LIMIT 1',
+                [':h' => $payloadHash]
+            );
         } catch (\Throwable $e) {
             $lastError = $e;
-            // v případě DB problému logujeme a pokračujeme (nebo přerušíme dle potřeby)
-            try { $this->logger->systemError($e, null, null, ['phase' => 'db.dedupe_check']); } catch (\Throwable $_) {}
+            $this->logSafe('error', 'db.dedupe_check failed', [
+                'phase' => 'db.dedupe_check',
+                'exception' => $e,
+                'payload_hash' => $payloadHash,
+            ]);
         }
+
         if ($exists !== null) {
-            try { $this->logger->info('Duplicate webhook ignored', null, ['hash' => $payloadHash, 'gopay_id' => $gwId]); } catch (\Throwable $_) {}
-            if ($statusEnum?->isNonPermanent() === true) {
-                    $action = 'delete'; // Worker smaže záznam, aby další pokus mohl proběhnout
-                } else {
-                    $action = 'done';   // Worker označí jako done, další pokusy se nebudou dělat
-                }
+            $this->logSafe('info', 'Duplicate webhook ignored', [
+                'hash' => $payloadHash,
+                'gopay_id' => $gwId
+            ]);
+
+            // vyhodnotit action podle stavu
             if (!empty($lastError)) {
                 $action = 'fail';
-            }
-            return ['action'=> $action];
-        }
-        Logger::info('Processing GoPay notify for gateway id: ' . $gwId . ' with new payload hash: ' . $payloadHash);
-        // mapování statusu
-            $gwState = $status['state'] ?? null;
-            $statusEnum = GoPayStatus::tryFrom($gwState);
-
-            if ($statusEnum === null) {
-                $this->logger->warn('Unhandled GoPay status', null, ['gw_state' => $gwState]);
+            } elseif ($statusEnum?->isNonPermanent() === true) {
+                $action = 'delete';
             } else {
-                switch ($statusEnum) {
-                    case GoPayStatus::CREATED:
-                        // Flow pro CREATED
-                        break;
-
-                    case GoPayStatus::PAYMENT_METHOD_CHOSEN:
-                        // Flow pro PAYMENT_METHOD_CHOSEN
-                        break;
-
-                    case GoPayStatus::PAID:
-                        // Flow pro PAID
-                        break;
-
-                    case GoPayStatus::AUTHORIZED:
-                        // Flow pro AUTHORIZED
-                        break;
-
-                    case GoPayStatus::CANCELED:
-                        // Flow pro CANCELED
-                        break;
-
-                    case GoPayStatus::TIMEOUTED:
-                        // Flow pro TIMEOUTED
-                        break;
-
-                    case GoPayStatus::REFUNDED:
-                        // Flow pro REFUNDED
-                        break;
-
-                    case GoPayStatus::PARTIALLY_REFUNDED:
-                        // Flow pro PARTIALLY_REFUNDED
-                        break;
-                }
+                $action = 'done';
             }
+
+            return ['action' => $action];
+        }
+
+        // best-effort persist webhook record for audit / debugging
+        $paymentId = $this->findPaymentIdByGatewayId($gwId); // may be null
+        $this->persistWebhookRecord($gwId, $payloadHash, $status, $fromCache, $paymentId);
+
+        $this->logSafe('info', 'Processing GoPay notify for gateway id: ' . $gwId . ' with new payload hash: ' . $payloadHash);
+
+        // mapovaní statusu (tvoje handling branche nechávam na tebe)
+        if ($statusEnum === null) {
+            $this->logSafe('warning', 'Unhandled GoPay status', ['gw_state' => $gwState]);
+        } else {
+            switch ($statusEnum) {
+                case GoPayStatus::CREATED: break;
+                case GoPayStatus::PAYMENT_METHOD_CHOSEN: break;
+                case GoPayStatus::PAID: break;
+                case GoPayStatus::AUTHORIZED: break;
+                case GoPayStatus::CANCELED: break;
+                case GoPayStatus::TIMEOUTED: break;
+                case GoPayStatus::REFUNDED: break;
+                case GoPayStatus::PARTIALLY_REFUNDED: break;
+            }
+        }
 
         $action = 'done';
-
-        // Non-permanent status vrácený z cache, dedupe ignoroval payload → umožníme další pokus
         if ($statusEnum !== null && $statusEnum->isNonPermanent()) {
-            $action = 'delete'; // Worker smaže záznam, aby další pokus mohl proběhnout
-        }
-
-        // Pokud nějaký permanentní status, nebo dedupe ignoroval, ale status je permanentní → done
-        elseif ($statusEnum !== null && !$statusEnum->isNonPermanent()) {
+            $action = 'delete';
+        } elseif ($statusEnum !== null && !$statusEnum->isNonPermanent()) {
             $action = 'done';
-        }
-
-        // Pokud nějaký fail (např. API error nebo DB insert fail), zvýšit attempts → fail
-        elseif (!empty($lastError)) {
+        } elseif (!empty($lastError)) {
             $action = 'fail';
         }
-        return [
-            'action'       => $action,
-        ];
+
+        return ['action' => $action];
     }
 
     public function fetchStatus(string $gopayPaymentId): array
     {
-        // cache-only: never call external gateway from here and never write to cache.
         $statusCacheKey = 'gopay_status_' . substr(hash('sha256', $gopayPaymentId), 0, 32);
 
-        // Require PSR-16 cache instance
         if (!isset($this->cache) || !($this->cache instanceof \Psr\SimpleCache\CacheInterface)) {
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
-                    $this->logger->warn('fetchStatus: no cache instance available, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
-                } elseif (class_exists('Logger')) {
-                    Logger::systemMessage('warning', 'fetchStatus: no cache instance available, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
-                }
-            } catch (\Throwable $_) {}
+            try { $this->logSafe('warning', 'fetchStatus: no cache instance available', ['id'=>$gopayPaymentId]); } catch (\Throwable $_) {}
             return [
                 'state' => 'CREATED',
                 '_pseudo' => true,
@@ -493,79 +473,32 @@ final class GoPayAdapter
             ];
         }
 
-        // Try to read cached status (do NOT write to cache here)
         try {
             $cached = $this->cache->get($statusCacheKey);
-        } catch (\Psr\SimpleCache\InvalidArgumentException $e) {
-            // invalid cache key — log & return pseudo (do not write or modify cache)
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
-                    $this->logger->warn('fetchStatus: cache invalid argument', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                } elseif (class_exists('Logger')) {
-                    Logger::systemMessage('warning', 'fetchStatus: cache invalid argument', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                }
-            } catch (\Throwable $_) {}
-            $cached = null;
         } catch (\Throwable $e) {
-            // generic cache read error — log & fallback to pseudo (no writes)
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
-                    $this->logger->warn('fetchStatus: cache read failed', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                } elseif (class_exists('Logger')) {
-                    Logger::systemMessage('warning', 'fetchStatus: cache read failed', null, ['id' => $gopayPaymentId, 'exception' => (string)$e]);
-                }
-            } catch (\Throwable $_) {}
+            try { $this->logSafe('warning', 'fetchStatus: cache read failed', ['id'=>$gopayPaymentId, 'exception'=>$e]); } catch (\Throwable $_) {}
             $cached = null;
         }
 
-        // If nothing cached -> pseudo CREATED
-        if ($cached === null) {
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'info')) {
-                    $this->logger->info('fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
-                } elseif (class_exists('Logger')) {
-                    Logger::systemMessage('info', 'fetchStatus: cache empty, returning pseudo CREATED', null, ['id' => $gopayPaymentId]);
-                }
-            } catch (\Throwable $_) {}
+        // fallback pseudo CREATED
+        if (!is_array($cached)) {
+            try { $this->logSafe('info', 'fetchStatus: cache empty or invalid, returning pseudo CREATED', ['id'=>$gopayPaymentId]); } catch (\Throwable $_) {}
             return [
                 'state' => 'CREATED',
                 '_pseudo' => true,
                 '_cached' => false,
-                '_message' => 'No cached gateway status available yet.'
+                '_message' => 'No cached gateway status available or invalid format.'
             ];
         }
 
-        // If cached value exists, perform basic validation (must be array and include 'state')
-        if (!is_array($cached) || !array_key_exists('state', $cached)) {
-            // treat as miss (do not mutate or write)
-            try {
-                if (isset($this->logger) && method_exists($this->logger, 'warn')) {
-                    $this->logger->warn('fetchStatus: cached value invalid shape, treating as miss', null, ['id' => $gopayPaymentId]);
-                } elseif (class_exists('Logger')) {
-                    Logger::systemMessage('warning', 'fetchStatus: cached value invalid shape, treating as miss', null, ['id' => $gopayPaymentId]);
-                }
-            } catch (\Throwable $_) {}
-            return [
-                'state' => 'CREATED',
-                '_pseudo' => true,
-                '_cached' => false,
-                '_message' => 'Cached value invalid or malformed; returning pseudo CREATED.'
-            ];
-        }
+        // zkus najít top-level state, nebo ve 'status'
+        $state = $cached['state'] ?? ($cached['status']['state'] ?? 'CREATED');
 
-        // Return a defensive copy and annotate as cached (no writes)
-        $out = $cached;
+        $out = $cached; // vezmi celou strukturu
         $out['_cached'] = true;
-        // ensure minimal canonical keys exist
-        $out['state'] = (string)($out['state'] ?? 'CREATED');
+        $out['state'] = (string)$state;
 
-        try {
-            if (isset($this->logger) && method_exists($this->logger, 'info')) {
-                $this->logger->info('fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
-            } elseif (class_exists('Logger')) {
-                Logger::systemMessage('info', 'fetchStatus: returning cached status', null, ['cache_key' => $statusCacheKey, 'id' => $gopayPaymentId]);
-            }
-        } catch (\Throwable $_) {}
+        try { $this->logSafe('info', 'fetchStatus: returning cached status', ['cache_key'=>$statusCacheKey, 'id'=>$gopayPaymentId]); } catch (\Throwable $_) {}
 
         return $out;
     }
@@ -576,13 +509,126 @@ final class GoPayAdapter
             $amt = (int)round($amount * 100);
             return $this->gopayClient->refundPayment($gopayPaymentId, ['amount' => $amt]);
         } catch (\Throwable $e) {
-            try { $this->logger->systemError($e, null, null, ['phase' => 'gopay.refund', 'id' => $gopayPaymentId]); } catch (\Throwable $_) {}
+            $this->logSafe('error', 'gopay_refund failed', ['phase' => 'gopay.refund', 'id' => $gopayPaymentId, 'exception'=>$e]);
             throw $e;
         }
     }
 
     /* ---------------- helper methods ---------------- */
     
+    /**
+     * Best-effort persist incoming webhook (audit & dedupe helper).
+     * Non-fatal — swallow any DB errors.
+     */
+    private function persistWebhookRecord(string $gwId, string $payloadHash, $status, bool $fromCache, ?int $paymentId = null): void
+    {
+        try {
+            $payloadJson = $this->jsonEncodeSafe($status);
+        } catch (\Throwable $_) {
+            $payloadJson = null;
+        }
+
+        try {
+            $this->db->prepareAndRun(
+                'INSERT INTO payment_webhooks (payment_id, gw_id, payload_hash, payload, from_cache, created_at)
+                 VALUES (:pid, :gw, :ph, :pl, :fc, UTC_TIMESTAMP(6))',
+                [
+                    ':pid' => $paymentId,
+                    ':gw'  => $gwId,
+                    ':ph'  => $payloadHash,
+                    ':pl'  => $payloadJson,
+                    ':fc'  => $fromCache ? 1 : 0
+                ]
+            );
+        } catch (\Throwable $_) {
+            // silent
+        }
+    }
+
+    private function normalizeGopayResponseToArray(mixed $resp): array
+    {
+        if (is_array($resp)) return $resp;
+        if (is_object($resp)) {
+            try {
+                $json = $this->jsonEncodeSafe($resp);
+                if (!is_string($json) || $json === '') {
+                    return [];
+                }
+                $decoded = $this->jsonDecodeSafe($json);
+                return is_array($decoded) ? $decoded : [];
+            } catch (\Throwable $_) {
+                return [];
+            }
+        }
+        // scalar/fallback
+        return ['value' => $resp];
+    }
+
+    private function jsonEncodeSafe(mixed $v): ?string
+    {
+        try {
+            return json_encode($v, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        } catch (\JsonException $e) {
+            $this->logSafe('error', 'jsonEncodeSafe failed', ['exception' => (string)$e]);
+            return null;
+        }
+    }
+
+    private function jsonDecodeSafe(string $s): mixed
+    {
+        try {
+            return json_decode($s, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            $this->logSafe('warn', 'jsonDecodeSafe failed', ['exception'=>(string)$e]);
+            return null;
+        }
+    }
+
+    private function logSafe(string $level, string $message, array $context = []): void
+    {
+        try {
+            if (!isset($this->logger)) return;
+
+            // normalize common aliases to PSR names
+            $map = [
+                'warn' => 'warning',
+                'err'  => 'error',
+                'crit' => 'critical',
+            ];
+            $level = $map[$level] ?? $level;
+
+            // PSR-3 expects method names: emergency, alert, critical, error, warning, notice, info, debug
+            if (method_exists($this->logger, $level)) {
+                $this->logger->{$level}($message, $context);
+            } else {
+                // fallback: try info()
+                if (method_exists($this->logger, 'info')) {
+                    $this->logger->info($message, $context);
+                }
+            }
+        } catch (\Throwable $_) {
+            // swallow
+        }
+    }
+
+    private function cacheGetSafe(string $key): mixed
+    {
+        if (empty($this->cache) || !method_exists($this->cache, 'get')) return null;
+        try { return $this->cache->get($key); } catch (\Throwable $_) { return null; }
+    }
+
+    private function cacheSetSafe(string $key, mixed $value, int $ttl): void
+    {
+        if (empty($this->cache) || !method_exists($this->cache, 'set')) return;
+        try { $this->cache->set($key, $value, $ttl); } catch (\Throwable $_) {}
+    }
+
+    private function cacheDeleteSafe(string $key): void
+    {
+        if (empty($this->cache) || !method_exists($this->cache, 'delete')) return;
+        try { $this->cache->delete($key); } catch (\Throwable $_) {}
+    }
+
     /**
      * Safe cache key builder (PSR-16 safe: žádné ":" atd.)
      */
@@ -593,79 +639,85 @@ final class GoPayAdapter
     }
 
     /**
-     * Lookup idempotency (tries FileCache first, DB fallback).
-     * Returns associative array with keys: payment_id, redirect_url, gopay, order_id (optional) or null.
+     * Lookup idempotency key (FileCache first, DB fallback).
+     * Returns: ['payment_id', 'redirect_url', 'gopay', 'order_id'] or null if miss.
+     *
+     * Read-only. Never writes to payments table.
      */
     public function lookupIdempotency(string $idempotencyKey): ?array
     {
-        if (trim((string)$idempotencyKey) === '') {
-            throw new \InvalidArgumentException('lookupIdempotency requires a non-empty idempotencyKey');
+        $idempotencyKey = trim((string)$idempotencyKey);
+        if ($idempotencyKey === '') {
+            throw new \InvalidArgumentException('lookupIdempotency: non-empty idempotencyKey required');
         }
-        $idempHash = hash('sha256', (string)$idempotencyKey);
-        $cacheKey = $this->makeCacheKey($idempHash);
 
-        // 1) try FileCache
+        // Optional: only safe chars
+        if (!preg_match('/^[A-Za-z0-9._:-]{6,128}$/', $idempotencyKey)) {
+            $this->logSafe('warning', 'lookupIdempotency: invalid key format', ['key' => $idempotencyKey]);
+            return null;
+        }
+
+        $idempHash = hash('sha256', $idempotencyKey);
+        $cacheKey  = $this->makeCacheKey($idempHash);
+
+        // ---- 1) Try FileCache
         if (!empty($this->cache) && method_exists($this->cache, 'get')) {
             try {
                 $cached = $this->cache->get($cacheKey);
-                if (is_array($cached) && !empty($cached['payment_id'])) {
-                    // verify payment still exists
-                    $p = $this->db->fetch('SELECT id, details FROM payments WHERE id = :id LIMIT 1', [':id' => $cached['payment_id']]);
-                    if ($p !== null) {
-                        // ensure redirect/gopay present
-                        if (empty($cached['gopay']) && !empty($p['details'])) {
-                            $cached['gopay'] = json_decode($p['details'], true) ?: null;
-                        }
-                        if (empty($cached['redirect_url']) && !empty($cached['gopay']) && is_array($cached['gopay'])) {
-                            $g = $cached['gopay'];
-                            if (isset($g[0]['gw_url'])) $cached['redirect_url'] = $g[0]['gw_url'];
-                            $cached['redirect_url'] = $cached['redirect_url'] ?? ($g['gw_url'] ?? $g['payment_redirect'] ?? $g['redirect_url'] ?? null);
-                        }
-                        return $cached;
-                    }
-                    // stale cache -> try delete
-                    if (method_exists($this->cache, 'delete')) {
-                        try { $this->cache->delete($cacheKey); } catch (\Throwable $_) {}
-                    }
+                if (is_array($cached) && isset($cached['payment_id'])) {
+                    return $cached;
                 }
-            } catch (\Throwable $_) {
-                // cache read problems -> fallback to DB
+            } catch (\Throwable $e) {
+                $this->logSafe('warning', 'lookupIdempotency: cache read error', ['exception' => $e]);
             }
         }
 
-        // 2) DB fallback
+        // ---- 2) DB fallback
         try {
-            $row = $this->db->fetch('SELECT payment_id FROM idempotency_keys WHERE key_hash = :k LIMIT 1', [':k' => $idempHash]);
-            if (!empty($row['payment_id'])) {
-                $p = $this->db->fetch('SELECT id, details, order_id FROM payments WHERE id = :id LIMIT 1', [':id' => $row['payment_id']]);
-                if ($p !== null) {
-                    $gopay = null;
-                    if (!empty($p['details'])) {
-                        $gopay = json_decode($p['details'], true);
-                        if (json_last_error() !== JSON_ERROR_NONE) $gopay = null;
-                    }
-                    $redirect = null;
-                    if (is_array($gopay)) {
-                        if (isset($gopay[0]['gw_url'])) $redirect = $gopay[0]['gw_url'];
-                        $redirect = $redirect ?? ($gopay['gw_url'] ?? $gopay['payment_redirect'] ?? $gopay['redirect_url'] ?? null);
-                    }
-                    $out = [
-                        'payment_id' => (int)$p['id'],
-                        'redirect_url' => $redirect,
-                        'gopay' => $gopay,
-                        'order_id' => isset($p['order_id']) ? (int)$p['order_id'] : null
-                    ];
-                    // repopulate cache (best-effort)
-                    if (!empty($this->cache) && method_exists($this->cache, 'set')) {
-                        try { $this->cache->set($cacheKey, $out, 86400); } catch (\Throwable $_) {}
-                    }
-                    return $out;
-                }
+            $row = $this->db->fetch(
+                'SELECT payment_id, order_id, redirect_url, gateway_payload, created_at, ttl_seconds
+                FROM idempotency_keys
+                WHERE key_hash = :h AND payment_id IS NOT NULL
+                LIMIT 1',
+                [':h' => $idempHash]
+            );
+
+            if (empty($row)) {
+                return null;
+            } else {
+            $this->logSafe('info', 'lookupIdempotency: DB fallback flow', ['row' => $row]);
             }
-        } catch (\Throwable $_) {
-            // DB read failed -> miss
+            $gopay = null;
+            if (!empty($row['gateway_payload'])) {
+                $gopay = $this->jsonDecodeSafe((string)$row['gateway_payload']);
+            }
+
+            $out = [
+                'payment_id'   => (int)$row['payment_id'],
+                'redirect_url' => $row['redirect_url'] ?? null,
+                'gopay'        => $gopay,
+                'order_id'     => isset($row['order_id']) ? (int)$row['order_id'] : null,
+            ];
+
+            // ---- Cache for next time
+            if (!empty($this->cache) && method_exists($this->cache, 'set')) {
+                try {
+                    $ttl = 86400;
+                    if (isset($row['created_at'], $row['ttl_seconds'])) {
+                        $expires = strtotime($row['created_at']) + (int)$row['ttl_seconds'];
+                        if ($expires > time()) {
+                            $ttl = $expires - time();
+                        }
+                    }
+                    $this->cache->set($cacheKey, $out, $ttl);
+                } catch (\Throwable $_) {}
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            $this->logSafe('error', 'lookupIdempotency: DB read failed', ['exception' => $e]);
+            return null;
         }
-        return null;
     }
 
     /**
@@ -674,29 +726,52 @@ final class GoPayAdapter
      */
     public function persistIdempotency(string $idempotencyKey, array $payload, int $paymentId): void
     {
-        if (trim((string)$idempotencyKey) === '') {
-            throw new \InvalidArgumentException('persistIdempotency requires a non-empty idempotencyKey');
+        $idempotencyKey = trim((string)$idempotencyKey);
+        if ($idempotencyKey === '') {
+            throw new \InvalidArgumentException('persistIdempotency: non-empty idempotencyKey required');
         }
-        $idempHash = hash('sha256', (string)$idempotencyKey);
-        $cacheKey = $this->makeCacheKey($idempHash);
 
-        // 1) DB upsert (best-effort)
+        $hash = hash('sha256', $idempotencyKey);
+        $redirectUrl = $payload['gw_url'] ?? $payload['payment_redirect'] ?? $payload['redirect_url'] ?? null;
+        $payloadJson = $this->jsonEncodeSafe($payload);
+        $orderId = isset($payload['order_id']) ? (int)$payload['order_id'] : null;
+
         try {
             $this->db->prepareAndRun(
-                'INSERT INTO idempotency_keys (key_hash, payment_id, ttl_seconds, created_at)
-                VALUES (:k, :pid, :ttl, NOW())
-                ON DUPLICATE KEY UPDATE payment_id = VALUES(payment_id), ttl_seconds = VALUES(ttl_seconds)',
-                [':k' => $idempHash, ':pid' => $paymentId, ':ttl' => 86400]
+                'INSERT INTO idempotency_keys (key_hash, payment_id, order_id, gateway_payload, redirect_url, created_at, ttl_seconds)
+                VALUES (:h, :pid, :oid, :payload, :redirect, NOW(6), :ttl)
+                ON DUPLICATE KEY UPDATE
+                    payment_id = VALUES(payment_id),
+                    order_id = VALUES(order_id),
+                    gateway_payload = VALUES(gateway_payload),
+                    redirect_url = VALUES(redirect_url)',
+                [
+                    ':h'        => $hash,
+                    ':pid'      => $paymentId,
+                    ':oid'      => $orderId,
+                    ':payload'  => $payloadJson,
+                    ':redirect' => $redirectUrl,
+                    ':ttl'      => 86400,
+                ]
             );
         } catch (\Throwable $e) {
-            try { $this->logger->warn('persistIdempotency: DB write failed', null, ['exception' => (string)$e, 'key' => $idempHash]); } catch (\Throwable $_) {}
+            $this->logSafe('warning', 'persistIdempotency failed', ['exception' => $e]);
         }
 
-        // 2) File cache (store array, not JSON)
+        // FileCache best-effort
         if (!empty($this->cache) && method_exists($this->cache, 'set')) {
-            try { $this->cache->set($cacheKey, $payload, 86400); } catch (\Throwable $e) {
-                try { $this->logger->warn('persistIdempotency: cache set failed', null, ['exception' => (string)$e, 'cacheKey' => $cacheKey]); } catch (\Throwable $_) {}
-            }
+            try {
+                $this->cache->set(
+                    $this->makeCacheKey($hash),
+                    [
+                        'payment_id'   => $paymentId,
+                        'order_id'     => $orderId,
+                        'redirect_url' => $redirectUrl,
+                        'gopay'        => $payload,
+                    ],
+                    86400
+                );
+            } catch (\Throwable $_) {}
         }
     }
 
@@ -709,26 +784,63 @@ final class GoPayAdapter
 
     private function extractGatewayPaymentId($gopayResponse): string
     {
+        $arr = [];
         if (is_array($gopayResponse)) {
-            return (string)($gopayResponse['id'] ?? $gopayResponse['paymentId'] ?? $gopayResponse['payment']['id'] ?? '');
+            $arr = $gopayResponse;
+        } elseif (is_object($gopayResponse)) {
+            try {
+                $arr = json_decode(json_encode($gopayResponse), true, 512, JSON_THROW_ON_ERROR);
+            } catch (\Throwable $_) {
+                $arr = [];
+            }
+        } else {
+            return (string)$gopayResponse;
         }
-        if (is_object($gopayResponse)) {
-            $props = get_object_vars($gopayResponse);
-            return (string)($props['id'] ?? $props['paymentId'] ?? '');
+
+        // bezpečné čtení různých cest bez risku notice
+        $candidates = [];
+
+        if (isset($arr['id']) && $arr['id'] !== '') $candidates[] = $arr['id'];
+        if (isset($arr['paymentId']) && $arr['paymentId'] !== '') $candidates[] = $arr['paymentId'];
+
+        if (isset($arr['payment']) && is_array($arr['payment']) && !empty($arr['payment']['id'])) {
+            $candidates[] = $arr['payment']['id'];
         }
-        return (string)$gopayResponse;
+
+        if (isset($arr['data']) && is_array($arr['data']) && !empty($arr['data']['id'])) {
+            $candidates[] = $arr['data']['id'];
+        }
+
+        foreach ($candidates as $c) {
+            if (!empty($c)) return (string)$c;
+        }
+        return '';
     }
 
     private function extractRedirectUrl($gopayResponse): ?string
     {
+        $arr = [];
         if (is_array($gopayResponse)) {
-            // handle sandbox format
-            if (isset($gopayResponse[0]['gw_url'])) return $gopayResponse[0]['gw_url'];
-            return $gopayResponse['gw_url'] ?? $gopayResponse['payment_redirect'] ?? $gopayResponse['redirect_url'] ?? null;
+            $arr = $gopayResponse;
+        } elseif (is_object($gopayResponse)) {
+            try {
+                $arr = json_decode(json_encode($gopayResponse), true, 512, JSON_THROW_ON_ERROR);
+            } catch (\Throwable $_) {
+                $arr = [];
+            }
+        } else {
+            return null;
         }
-        if (is_object($gopayResponse)) {
-            return $gopayResponse->gw_url ?? $gopayResponse->payment_redirect ?? $gopayResponse->redirect_url ?? null;
+
+        // bezpečné kontroly (bez notice)
+        if (isset($arr[0]) && is_array($arr[0]) && !empty($arr[0]['gw_url'])) {
+            return (string)$arr[0]['gw_url'];
         }
+        if (!empty($arr['gw_url'])) return (string)$arr['gw_url'];
+        if (!empty($arr['payment_redirect'])) return (string)$arr['payment_redirect'];
+        if (!empty($arr['redirect_url'])) return (string)$arr['redirect_url'];
+        if (isset($arr['links']) && is_array($arr['links']) && !empty($arr['links']['redirect'])) return (string)$arr['links']['redirect'];
+
         return null;
     }
 

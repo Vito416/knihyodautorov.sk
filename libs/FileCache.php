@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-use Psr\SimpleCache\CacheInterface;
 use Psr\SimpleCache\InvalidArgumentException as PsrInvalidArgumentException;
 
 /**
@@ -10,7 +9,7 @@ use Psr\SimpleCache\InvalidArgumentException as PsrInvalidArgumentException;
  * NOTE: This variant uses your global static Logger (Logger::systemMessage / Logger::systemError).
  * If Logger class is not present, it falls back silently to error_log().
  */
-class FileCache implements CacheInterface
+class FileCache implements LockingCacheInterface
 {
     private string $cacheDir;
     private string $cacheDirReal;
@@ -648,6 +647,45 @@ class FileCache implements CacheInterface
             try { return unlink($file); } catch (Throwable $_) { return false; }
         }
         return true;
+    }
+
+    /**
+     * Delete cache files whose key prefix (first SAFE_PREFIX_LEN chars) matches given prefix.
+     *
+     * @param string $prefix  The key prefix (e.g. 'gopay_status_...') — will be sanitized same way as getPath().
+     * @return int Number of deleted entries.
+     */
+    public function deleteKeysByPrefix(string $prefix): int
+    {
+        $this->validateKey(mb_substr($prefix, 0, self::SAFE_PREFIX_LEN)); // quick sanity (may throw)
+        $safePrefix = preg_replace('/[^a-zA-Z0-9_\-]/', '_', mb_substr($prefix, 0, self::SAFE_PREFIX_LEN));
+        $deleted = 0;
+
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($this->cacheDirReal, FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        foreach ($it as $f) {
+            if (!$f->isFile()) continue;
+            $fname = $f->getFilename();
+            if (!str_ends_with($fname, '.cache')) continue;
+
+            // filenames are: <prefix>_<sha256>.cache
+            if (str_starts_with($fname, $safePrefix . '_')) {
+                $path = $f->getRealPath();
+                if ($path === false) continue;
+                if (!$this->isPathInCacheDir($path)) continue;
+                try {
+                    if (@unlink($path)) $deleted++;
+                } catch (Throwable $_) {
+                    // ignore individual failures but continue
+                }
+            }
+        }
+
+        if ($deleted > 0) $this->counters['evictions'] += $deleted;
+        return $deleted;
     }
 
     /**

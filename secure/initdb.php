@@ -94,7 +94,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_actor_type (actor_type),
         INDEX idx_last_login_ip_hash (last_login_ip_hash),
         INDEX idx_pouzivatelia_email_hash (email_hash)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "pouzivatelia");
 
     // Tabuľka login_attempts
@@ -112,7 +112,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_auth_event_id (auth_event_id),
         INDEX idx_user_time (user_id, attempted_at),
         CONSTRAINT chk_success_boolean CHECK (success IN (0,1))
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "login_attempts");
 
     // Tabuľka user_profiles
@@ -122,7 +122,7 @@ if (isset($_POST['create_db'])) {
         key_version VARCHAR(64) DEFAULT NULL,
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_profiles");
 
     // Tabuľka user_identities
@@ -136,7 +136,7 @@ if (isset($_POST['create_db'])) {
         UNIQUE KEY ux_provider_user (provider, provider_user_id),
         INDEX idx_user_id (user_id),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_identities");
 
     // Tabuľka roles
@@ -146,7 +146,7 @@ if (isset($_POST['create_db'])) {
         popis TEXT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "roles");
 
     // Tabuľka permissions
@@ -156,7 +156,7 @@ if (isset($_POST['create_db'])) {
         popis TEXT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "permissions");
 
     // Tabuľka user_roles
@@ -167,7 +167,7 @@ if (isset($_POST['create_db'])) {
         PRIMARY KEY (user_id, role_id),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
         FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_roles");
 
     // Tabuľka role_permissions
@@ -178,7 +178,7 @@ if (isset($_POST['create_db'])) {
         FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
         FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
         INDEX idx_role_permissions_permission_id (permission_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "role_permissions");
 
     // Tabuľka two_factor
@@ -191,7 +191,7 @@ if (isset($_POST['create_db'])) {
         last_used_at DATETIME(6) NULL,
         PRIMARY KEY (user_id, method),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "two_factor");
 
     // Tabuľka session_audit
@@ -220,7 +220,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_session_audit_user_event_time (user_id, event, created_at),
         INDEX idx_session_audit_token_time (session_token, created_at),
         CONSTRAINT fk_session_audit_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "session_audit");
 
     // Tabuľka sessions
@@ -248,7 +248,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_last_seen (last_seen_at),
         INDEX idx_token_hash_key (token_hash_key),
         CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "sessions");
 
     // Tabuľka auth_events
@@ -268,7 +268,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_ver_type_time (type, occurred_at),
         INDEX idx_ip_hash (ip_hash),
         CONSTRAINT fk_auth_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
         createTable($pdo, $sql, "auth_events");
 
     // Tabuľka register_events
@@ -286,7 +286,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_reg_type_time (type, occurred_at),
         INDEX idx_reg_ip (ip_hash),
         CONSTRAINT fk_register_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "register_events");
 
     // Tabuľka verify_events
@@ -304,7 +304,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_ver_type_time (type, occurred_at),
         INDEX idx_ver_ip (ip_hash),
         CONSTRAINT fk_verify_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "verify_events");
 
     // Tabuľka system_error (odporúčané: binárne IP pre IPv4/IPv6)
@@ -355,7 +355,7 @@ if (isset($_POST['create_db'])) {
         source VARCHAR(100) NULL,
         meta JSON NULL,
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_consents");
 
     // Tabuľka authors
@@ -375,7 +375,7 @@ if (isset($_POST['create_db'])) {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         INDEX idx_authors_avg_rating (avg_rating),
         INDEX idx_authors_books_count (books_count)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "authors");
 
     // Tabuľka categories
@@ -388,7 +388,7 @@ if (isset($_POST['create_db'])) {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE SET NULL,
         INDEX idx_categories_parent (parent_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "categories");
 
     // Tabuľka books
@@ -433,7 +433,7 @@ if (isset($_POST['create_db'])) {
     FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
     INDEX idx_reviews_book_id (book_id),
     INDEX idx_reviews_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "reviews");
 
     // Tabuľka crypto_keys
@@ -457,7 +457,7 @@ if (isset($_POST['create_db'])) {
         CONSTRAINT uq_keys_basename_version UNIQUE (basename, version),
         CONSTRAINT fk_keys_created_by FOREIGN KEY (created_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL,
         CONSTRAINT fk_keys_replaced_by FOREIGN KEY (replaced_by) REFERENCES crypto_keys(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "crypto_keys");
 
    // Tabuľka key_events
@@ -511,7 +511,7 @@ if (isset($_POST['create_db'])) {
         last_used_at DATETIME(6) NULL,
         CONSTRAINT fk_key_usage_key FOREIGN KEY (key_id) REFERENCES crypto_keys(id) ON DELETE CASCADE,
         UNIQUE KEY uq_key_usage_key_date (key_id, date)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "key_usage");
 
     // Tabuľka jwt_tokens
@@ -575,19 +575,8 @@ if (isset($_POST['create_db'])) {
         FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
         INDEX idx_book_categories_category (category_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "book_categories");
-
-    // Tabuľka idempotency_keys
-    $sql = "CREATE TABLE IF NOT EXISTS idempotency_keys (
-        key_hash CHAR(64) PRIMARY KEY,              -- sha256 hex of provided key
-        payment_id BIGINT UNSIGNED NOT NULL,
-        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        ttl_seconds INT NOT NULL DEFAULT 86400,
-        INDEX idx_idemp_payment (payment_id),
-        INDEX idx_idemp_created_at (created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-    createTable($pdo, $sql, "idempotency_keys");
 
         // Tabuľka inventory_reservations
     $sql = "CREATE TABLE IF NOT EXISTS inventory_reservations (
@@ -602,7 +591,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_res_order (order_id),
         INDEX idx_res_status_until (status, reserved_until),
         CONSTRAINT fk_res_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "inventory_reservations");
 
 
@@ -613,7 +602,7 @@ if (isset($_POST['create_db'])) {
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "carts");
 
     // Tabuľka cart_items
@@ -632,7 +621,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_cart_id (cart_id),
         FOREIGN KEY (cart_id) REFERENCES carts(id) ON DELETE CASCADE,
         FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "cart_items");
 
     // Tabuľka orders
@@ -658,7 +647,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_orders_user_status (user_id, status),
         INDEX idx_orders_uuid (uuid),
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "orders");
 
     // Tabuľka order_items
@@ -676,7 +665,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_order_items_order_id (order_id),
         INDEX idx_order_items_book_id (book_id),
         CONSTRAINT fk_order_items_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "order_items");
 
     // Tabuľka order_item_downloads
@@ -697,7 +686,7 @@ if (isset($_POST['create_db'])) {
         FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
         FOREIGN KEY (asset_id) REFERENCES book_assets(id) ON DELETE CASCADE,
         INDEX idx_oid_download_token_hash (download_token_hash)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "order_item_downloads");
 
     // Tabuľka invoices
@@ -716,7 +705,7 @@ if (isset($_POST['create_db'])) {
         qr_data LONGTEXT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "invoices");
 
     // Tabuľka invoice_items
@@ -733,7 +722,7 @@ if (isset($_POST['create_db'])) {
         currency CHAR(3) NOT NULL,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         UNIQUE KEY uq_invoice_line (invoice_id, line_no)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "invoice_items");
 
     // Tabuľka payments
@@ -741,22 +730,19 @@ if (isset($_POST['create_db'])) {
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         order_id BIGINT UNSIGNED NULL,
         gateway VARCHAR(100) NOT NULL,
-        transaction_id BIGINT UNSIGNED NULL,
+        transaction_id VARCHAR(255) NULL,
         provider_event_id VARCHAR(255) NULL,
-        status ENUM('pending','authorized','paid','failed','refunded') NOT NULL,
+        status ENUM('initiated','pending','authorized','paid','cancelled','part-refunded','refunded','failed') NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         currency CHAR(3) NOT NULL,
         details JSON NULL,
-        webhook_payload_hash CHAR(64) NULL,
-        raw_webhook JSON NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-        UNIQUE(transaction_id),
+        UNIQUE KEY uq_payments_transaction_id (transaction_id),
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
         INDEX idx_payments_order (order_id),
-        INDEX idx_payments_provider_event (provider_event_id),
-        INDEX idx_payments_webhook_hash (webhook_payload_hash)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+        INDEX idx_payments_provider_event (provider_event_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "payments");
 
     // Tabuľka payment_logs
@@ -766,9 +752,43 @@ if (isset($_POST['create_db'])) {
         log_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         message TEXT NOT NULL,
         FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "payment_logs");
 
+    // Tabuľka payment_webhooks
+    $sql = "CREATE TABLE IF NOT EXISTS payment_webhooks (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+        payment_id BIGINT UNSIGNED NULL,
+        gw_id VARCHAR(255) NULL,
+        payload_hash CHAR(64) NOT NULL,
+        payload JSON NULL,
+        from_cache TINYINT(1) NOT NULL DEFAULT 0,
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        INDEX idx_payment_webhooks_payment (payment_id),
+        INDEX idx_payment_webhooks_gw_id (gw_id),
+        INDEX idx_payment_webhooks_hash (payload_hash),
+        CONSTRAINT fk_payment_webhooks_payment FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "payment_webhooks");
+
+    // Tabuľka idempotency_keys
+    $sql = "CREATE TABLE IF NOT EXISTS idempotency_keys (
+        key_hash CHAR(64) NOT NULL PRIMARY KEY,  -- sha256 hex of provided key
+        payment_id BIGINT UNSIGNED NULL DEFAULT NULL,  -- může být NULL během rezervace
+        order_id BIGINT UNSIGNED NULL DEFAULT NULL,    -- volitelně, pro rychlé párování
+        gateway_payload JSON NULL,                     -- malý GoPay JSON snapshot
+        redirect_url VARCHAR(1024) NULL,               -- link pro redirect (redundantně kvůli rychlosti)
+        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        ttl_seconds INT NOT NULL DEFAULT 86400,
+        INDEX idx_idemp_payment (payment_id),
+        INDEX idx_idemp_order (order_id),
+        INDEX idx_idemp_created_at (created_at),
+        CONSTRAINT fk_idemp_payment FOREIGN KEY (payment_id)
+            REFERENCES payments(id)
+            ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    createTable($pdo, $sql, "idempotency_keys");
+    
     // Tabuľka refunds
     $sql = "CREATE TABLE IF NOT EXISTS refunds (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -780,7 +800,7 @@ if (isset($_POST['create_db'])) {
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         details JSON NULL,
         FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "refunds");
 
     // Tabuľka coupons
@@ -798,7 +818,7 @@ if (isset($_POST['create_db'])) {
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "coupons");
 
     // Tabuľka coupon_redemptions
@@ -812,14 +832,14 @@ if (isset($_POST['create_db'])) {
         FOREIGN KEY (coupon_id) REFERENCES coupons(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
         FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "coupon_redemptions");
 
     // Tabuľka countries
     $sql = "CREATE TABLE IF NOT EXISTS countries (
         iso2 CHAR(2) PRIMARY KEY,
         nazov VARCHAR(100) NOT NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "countries");
 
     // Tabuľka tax_rates
@@ -831,7 +851,7 @@ if (isset($_POST['create_db'])) {
         valid_from DATE NOT NULL,
         valid_to DATE NULL,
         FOREIGN KEY (country_iso2) REFERENCES countries(iso2) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "tax_rates");
 
     // Tabuľka vat_validations
@@ -843,7 +863,7 @@ if (isset($_POST['create_db'])) {
         checked_at DATETIME(6) NOT NULL,
         raw JSON NULL,
         FOREIGN KEY (country_iso2) REFERENCES countries(iso2) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "vat_validations");
 
     // Tabuľka app_settings
@@ -857,7 +877,7 @@ if (isset($_POST['create_db'])) {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_by BIGINT UNSIGNED NULL,
         FOREIGN KEY (updated_by) REFERENCES pouzivatelia(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "app_settings");
 
     // Tabuľka audit_log
@@ -893,16 +913,16 @@ if (isset($_POST['create_db'])) {
     // Tabuľka gopay_notify_log (pre asynchrónne notifikácie, retry, monitoring)
     $sql = "CREATE TABLE IF NOT EXISTS gopay_notify_log (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        order_id BIGINT UNSIGNED NOT NULL,
+        transaction_id VARCHAR(255) NULL,
         received_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         processing_by VARCHAR(100) NULL,
         processing_until DATETIME(6) NULL,
         attempts INT UNSIGNED NOT NULL DEFAULT 0,
         last_error VARCHAR(255) NULL,
         status ENUM('pending','processing','done','failed') NOT NULL DEFAULT 'pending',
-        UNIQUE KEY ux_notify_order (order_id),
+        UNIQUE KEY ux_notify_payment (transaction_id),
         INDEX idx_status_received (status, received_at),
-        CONSTRAINT fk_notify_order FOREIGN KEY (order_id) REFERENCES payments(transaction_id) ON DELETE CASCADE
+        CONSTRAINT fk_notify_payment FOREIGN KEY (transaction_id) REFERENCES payments(transaction_id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;";
         createTable($pdo, $sql, "gopay_notify_log");
 
@@ -921,7 +941,7 @@ if (isset($_POST['create_db'])) {
         UNIQUE KEY ux_ev_selector (selector),
         INDEX idx_ev_user (user_id),
         INDEX idx_ev_expires (expires_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "email_verifications");
 
     // Tabuľka notifications (jednoduchá, idempotentná)
@@ -948,7 +968,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_notifications_next_attempt (next_attempt_at),
         INDEX idx_notifications_locked_until (locked_until),
         CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "notifications");
 
     // Tabuľka newsletter_subscribers (doladené podľa pouzivatelia)
@@ -979,7 +999,7 @@ if (isset($_POST['create_db'])) {
         INDEX idx_ns_user (user_id),
         INDEX idx_ns_confirm_expires (confirm_expires),
         INDEX idx_ns_unsubscribed_at (unsubscribed_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "newsletter_subscribers");
     
     // Tabuľka system_jobs (jednoduchá)
@@ -995,7 +1015,7 @@ if (isset($_POST['create_db'])) {
         error TEXT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "system_jobs");
 
     // Tabuľka worker_locks (jednoduchá)
@@ -1003,7 +1023,7 @@ if (isset($_POST['create_db'])) {
     name VARCHAR(191) NOT NULL PRIMARY KEY,
     locked_until DATETIME(6) NOT NULL,
     INDEX (locked_until)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "worker_locks");
 
 }

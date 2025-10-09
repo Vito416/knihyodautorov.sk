@@ -65,14 +65,7 @@ $gopayCfg = [
     'scope' => $_ENV['GOPAY_SCOPE'] ?? TokenScope::ALL,
 ];
 
-// logger shim: adapt your existing Logger static API to object expected by adapter
-$loggerShim = new class {
-    public function info($message, $userId = null, $context = null) { try { Logger::info($message, $userId, $context); } catch (\Throwable $_) {} }
-    public function warn($message, $userId = null, $context = null) { try { Logger::warn($message, $userId, $context); } catch (\Throwable $_) {} }
-    public function systemError($e, $userId = null, $token = null, $context = null) { try { Logger::systemError($e, $userId, $token, $context); } catch (\Throwable $_) {} }
-    public function systemMessage($level, $message, $userId = null, $context = null) { try { Logger::systemMessage($level, $message, $userId, $context); } catch (\Throwable $_) {} }
-};
-
+$loggerShim = new LoggerPsrAdapter();
 $notificationUrl = (string)($_ENV['GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'notify');
 $returnUrl = (string)($_ENV['GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay_return');
 
@@ -183,7 +176,7 @@ if (!is_dir($gopayCacheDir)) {
 $gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KEY', 'cache_crypto', 2, 500*1024*1024, 200000, 2*1024*1024);
 
 // -------------------- GoPay wrapper + adapter --------------------
-$gopayWrapper = new GoPaySdkWrapper($gopayCfg, $gopayFileCache);
+$gopayWrapper = new GoPaySdkWrapper($gopayCfg, $loggerShim, $gopayFileCache);
 
 $gopayAdapter = new GoPayAdapter(
     $database,

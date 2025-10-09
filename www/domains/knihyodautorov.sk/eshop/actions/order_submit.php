@@ -381,6 +381,16 @@ try {
 /* ---------- ensure redirect_url exists ---------- */
 $redirect = $gopayRes['redirect_url'] ?? null;
 $paymentId = $gopayRes['payment_id'] ?? null;
+$responce = $gopayRes['gopay'] ?? null;
+
+/* ---------- AFTER COMMIT: best-effort log gopay response ---------- */
+try {
+    if (class_exists('Logger')) {
+        Logger::info('GoPay payment created ASsB', null, ['responce' => $responce]);
+    }
+} catch (\Throwable $e) {
+    // swallow log errors
+}
 
 /* If GoPay didn't return redirect URL -> ok:false so checkout.js will flash */
 if (empty($redirect)) {

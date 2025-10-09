@@ -358,7 +358,7 @@ final class Worker
             self::$pdo->beginTransaction();
 
             $sql = '
-                SELECT id, order_id, received_at, processing_by, processing_until, attempts, status
+                SELECT id, transaction_id, received_at, processing_by, processing_until, attempts, status
                 FROM gopay_notify_log
                 WHERE status = :status
                 AND (processing_until IS NULL OR processing_until < NOW())
@@ -401,9 +401,9 @@ final class Worker
         }
 
         foreach ($rows as $r) {
-            $orderId = $r['order_id'];
+            $orderId = $r['transaction_id'];
             if (empty($orderId)) {
-                continue; // skip if order_id missing
+                continue; // skip if transaction_id missing
             }
 
         try {
@@ -418,7 +418,7 @@ final class Worker
 
             $lastError = $res['last_error'] ?? null;
             if (!empty($lastError) && class_exists('Logger')) {
-                Logger::systemError(new \RuntimeException($lastError), null, null, ['order_id' => $orderId]);
+                Logger::systemError(new \RuntimeException($lastError), null, null, ['transaction_id' => $orderId]);
             }
 
             switch ($action) {
@@ -442,7 +442,7 @@ final class Worker
         } catch (\Throwable $e) {
             if (class_exists('Logger')) {
                 try {
-                    Logger::systemError($e, null, null, ['order_id' => $orderId]);
+                    Logger::systemError($e, null, null, ['transaction_id' => $orderId]);
                 } catch (\Throwable $_) {}
             }
             $report['failed']++;

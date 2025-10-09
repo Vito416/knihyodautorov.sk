@@ -82,27 +82,6 @@ $require_first([
     'phpqrcode.php'
 ]);
 
-$require_first([
-    // nejdřív interfaces pro PSR Log
-    'psr-log/src/LoggerInterface.php',
-    'psr-log/src/LoggerAwareInterface.php',
-
-    // třídy PSR Log
-    'psr-log/src/AbstractLogger.php',
-    'psr-log/src/NullLogger.php',
-    'psr-log/src/LoggerTrait.php',
-    'psr-log/src/LoggerAwareTrait.php',
-
-]);
-
-$require_first([
-    'guzzlehttp/guzzle/src/functions_include.php',
-]);
-
-$require_first([
-    'gopay/factory.php',
-]);
-
 $path = realpath(__DIR__ . '/htmlpurifier/library/HTMLPurifier.auto.php');
 if ($path !== false) {
     require_once $path;
@@ -141,8 +120,6 @@ $prefixes = [
     'ZipStream\\' => __DIR__ . '/ZipStream-PHP-main/src/',
 
     'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
-
-    'Cron\\' => __DIR__ . '/../cron/',
 ];
 
 /* SPL autoloader */

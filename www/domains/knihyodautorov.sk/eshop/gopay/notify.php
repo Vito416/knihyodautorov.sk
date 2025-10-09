@@ -20,8 +20,8 @@ if (!is_string($id) || $id === '' || !ctype_digit($id) || strlen($id) > 20 || $i
 
 try {
     Database::getInstance()->execute(
-        "INSERT INTO gopay_notify_log (order_id, received_at) VALUES (:order_id, NOW(6))",
-        [':order_id' => $id]
+        "INSERT INTO gopay_notify_log (transaction_id, received_at) VALUES (:transaction_id, NOW(6))",
+        [':transaction_id' => $id]
     );
 } catch (\Throwable $_) {
     // intentionally ignored
@@ -29,4 +29,3 @@ try {
 
 http_response_code(200);
 exit;
-// EOF
