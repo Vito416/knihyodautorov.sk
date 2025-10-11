@@ -1,5 +1,13 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Validation\Validator;
+use BlackCat\Core\Mail\Mailer;
 
 require_once realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
 
@@ -40,7 +48,7 @@ function logAndRespond(string $userMsg, int $httpCode = 200, ?\Throwable $e = nu
         try {
             if ($e !== null && method_exists('Logger', 'systemError')) {
                 // systemError očekává Throwable (pokud má tvůj Logger jinou signaturu, uprav)
-                Logger::systemError($e, $logCtx['user_id'] ?? null, $logCtx);
+                Logger::systemError($e, $logCtx['user_id'] ?? null, (string)$logCtx);
             } else {
                 Logger::error($userMsg, $logCtx['user_id'] ?? null, $logCtx);
             }
@@ -168,9 +176,9 @@ if ($honeypot !== '') {
     subscribeFeedback('Chyba pri odeslaní formulára.');
 }
 $email = $normalizeEmail($emailRaw);
-$email = Validator::sanitizeString($email, 512);
+$email = Validator::stringSanitized($email, 512);
 
-if (!Validator::validateEmail($email) || mb_strlen($email, 'UTF-8') > 512) {
+if (!Validator::Email($email) || mb_strlen($email, 'UTF-8') > 512) {
     subscribeFeedback('Neplatný e-mail.');
 }
 
@@ -633,7 +641,7 @@ try {
             'vars' => $payloadArr['vars'],
         ];
         $payloadJson = json_encode($payloadForValidation, JSON_UNESCAPED_UNICODE);
-        if ($payloadJson === false || !Validator::validateNotificationPayload($payloadJson, $payloadArr['template'])) {
+        if ($payloadJson === false || !Validator::NotificationPayload($payloadJson, $payloadArr['template'])) {
             try { Logger::error('Notification payload validation failed (subscribe)', $userId ?? null, ['subscriber_id'=>$nsId]); } catch (\Throwable $_) {}
             // nenahazujeme interní chybu uživateli — pošli uživatelskou odpověď
             subscribeFeedback('Záznam uložený, ale overovací e-mail nebol naplánovaný (payload invalid). Kontaktujte podporu.');

@@ -1,5 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\Core\Log\Logger;
 
 // delete_gopay_notify_quick.php
 // Quick helper: DELETE rows from gopay_notify_log by id(s) provided in GET.
@@ -143,7 +147,7 @@ try {
     // optional audit via Logger::info if available
     if (class_exists('Logger') && method_exists('Logger', 'info')) {
         try {
-            Logger::info('delete_gopay_notify_quick: deleted', ['requested_ids' => $ids, 'deleted_count' => $affected, 'by' => $remote]);
+            Logger::info('delete_gopay_notify_quick: deleted', null, ['requested_ids' => $ids, 'deleted_count' => $affected, 'by' => $remote]);
         } catch (\Throwable $_) {}
     }
 

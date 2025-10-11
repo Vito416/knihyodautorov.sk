@@ -1,6 +1,11 @@
 <?php
-// /secure/run_security_audit.php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Log\AuditLogger;
+use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Security\FileVault;
 
 /**
  * One-shot security audit runner.

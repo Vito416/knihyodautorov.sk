@@ -1,5 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\Core\Log\Logger;
 
 // unlock_users_quick.php
 // Very small helper: set failed_logins = 0 and is_locked = 0 for given user ids.
@@ -133,7 +137,7 @@ try {
     // optional audit via Logger::auth if available
     if (class_exists('Logger') && method_exists('Logger', 'auth')) {
         foreach ($ids as $uid) {
-            try { Logger::auth('admin_unblock', (int)$uid); } catch (\Throwable $_) {}
+            try { Logger::info('admin_unblock', (int)$uid); } catch (\Throwable $_) {}
         }
     }
 

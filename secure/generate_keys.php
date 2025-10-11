@@ -1,6 +1,8 @@
 <?php
-// /secure/generate_keys.php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Security\KeyManager;
 
 // Tento skript generuje versionované key files pomocí veřejného API KeyManager.
 // PO VYGENEROVÁNÍ SKRIPT SMAŽ! (a také odstraň KEY_GEN_TOKEN z .env)

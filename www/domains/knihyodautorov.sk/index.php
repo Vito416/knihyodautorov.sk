@@ -1,4 +1,8 @@
 <?php
+  declare(strict_types=1);
+
+  require_once 'eshop/inc/bootstrap_database_minimal.php';
+
   include 'partials/header.php';
 
   include 'partials/hero.php';

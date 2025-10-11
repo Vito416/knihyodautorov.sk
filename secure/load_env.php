@@ -1,5 +1,5 @@
 <?php
-// secure/load_env.php
+
 declare(strict_types=1);
 
 /**

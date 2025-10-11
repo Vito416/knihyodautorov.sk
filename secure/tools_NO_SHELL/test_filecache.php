@@ -1,5 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Cache\FileCache;
+
 ob_start();
 /**
  * FileCache Full Visual + Historical Test

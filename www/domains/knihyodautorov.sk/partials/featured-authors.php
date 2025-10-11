@@ -1,29 +1,6 @@
 <?php
 // partials/featured-authors.php
 // Feature: autori zoradení podľa počtu kníh a priemerného ratingu.
-if (!($pdo instanceof PDO)) {
-  $PROJECT_ROOT = realpath(dirname(__DIR__, 4));
-  $configFile = $PROJECT_ROOT . '/secure/config.php';
-  require_once $configFile;
-  $autoloadPath = $PROJECT_ROOT . '/libs/Database.php';
-  require_once $autoloadPath;
-  try {
-      if (!class_exists('Database')) {
-          throw new RuntimeException('Database class not available (autoload error)');
-      }
-      if (empty($config['db']) || !is_array($config['db'])) {
-          throw new RuntimeException('Missing $config[\'db\']');
-      }
-      Database::init($config['db']);
-      $database = Database::getInstance();
-      $pdo = $database->getPdo();
-  } catch (Throwable $e) {
-      $logBootstrapError('Database initialization failed', $e);
-  }
-  if (!($pdo instanceof PDO)) {
-      $logBootstrapError('DB variable is not a PDO instance after init');
-  }
-}
 
 if (!function_exists('esc_fauth')) {
     function esc_fauth($s){ return htmlspecialchars((string)$s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }

@@ -1,4 +1,11 @@
 <?php
+
+declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Security\Crypto;
+
 $PROJECT_ROOT = realpath(dirname(__DIR__, 3));
 if ($PROJECT_ROOT === false) {
     error_log('[bootstrap] Cannot resolve PROJECT_ROOT');
@@ -17,30 +24,34 @@ if (!isset($config) || !is_array($config)) {
     http_response_code(500);
     exit;
 }
-$autoloadPath = $PROJECT_ROOT . '/libs/autoload.php';
-if (!file_exists($autoloadPath)) {
-    error_log('[bootstrap] Autoloader not found at ' . $autoloadPath);
-    http_response_code(500);
-    exit;
-}
-require_once $autoloadPath;
+require_once $PROJECT_ROOT . '/libs/autoload.php';
+if (!class_exists(BlackCat\Core\Database::class, true)) {
+        error_log('[bootstrap_minimal] Class BlackCat\\Core\\Database not found by autoloader');
+        http_response_code(500);
+        exit;
+    }
 try {
-    if (!class_exists('Database')) {
+    // Použijte konstantu třídy místo prostého stringu
+    if (!class_exists(BlackCat\Core\Database::class, true)) {
         throw new RuntimeException('Database class not available (autoload error)');
     }
+
     if (empty($config['adb']) || !is_array($config['adb'])) {
         throw new RuntimeException('Missing $config[\'adb\']');
     }
+
     Database::init($config['adb']);
     $database = Database::getInstance();
     $pdo = $database->getPdo();
 } catch (Throwable $e) {
-    $logBootstrapError('Database initialization failed', $e);
+    // logujeme místo echo => žádné "headers already sent"
+    error_log('Database initialization failed: ' . $e->getMessage());
     http_response_code(500);
     exit;
 }
+
 if (!($pdo instanceof PDO)) {
-    $logBootstrapError('DB variable is not a PDO instance after init');
+    error_log('DB variable is not a PDO instance after init');
     http_response_code(500);
     exit;
 }
@@ -1030,9 +1041,6 @@ if (isset($_POST['create_db'])) {
 
 if (isset($_POST['insert_demo'])) {
     // 2. Vloží demo dáta
-    require_once __DIR__ . '/../../../libs/KeyManager.php';
-    require_once __DIR__ . '/../../../libs/Crypto.php';
-    require_once __DIR__ . '/../../../secure/config.php';
     if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
     // Používateľské roly
     executeQuery($pdo, "INSERT IGNORE INTO roles (nazov, popis) VALUES

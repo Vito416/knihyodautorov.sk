@@ -2,6 +2,11 @@
 // send.php — contact form enqueued as user_id = 1 (with encryption like register.php)
 declare(strict_types=1);
 
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Mail\Mailer;
+
 // najdi a include bootstrap (bezpečně)
 $bootstrapPath = realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
 if ($bootstrapPath && is_file($bootstrapPath)) {

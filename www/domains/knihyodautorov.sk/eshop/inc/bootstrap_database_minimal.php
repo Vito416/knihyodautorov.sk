@@ -1,33 +1,36 @@
-<?php // minimal_bootstrap.php
+<?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Database;
 
 $PROJECT_ROOT = realpath(dirname(__DIR__, 5));
 if ($PROJECT_ROOT === false) {
-    error_log('[bootstrap] Cannot resolve PROJECT_ROOT');
+    error_log('[bootstrap_minimal] Cannot resolve PROJECT_ROOT');
     http_response_code(500);
     exit;
 }
-// resolve paths / config (z tvého config_loader)
+
 require_once __DIR__ . '/config_loader.php';
 try {
     $config = load_project_config($PROJECT_ROOT);
 } catch (Throwable $e) {
+    error_log('[bootstrap_minimal] Cannot load config');
     http_response_code(500);
     exit;
 }
 
-require_once $PROJECT_ROOT . '/libs/Database.php';
+require_once $PROJECT_ROOT . '/libs/autoload.php';
 
-// -------------------- Database init (must succeed) --------------------
-try {
-    if (!class_exists('Database')) {
-            http_response_code(500);
-            exit;
+if (!class_exists(\BlackCat\Core\Database::class, true)) {
+        error_log('[bootstrap_minimal] Class BlackCat\\Core\\Database not found by autoloader');
+        http_response_code(500);
+        exit;
     }
 
-    Database::init($config['db']);
-
-} catch (Throwable $e) {
+// -------------------- Database init (must succeed) --------------------
+try { Database::init($config['db']); $database = Database::getInstance(); $pdo = $database->getPdo();} catch (\Throwable $e) {
+    error_log('[bootstrap_minimal] DB init failed: ' . get_class($e) . ' - ' . $e->getMessage());
     http_response_code(500);
     exit;
 }

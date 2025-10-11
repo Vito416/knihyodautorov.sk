@@ -91,8 +91,6 @@ if ($path !== false) {
    PSR-4 prefix -> adresář mapy (přidej podle toho, co nahraješ do /libs)
    ------------------------- */
 $prefixes = [
-    // mPDF
-    'Mpdf\\' => __DIR__ . '/mpdf/src/',
 
     // mpdf helper traits shims
     'Mpdf\\PsrHttpMessageShim\\' => __DIR__ . '/mpdf-psr-http-message-shim/src/',
@@ -120,6 +118,9 @@ $prefixes = [
     'ZipStream\\' => __DIR__ . '/ZipStream-PHP-main/src/',
 
     'PHPMailer\\PHPMailer\\' => __DIR__ . '/PHPMailer/src/',
+
+    // BlackCat\Core
+    'BlackCat\\Core\\' => __DIR__ . '/blackcat-core/src/',
 ];
 
 /* SPL autoloader */
