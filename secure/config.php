@@ -10,6 +10,8 @@ require_once __DIR__ . '/load_env.php';
  */
 
 $config = [
+    'debug' => false,
+
     'db' => [
         'dsn' => 'mysql:host=' . ($_ENV['DB_HOST'] ?? '') . ';dbname=' . ($_ENV['DB_NAME'] ?? '') . ';charset=utf8mb4',
         'user' => $_ENV['DB_USER'] ?? '',
@@ -39,7 +41,6 @@ $config = [
     'uploads' => __DIR__ . '/../storage/uploads',
     'keys' => __DIR__ . '/keys',
     ],
-    'debug' => false,
 
     'google' => [
         'client_id' => $_ENV['GOOGLE_CLIENT_ID'] ?? '',
@@ -48,11 +49,14 @@ $config = [
     ],
 
     'gopay' => [
-        'merchant_id' => $_ENV['GOPAY_MERCHANT_ID'] ?? '',
-        'client_id' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
-        'client_secret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
-        'return_url' => $_ENV['GOPAY_RETURN_URL'] ?? '',
-        'notify_url' => $_ENV['GOPAY_NOTIFY_URL'] ?? '',
+        'goid' => $_ENV['GOPAY_GOID'] ?? '',
+        'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
+        'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
+        'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com',
+        'language' => $_ENV['GOPAY_LANGUAGE'] ?? 'EN',
+        'scope' => $_ENV['GOPAY_SCOPE'] ?? 'payment-all',
+        'notify_url' => (string)($_ENV['GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'notify'),
+        'return_url' => (string)($_ENV['GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay_return'),
     ],
 
     'smtp' => [

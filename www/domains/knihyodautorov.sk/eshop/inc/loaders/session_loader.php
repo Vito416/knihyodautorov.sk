@@ -1,5 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\Session\SessionManager;
 
 /**
  * inc/loaders/session_cookie_defaults.php
@@ -70,12 +74,12 @@ function init_session_and_restore($db): ?int
 
     $userId = null;
     // Prefer SessionManager API if present
-    if (class_exists('SessionManager') && method_exists('SessionManager', 'validateSession')) {
+    if (class_exists(SessionManager::class, true) && method_exists(SessionManager::class, 'validateSession')) {
         try {
             // SessionManager::validateSession expects Database or PDO
             $userId = SessionManager::validateSession($db);
         } catch (\Throwable $e) {
-            if (class_exists('Logger')) {
+            if (class_exists(Logger::class, true)) {
                 try { Logger::systemError($e, null); } catch (\Throwable $_) {}
             }
             $userId = null;

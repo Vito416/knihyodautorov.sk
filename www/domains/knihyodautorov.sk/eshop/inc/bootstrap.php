@@ -1,26 +1,36 @@
 <?php
 declare(strict_types=1);
 
-// -------------------- resolve project root --------------------
-$PROJECT_ROOT = realpath(__DIR__ . '/../../../../..');
+use BlackCat\Core\Database;
+use BlackCat\Core\Security\KeyManager;
+use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Security\FileVault;
+Use BlackCat\Core\Helpers\DeferredHelper;
+use BlackCat\Core\Log\AuditLogger;
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\Templates\Templates;
+use BlackCat\Core\Helpers\EnforcePasswordChange;
+use BlackCat\Core\Cache\FileCache;
+use BlackCat\Core\Adapter\LoggerPsrAdapter;
+use BlackCat\Core\Payment\GoPaySdkWrapper;
+use BlackCat\Core\Payment\GoPayAdapter;
+
+$PROJECT_ROOT = realpath(dirname(__DIR__, 5));
 if ($PROJECT_ROOT === false) {
-    error_log('[bootstrap] Cannot resolve PROJECT_ROOT');
+    error_log('[bootstrap_full] Cannot resolve PROJECT_ROOT');
     http_response_code(500);
     exit;
 }
 
-// --- require config_loader early ---
 require_once __DIR__ . '/config_loader.php';
-
 try {
     $config = load_project_config($PROJECT_ROOT);
 } catch (Throwable $e) {
-    error_log('[bootstrap] ' . $e->getMessage());
+    error_log('[bootstrap_full] Cannot load config');
     http_response_code(500);
     exit;
 }
 
-// -------------------- autoloader (required) --------------------
 $autoloadPath = $PROJECT_ROOT . '/libs/autoload.php';
 if (!file_exists($autoloadPath)) {
     error_log('[bootstrap] Autoloader not found at ' . $autoloadPath);
@@ -29,15 +39,9 @@ if (!file_exists($autoloadPath)) {
 }
 require_once $autoloadPath;
 
-// If logger implementation file sits outside autoload, require it now (non-fatal if missing)
-$loggerPath = $PROJECT_ROOT . '/libs/logger.php';
-if (file_exists($loggerPath)) {
-    require_once $loggerPath;
-}
-
 // small helper to log via Logger if available, else error_log
 $logBootstrapError = function(string $msg, ?Throwable $ex = null) {
-    if (class_exists('Logger') && method_exists('Logger', 'systemMessage')) {
+    if (class_exists(Logger::class, true)) {
         try {
             Logger::systemMessage('critical', $msg, null, ['exception' => $ex ? $ex->getMessage() : null, 'stage' => 'bootstrap']);
             return;
@@ -46,7 +50,9 @@ $logBootstrapError = function(string $msg, ?Throwable $ex = null) {
     error_log('[bootstrap] ' . $msg . ($ex ? ' - ' . $ex->getMessage() : ''));
 };
 
-// -------------------- constants from config --------------------
+$loggerShim = new LoggerPsrAdapter();
+
+// -------------------- constants from config critical for encryption --------------------
 if (empty($config['paths']['keys'])) {
     $logBootstrapError('config.paths.keys is required');
     http_response_code(500);
@@ -56,23 +62,10 @@ if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
 if (!defined('APP_NAME')) define('APP_NAME', $config['app_name'] ?? ($_ENV['APP_NAME'] ?? 'app'));
 if (!defined('APP_URL')) define('APP_URL', $config['app_url'] ?? ($_ENV['APP_URL'] ?? ''));
 
-$gopayCfg = [
-    'goid' => $_ENV['GOPAY_GOID'] ?? '',
-    'clientId' => $_ENV['GOPAY_CLIENT_ID'] ?? '',
-    'clientSecret' => $_ENV['GOPAY_CLIENT_SECRET'] ?? '',
-    'gatewayUrl' => $_ENV['GOPAY_GATEWAY_URL'] ?? 'https://gw.sandbox.gopay.com',
-    'language' => $_ENV['GOPAY_LANGUAGE'] ?? Language::SLOVAK,
-    'scope' => $_ENV['GOPAY_SCOPE'] ?? TokenScope::ALL,
-];
-
-$loggerShim = new LoggerPsrAdapter();
-$notificationUrl = (string)($_ENV['GOPAY_NOTIFY_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'notify');
-$returnUrl = (string)($_ENV['GOPAY_RETURN_URL'] ?? ($_ENV['APP_URL'] ?? '') . 'gopay_return');
-
 // -------------------- Crypto / KeyManager (fail fast) --------------------
 try {
-    if (!class_exists('KeyManager')) throw new RuntimeException('KeyManager class not available');
-    if (!class_exists('Crypto')) throw new RuntimeException('Crypto class not available');
+    if (!class_exists(KeyManager::class, true)) throw new RuntimeException('KeyManager class not available');
+    if (!class_exists(Crypto::class, true)) throw new RuntimeException('Crypto class not available');
     if (empty(KEYS_DIR)) throw new RuntimeException('keys dir not configured in config');
 
     KeyManager::requireSodium();
@@ -85,7 +78,7 @@ try {
 
 // -------------------- Database init (must succeed) --------------------
 try {
-    if (!class_exists('Database')) {
+    if (!class_exists(Database::class, true)) {
         throw new RuntimeException('Database class not available (autoload error)');
     }
 
@@ -93,7 +86,7 @@ try {
     $database = Database::getInstance();
     $db = $database->getPdo();
 
-    if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) {
+    if (class_exists(DeferredHelper::class, true)) {
         try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
     }
 } catch (Throwable $e) {
@@ -127,12 +120,12 @@ try {
 }
 
 // -------------------- FileVault configuration (if used) --------------------
-if (class_exists('FileVault')) {
+if (class_exists(FileVault::class, true)) {
     // ... keep your existing FileVault config code (unchanged) ...
 }
 
 // -------------------- Optional inits: Audit / EnforcePasswordChange --------------------
-if (!empty($userId) && class_exists('AuditLogger') && method_exists('AuditLogger', 'log')) {
+if (!empty($userId) && class_exists(AuditLogger::class, true)) {
     try {
         AuditLogger::log($db, (string)$userId, 'user_session_restore', json_encode([
             'ip' => $_SERVER['REMOTE_ADDR'] ?? '',
@@ -143,7 +136,7 @@ if (!empty($userId) && class_exists('AuditLogger') && method_exists('AuditLogger
     }
 }
 
-if (class_exists('EnforcePasswordChange') && method_exists('EnforcePasswordChange', 'check')) {
+if (class_exists(EnforcePasswordChange::class, true)) {
     try {
         EnforcePasswordChange::check($database ?? $db);
     } catch (Throwable $e) {
@@ -151,7 +144,7 @@ if (class_exists('EnforcePasswordChange') && method_exists('EnforcePasswordChang
     }
 }
 
-if (class_exists('DeferredHelper') && method_exists('DeferredHelper', 'flush')) {
+if (class_exists(DeferredHelper::class, true)) {
     try { DeferredHelper::flush(); } catch (Throwable $_) { /* silent */ }
 }
 
@@ -176,15 +169,15 @@ if (!is_dir($gopayCacheDir)) {
 $gopayFileCache = new FileCache($gopayCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KEY', 'cache_crypto', 2, 500*1024*1024, 200000, 2*1024*1024);
 
 // -------------------- GoPay wrapper + adapter --------------------
-$gopayWrapper = new GoPaySdkWrapper($gopayCfg, $loggerShim, $gopayFileCache);
+$gopayWrapper = new GoPaySdkWrapper($config['gopay'], $loggerShim, $gopayFileCache);
 
 $gopayAdapter = new GoPayAdapter(
     $database,
     $gopayWrapper,
     $loggerShim,
     null,            // mailer
-    $notificationUrl,
-    $returnUrl,
+    $config['gopay']['notify_url'],
+    $config['gopay']['return_url'],
     $gopayFileCache
 );
 

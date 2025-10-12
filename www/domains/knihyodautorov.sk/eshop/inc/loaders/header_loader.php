@@ -1,5 +1,13 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Security\CSRF;
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\TrustedShared;
+use BlackCat\Core\Session\SessionManager;
+
 if (defined('HEADER_LOADER_INCLUDED')) {
     return;
 }
@@ -32,22 +40,66 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
     // determine PDO / DB wrapper
     $pdo = null;
     $dbWrapper = null;
+
     try {
+        // 1) explicit $db parameter (preferred)
         if (is_object($db)) {
-            // Accept Database wrapper (with getPdo/fetch/fetchAll) or direct PDO
             if (method_exists($db, 'getPdo')) {
-                $dbWrapper = $db; $pdo = $db->getPdo();
+                $dbWrapper = $db;
+                $pdo = $db->getPdo();
             } elseif ($db instanceof \PDO) {
                 $pdo = $db;
             } else {
-                $dbWrapper = $db; // might be wrapper providing fetch/fetchAll
+                // wrapper-like object (with fetch/fetchAll)
+                $dbWrapper = $db;
             }
         }
+
+        // 2) trustedShared passed via opts (recommended): opts['trustedShared']['db']
+        if ($pdo === null && isset($opts['trustedShared']) && is_array($opts['trustedShared'])) {
+            $tsDb = $opts['trustedShared']['db'] ?? null;
+            if (is_object($tsDb)) {
+                if (method_exists($tsDb, 'getPdo')) {
+                    $dbWrapper = $tsDb;
+                    $pdo = $tsDb->getPdo();
+                } elseif ($tsDb instanceof \PDO) {
+                    $pdo = $tsDb;
+                } else {
+                    $dbWrapper = $tsDb;
+                }
+            }
+        }
+
+        // 3) fallback: try TrustedShared::create() to obtain db (best-effort, no exceptions)
+        if ($pdo === null && class_exists(TrustedShared::class, true)) {
+            try {
+                $ts = TrustedShared::create(); // safe, best-effort
+                if (!empty($ts['db']) && is_object($ts['db'])) {
+                    $tsDb = $ts['db'];
+                    if (method_exists($tsDb, 'getPdo')) {
+                        $dbWrapper = $tsDb;
+                        $pdo = $tsDb->getPdo();
+                    } elseif ($tsDb instanceof \PDO) {
+                        $pdo = $tsDb;
+                    } else {
+                        $dbWrapper = $tsDb;
+                    }
+                }
+            } catch (\Throwable $_) {
+                // ignore — TrustedShared::create should not throw, but be defensive
+            }
+        }
+
+        // 4) last-resort legacy fallback to $GLOBALS['pdo'] (kept for backward compat)
         if (!($pdo instanceof \PDO) && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
+            // log once so we can find callers that rely on globals
+            if (class_exists(Logger::class, true)) {
+                try { Logger::systemMessage('warning', 'Using legacy $GLOBALS[\'pdo\'] fallback in header_loader'); } catch (\Throwable $_) {}
+            }
             $pdo = $GLOBALS['pdo'];
         }
     } catch (\Throwable $e) {
-        if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+        if (class_exists(Logger::class, true)) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
     }
 
     // helper: read blob
@@ -64,9 +116,9 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
     $decryptProfileBlob = function ($blobBin) use ($readBlob) : ?array {
         $blob = $readBlob($blobBin);
         if ($blob === null || $blob === '') return null;
-        if (class_exists('Crypto')) {
+        if (class_exists(Crypto::class, true)) {
             try {
-                if (method_exists('Crypto', 'initFromKeyManager')) {
+                if (method_exists(Crypto::class, 'initFromKeyManager')) {
                     try { Crypto::initFromKeyManager(defined('KEYS_DIR') ? KEYS_DIR : ($_ENV['KEYS_DIR'] ?? null)); } catch (\Throwable $_) {}
                 }
                 $plain = Crypto::decrypt($blob);
@@ -86,7 +138,7 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
                     }
                 }
             } catch (\Throwable $_) {
-                if (class_exists('Logger')) { try { Logger::systemError($_); } catch (\Throwable $__ ) {} }
+                if (class_exists(Logger::class, true)) { try { Logger::systemError($_); } catch (\Throwable $__ ) {} }
                 return null;
             }
         }
@@ -102,10 +154,10 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
             // don't throw if headers already sent — best-effort
             try { session_start(); } catch (\Throwable $_) {}
         }
-        if (class_exists('CSRF')) {
+        if (class_exists(CSRF::class, true)) {
             try {
-                if (method_exists('CSRF','init')) CSRF::init($_SESSION);
-                if (method_exists('CSRF','token')) {
+                if (method_exists(CSRF::class,'init')) CSRF::init($_SESSION);
+                if (method_exists(CSRF::class,'token')) {
                     $t = CSRF::token();
                     if (is_string($t) && $t !== '') $out['csrf_token'] = $t;
                 }
@@ -122,11 +174,11 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
     } else {
         try {
             $dbForSession = $dbWrapper ?? $pdo;
-            if (class_exists('SessionManager') && $dbForSession !== null) {
+            if (class_exists(SessionManager::class, true) && $dbForSession !== null) {
                 try {
                     $userIdFromSession = SessionManager::validateSession($dbForSession);
                 } catch (\Throwable $e) {
-                    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+                    if (class_exists(Logger::class, true)) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
                     $userIdFromSession = null;
                 }
             }
@@ -187,9 +239,9 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
                 } catch (\Throwable $_) { /* ignore */ }
 
                 // fallback decrypt email_enc
-                if ($display === '' && !empty($row['email_enc']) && class_exists('Crypto')) {
+                if ($display === '' && !empty($row['email_enc']) && class_exists(Crypto::class, true)) {
                     try {
-                        if (method_exists('Crypto', 'initFromKeyManager')) {
+                        if (method_exists(Crypto::class, 'initFromKeyManager')) {
                             try { Crypto::initFromKeyManager(defined('KEYS_DIR') ? KEYS_DIR : ($_ENV['KEYS_DIR'] ?? null)); } catch (\Throwable $_) {}
                         }
                         $plain = Crypto::decrypt($row['email_enc']);
@@ -227,7 +279,7 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
                 ];
             }
         } catch (\Throwable $e) {
-            if (class_exists('Logger')) { try { Logger::systemError($e, $userIdFromSession); } catch (\Throwable $_) {} }
+            if (class_exists(Logger::class, true)) { try { Logger::systemError($e, $userIdFromSession); } catch (\Throwable $_) {} }
         }
     }
 
@@ -249,7 +301,7 @@ function load_header_data($db = null, ?int $currentUserId = null, array $opts = 
             ];
         }
     } catch (\Throwable $e) {
-        if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
+        if (class_exists(Logger::class, true)) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
         $out['categories'] = $out['categories'] ?? [];
     }
 

@@ -20,9 +20,15 @@ try {
     exit;
 }
 
-require_once $PROJECT_ROOT . '/libs/autoload.php';
+$autoloadPath = $PROJECT_ROOT . '/libs/autoload.php';
+if (!file_exists($autoloadPath)) {
+    error_log('[bootstrap_minimal] Autoloader not found at ' . $autoloadPath);
+    http_response_code(500);
+    exit;
+}
+require_once $autoloadPath;
 
-if (!class_exists(\BlackCat\Core\Database::class, true)) {
+if (!class_exists(Database::class, true)) {
         error_log('[bootstrap_minimal] Class BlackCat\\Core\\Database not found by autoloader');
         http_response_code(500);
         exit;

@@ -1,16 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
+// --- Normalize DB wrapper ---
+$db = $db ?? $database;
 $perPageDefault = 4;
-
-try {
-    $database = Database::getInstance();
-} catch (\Throwable $e) {
-    if (class_exists('Logger')) { try { Logger::systemError($e); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Internal server error (DB).']);
-    exit;
-}
 
 /* --- input validation --- */
 $page = (int)($_GET['p'] ?? 1);
@@ -25,7 +19,7 @@ if ($categorySlug !== null && $categorySlug !== '') {
     if (!preg_match('/^[a-z0-9\-\_]+$/i', $categorySlug)) {
         $categorySlug = null;
     } else {
-        $catRow = $database->fetch('SELECT id, nazov FROM categories WHERE slug = :slug LIMIT 1', ['slug' => $categorySlug]);
+        $catRow = $db->fetch('SELECT id, nazov FROM categories WHERE slug = :slug LIMIT 1', ['slug' => $categorySlug]);
         if (is_array($catRow)) {
             $categoryId = (int)$catRow['id'];
         } else {
@@ -51,13 +45,8 @@ if ($sort === 'price_asc') $sortSql = 'b.price ASC, b.title ASC';
 elseif ($sort === 'price_desc') $sortSql = 'b.price DESC, b.title ASC';
 elseif ($sort === 'newest') $sortSql = 'b.created_at DESC, b.title ASC';
 
-/* --- categories for sidebar (cached per-request) --- */
-try {
-    $categories = $database->cachedFetchAll('SELECT id, nazov, slug FROM categories ORDER BY nazov ASC');
-} catch (\Throwable $e) {
-    if (class_exists('Logger')) { try { Logger::warn('Failed to fetch categories for catalog', null, ['exception' => (string)$e]); } catch (\Throwable $_) {} }
-    $categories = [];
-}
+/* --- categories for sidebar (prefer shared, avoid duplicate I/O) --- */
+$categories = $categories ?? []; // pokud už jsou předány z frontcontrolleru / TrustedShared, použij je
 
 /* --- build WHERE + params --- */
 $whereParts = ['b.is_active = 1'];
@@ -98,15 +87,16 @@ ORDER BY {$sortSql}
 
 /* --- použijeme Database::paginate (automatické COUNT + LIMIT/OFFSET) --- */
 try {
-    $pageData = $database->paginate($sql, $params, $page, $perPage, null);
+    $pageData = $db->paginate($sql, $params, $page, $perPage, null);
     $books = $pageData['items'];
     $total = $pageData['total'];
     $totalPages = (int) max(1, ceil($total / max(1, $perPage)));
 } catch (\Throwable $e) {
-    if (class_exists('Logger')) { try { Logger::systemError($e, null, ['phase' => 'catalog.fetch']); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Internal server error (catalog).']);
-    exit;
+    return [
+        'status' => 500,
+        'template' => 'pages/404.php',
+        'vars' => ['message' => 'Interná chyba servera (katalóg).']
+    ];
 }
 
 /* --- normalize & build cover_url (bez posílání surových filesystem cest tam, kde to není safe) --- */

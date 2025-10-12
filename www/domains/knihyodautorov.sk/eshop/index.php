@@ -1,14 +1,69 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Database;
+use BlackCat\Core\Log\Logger;
+use BlackCat\Core\Templates\Templates;
+use BlackCat\Core\TrustedShared;
+
 // index.php — frontcontroller
 if (php_sapi_name() === 'cli') return; // prevent CLI accidental run
 
-// --- very early bypass for GoPay notify (minimal bootstrap only) ---
-$uriPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-$uriPath = rtrim($uriPath, '/');
+// --- ROUTING HELPERS (updated: supports greedy {name+} tokens) ---
+function bc_normalize_path(string $path): string {
+    $p = rawurldecode($path);
+    $p = preg_replace('#/+#', '/', $p);
+    $p = '/' . ltrim($p, '/');
+    if ($p !== '/' && substr($p, -1) === '/') $p = rtrim($p, '/');
+    return $p;
+}
+
+function bc_match_route_pattern(string $pattern, string $path) {
+    $orig = $pattern;
+    $parts = preg_split('#(\{[a-zA-Z0-9_]+\+?\})#', $orig, -1, PREG_SPLIT_DELIM_CAPTURE);
+    $rx = '';
+    foreach ($parts as $part) {
+        if (preg_match('#^\{([a-zA-Z0-9_]+)(\+)?\}$#', $part, $mm)) {
+            $name = $mm[1];
+            $greedy = isset($mm[2]) && $mm[2] === '+';
+            $rx .= $greedy ? '(?P<' . $name . '>.+)' : '(?P<' . $name . '>[^/]+)';
+        } else {
+            $rx .= preg_quote($part, '#');
+        }
+    }
+    $regex = '#^' . $rx . '$#i';
+    if (preg_match($regex, ltrim($path, '/'), $m)) {
+        $params = [];
+        foreach ($m as $k => $v) if (is_string($k)) $params[$k] = $v;
+        return ['params' => $params, 'pattern' => $pattern, 'regex' => $regex];
+    }
+    return false;
+}
+
+function bc_build_route_path(string $pattern, array $params): string {
+    $out = $pattern;
+    preg_match_all('/\{([a-z0-9_]+)(\+)?\}/i', $pattern, $ph);
+    $placeholders = $ph[1] ?? [];
+    $mods = $ph[2] ?? [];
+    foreach ($placeholders as $i => $k) {
+        $isGreedy = isset($mods[$i]) && $mods[$i] === '+';
+        $val = $params[$k] ?? '';
+        if ($isGreedy) {
+            $segments = explode('/', $val);
+            $segments = array_map('rawurlencode', $segments);
+            $rep = implode('/', $segments);
+        } else {
+            $rep = rawurlencode($val);
+        }
+        $out = str_replace('{' . $k . ($isGreedy ? '+' : '') . '}', $rep, $out);
+    }
+    return '/' . ltrim($out, '/');
+}
 
 // adjust according to where you expose the notify endpoint
-if ($uriPath === '/eshop/notify') {
+$reqPath = bc_normalize_path(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/');
+if ($reqPath === '/eshop/notify' || $reqPath === '/notify') {
     // minimal bootstrap that only initializes Database (or whatever minimal libs you need)
     require_once __DIR__ . '/inc/bootstrap_database_minimal.php'; // nebo path kde máš minimal_bootstrap.php
 
@@ -27,9 +82,9 @@ try {
     $database = Database::getInstance();
 } catch (Throwable $e) {
     // pokud DB není inicializovaná, zkusíme logovat a ukončit s užitečnou stránkou
-    try { if (class_exists('Logger')) Logger::error('Database not initialized in index.php', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
+    try { if (class_exists(Logger::class, true)) Logger::error('Database not initialized in index.php', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
     http_response_code(500);
-    echo (class_exists('Templates') ? Templates::render('pages/error.php', ['message' => 'Database not available', 'user' => null]) : '<h1>Internal server error</h1><p>Database not available.</p>');
+    echo (class_exists(Templates::class, true) ? Templates::render('pages/error.php', ['message' => 'Database not available', 'user' => null]) : '<h1>Internal server error</h1><p>Database not available.</p>');
     exit;
 }
 
@@ -37,12 +92,28 @@ try {
 $currentUserId = $userId ?? null;
 $user = $user ?? null;
 
-// --- Route detection ---
-$uri = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '', '/');
-$base = trim('eshop', '/'); // adjust pokud je jiný base
-$route = preg_replace('#^' . preg_quote($base, '#') . '/?#i', '', $uri);
-$route = $route ?: 'home'; // default route
-$route = preg_replace('/[^a-z0-9_\-]/i', '', $route);
+// --- Route detection (parametric + REST friendly) ---
+$rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+$rawPath = bc_normalize_path($rawPath);
+
+// base path (např. '/eshop') — adjust pokud je jiný
+$BASE = '/eshop';
+$path = $rawPath;
+if (stripos($path, $BASE) === 0) {
+    $path = substr($path, strlen($BASE));
+    $path = $path === '' ? '/' : $path;
+}
+$path = bc_normalize_path($path); // normalized path inside app
+
+// fallback route candidate string without leading slash and sanitized for simple static routes
+$routeCandidate = ltrim($path, '/');
+if ($routeCandidate === '') $routeCandidate = 'home';
+
+// current HTTP method (for REST handlers)
+$httpMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// keep for canonical checks later
+$requestedPath = $path;
 
 // --- detect fragment/ajax request (to return only content without header/footer) ---
 $isFragmentRequest = false;
@@ -56,6 +127,54 @@ if (isset($_SERVER['HTTP_ACCEPT']) && stripos($_SERVER['HTTP_ACCEPT'], 'text/htm
 
 // --- Routes: string = handler file (default share true), array = ['file'=>..., 'share'=> true|false|[keys]] ---
 $routes = [
+    /*
+    // pattern routes
+    'catalog_page' => [
+        'pattern' => 'catalog/page/{page}',
+        'file'    => 'catalog.php',
+        'methods' => ['GET'],
+        'share'   => true,
+        'canonical' => 'catalog/page/{page}',
+    ],
+    'catalog' => [
+        'pattern' => 'catalog',
+        'file'    => 'catalog.php',
+        'methods' => ['GET'],
+        'share'   => true,
+    ],
+    // detail route with id+slug (canonical includes slug)
+    'detail' => [
+        'pattern' => 'detail/{id}-{slug}',
+        'file'    => 'detail.php',
+        'methods' => ['GET'],
+        'share'   => true,
+        'canonical' => 'detail/{id}-{slug}',
+    ],
+    // pagination or legacy slug fallback: allow detail/{id} and redirect to canonical
+    'detail_short' => [
+        'pattern' => 'detail/{id}',
+        'file'    => 'detail.php',
+        'methods' => ['GET'],
+        'share'   => true,
+        'canonical' => 'detail/{id}-{slug}', // handler should provide slug in returned vars if possible
+    ],
+
+    // actions (POST)
+    'cart_add' => [
+        'pattern' => 'actions/cart_add',
+        'file'    => 'actions/cart_add.php',
+        'methods' => ['POST'],
+        'share'   => ['db','csrfToken'], // only minimal shared
+    ],
+
+    // REST-like API example
+    'api_orders' => [
+        'pattern' => 'api/orders/{id}',
+        'file'    => 'api/orders.php',
+        'methods' => ['GET','PUT','DELETE','POST'],
+        'share'   => false,
+        'is_api'  => true,
+    ], */
     'home'        => 'main-page.php',
     'catalog'        => 'catalog.php',
     'contact'           => 'contact.php',
@@ -83,10 +202,56 @@ $routes = [
     'gopay_return'         => '/gopay_return.php',
 ];
 
-// --- Route exists? ---
-if (!isset($routes[$route])) {
+// --- Find matching route (pattern matching + method check) ---
+$matchedRouteKey = null;
+$handlerPath = null;
+$shareSpec = true;
+$params = [];
+
+foreach ($routes as $key => $cfg) {
+    // normalize cfg to uniform array
+    if (is_string($cfg)) {
+        // allow either 'home' => 'main-page.php' or 'contact' => 'contact.php'
+        $pattern = ltrim($key, '/'); // treat key as simple route name
+        // check simple match by routeCandidate (exact)
+        if ($routeCandidate === $key || $routeCandidate === ltrim($cfg, '/')) {
+            $matchedRouteKey = $key;
+            $handlerPath = __DIR__ . '/' . ltrim($cfg, '/');
+            $shareSpec = true;
+            break;
+        }
+        continue;
+    }
+
+    $pattern = $cfg['pattern'] ?? null;
+    if (!$pattern) continue;
+
+    $match = bc_match_route_pattern($pattern, $path);
+    if ($match === false) continue;
+
+    // method check
+    $allowed = $cfg['methods'] ?? ['GET'];
+    $allowed = array_map('strtoupper', $allowed);
+    if (!in_array($httpMethod, $allowed, true)) {
+        // method not allowed -> 405
+        http_response_code(405);
+        echo Templates::render('pages/error.php', ['message' => 'Method Not Allowed', 'user' => $user]);
+        exit;
+    }
+
+    // matched!
+    $matchedRouteKey = $key;
+    $handlerPath = __DIR__ . '/' . ltrim($cfg['file'], '/');
+    $shareSpec = $cfg['share'] ?? true;
+    $params = $match['params'];
+    $routeCfg = $cfg;
+    break;
+}
+
+if ($handlerPath === null) {
+    // not found: 404
     http_response_code(404);
-    echo Templates::render('pages/404.php', ['route' => $route, 'user' => $user]);
+    echo Templates::render('pages/404.php', ['route' => $routeCandidate, 'user' => $user]);
     exit;
 }
 
@@ -94,7 +259,7 @@ if (!isset($routes[$route])) {
 // TrustedShared::create bude best-effort: použije předanou Database, user a userId.
 // EnrichUser=true zajistí načtení purchased_books (pokud máš v DB odpovídající metody).
 // --- Build trustedShared using TrustedShared helper (fallback safe) ---
-if (class_exists('TrustedShared') && method_exists('TrustedShared', 'create')) {
+if (class_exists(TrustedShared::class, true)) {
     $trustedShared = TrustedShared::create([
         'database'     => $database,
         'user'         => $user,
@@ -112,48 +277,116 @@ if (class_exists('TrustedShared') && method_exists('TrustedShared', 'create')) {
         'gopayAdapter' => $gopayAdapter ?? null,
         'now_utc'      => gmdate('Y-m-d H:i:s'),
     ];
-    if (class_exists('Logger')) {
+    if (class_exists(Logger::class, true)) {
         try { Logger::warn('TrustedShared class missing, using fallback'); } catch (Throwable $_) {}
     }
 }
 
-// --- Normalize route config ---
-$routeConfig = $routes[$route];
-if (is_string($routeConfig)) {
-    $handlerPath = __DIR__ . '/' . $routeConfig;
-    $shareSpec = true; // default: sdílet všechny trustedShared keys
-} elseif (is_array($routeConfig) && isset($routeConfig['file'])) {
-    $handlerPath = __DIR__ . '/' . $routeConfig['file'];
-    $shareSpec = $routeConfig['share'] ?? true;
-} else {
+// --- Ensure $routeCfg exists (normalize string-style route entries) ---
+if (!isset($routeCfg)) {
+    $routeCfg = [];
+    if (isset($routes[$matchedRouteKey])) {
+        if (is_string($routes[$matchedRouteKey])) {
+            $routeCfg['file'] = $routes[$matchedRouteKey];
+            $routeCfg['share'] = true;
+        } elseif (is_array($routes[$matchedRouteKey])) {
+            $routeCfg = $routes[$matchedRouteKey];
+        }
+    }
+}
+
+// ensure shareSpec is set (may have been set earlier for pattern match)
+$shareSpec = $routeCfg['share'] ?? $shareSpec ?? true;
+
+// --- canonical redirect: if route defines 'canonical', build it and redirect if different ---
+if (!empty($routeCfg['canonical'])) {
+    $canonicalPattern = $routeCfg['canonical'];
+    preg_match_all('/\{([a-z0-9_]+)\+?\}/i', $canonicalPattern, $ph);
+    $placeholders = $ph[1] ?? [];
+    $canBuild = true;
+    foreach ($placeholders as $phk) {
+        if (!array_key_exists($phk, $params)) { $canBuild = false; break; }
+    }
+    if ($canBuild) {
+        $canonicalPath = bc_build_route_path($canonicalPattern, $params);
+        // porovnej dekódované formy, aby se nerozhodovalo kvůli rozdílnému percent-encodingu
+        if (rawurldecode($canonicalPath) !== rawurldecode($requestedPath)) {
+            $qs = $_SERVER['QUERY_STRING'] ?? '';
+            $loc = rtrim($BASE, '/') . $canonicalPath . ($qs !== '' ? '?'.$qs : '');
+            header('Location: ' . $loc, true, 301);
+            exit;
+        }
+    }
+}
+
+// --- Decide which trustedShared keys to inject into handler scope (sharedForInclude) ---
+$sharedForInclude = [];
+try {
+    if (method_exists(TrustedShared::class, 'select')) {
+        $sharedForInclude = TrustedShared::select($trustedShared, $shareSpec);
+    } else {
+        $sharedForInclude = $shareSpec === true ? $trustedShared : [];
+    }
+} catch (Throwable $e) {
+    $sharedForInclude = $shareSpec === true ? $trustedShared : [];
+}
+
+// --- Route meta checks (auth, roles) ---
+$routeMeta = $routeCfg['meta'] ?? [];
+if (!empty($routeMeta['auth_required'])) {
+    if (empty($currentUserId) && empty($user)) {
+        $loginUrl = rtrim($BASE, '/') . '/login?redirect=' . rawurlencode($requestedPath . (!empty($_SERVER['QUERY_STRING']) ? '?'.$_SERVER['QUERY_STRING'] : ''));
+        header('Location: ' . $loginUrl, true, 302);
+        exit;
+    }
+    if (!empty($routeMeta['roles']) && is_array($routeMeta['roles'])) {
+        $userRoles = $user['roles'] ?? [];
+        $ok = false;
+        foreach ($routeMeta['roles'] as $r) {
+            if (in_array($r, (array)$userRoles, true)) { $ok = true; break; }
+        }
+        if (!$ok) {
+            http_response_code(403);
+            echo Templates::render('pages/error.php', ['message' => 'Forbidden', 'user' => $user]);
+            exit;
+        }
+    }
+}
+
+// bezpečnost: zkontroluj existenci handleru dříve, než ho include-ujeme
+if (empty($handlerPath) || !is_string($handlerPath) || !is_file($handlerPath) || !is_readable($handlerPath)) {
+    try { if (class_exists(Logger::class, true)) Logger::warn('Handler file missing or not readable', null, ['handler' => $handlerPath]); } catch (Throwable $_) {}
     http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Internal route config error', 'user' => $user]);
+    echo Templates::render('pages/error.php', ['message' => 'Internal server error (handler missing)', 'user' => $user]);
     exit;
 }
-// --- Decide which trustedShared keys to inject into handler scope (sharedForInclude) ---
-$sharedForInclude = TrustedShared::select($trustedShared, $shareSpec);
 
 // --- Handler include in isolated scope, with selected shared vars extracted (EXTR_SKIP) ---
-$handlerResult = (function(string $handlerPath, array $sharedVars) {
+$handlerResult = (function(string $handlerPath, array $sharedVars, array $params = []) {
     if (!empty($sharedVars) && is_array($sharedVars)) {
-        // EXTR_SKIP: extracted vars nebudou přepsat existující lokální proměnné v handleru
         extract($sharedVars, EXTR_SKIP);
+    }
+    // inject params as $params and also extract individual params (EXTR_SKIP)
+    if (!empty($params)) {
+        ${'params'} = $params;
+        extract($params, EXTR_SKIP);
+    } else {
+        ${'params'} = [];
     }
 
     ob_start();
     try {
-        // include handler (may echo, redirect+exit, or return array)
         $ret = include $handlerPath;
         $out = (string) ob_get_clean();
     } catch (Throwable $e) {
         if (ob_get_length() !== false) @ob_end_clean();
-        try { if (class_exists('Logger')) Logger::systemError($e); } catch (Throwable $_) {}
-        $errHtml = Templates::render('pages/error.php', ['message' => 'Internal server error', 'user' => null]);
-        return ['ret' => ['content' => $errHtml], 'content' => $errHtml];
+        try { if (class_exists(Logger::class, true)) Logger::systemError($e); } catch (Throwable $_) {}
+        $errHtml = class_exists(Templates::class, true) ? Templates::render('pages/error.php', ['message' => 'Internal server error', 'user' => null]) : '<h1>Internal server error</h1>';
+        return ['ret' => ['content' => $errHtml, 'status' => 500], 'content' => $errHtml];
     }
 
     return ['ret' => $ret, 'content' => $out];
-})($handlerPath, $sharedForInclude);
+})($handlerPath, $sharedForInclude, $params);
 
 // --- If headers were already sent (redirect etc.), flush captured output and stop ---
 if (headers_sent()) {
@@ -168,14 +401,29 @@ if (is_array($handlerResult['ret'])) {
     if (!empty($handlerResult['ret']['content']))  $result['content']  = (string)$handlerResult['ret']['content'];
     if (!empty($handlerResult['ret']['vars']) && is_array($handlerResult['ret']['vars'])) $result['vars'] = $handlerResult['ret']['vars'];
 }
-
+// --- Apply optional HTTP status code returned by handler ---
+if (isset($handlerResult['ret']['status'])) {
+    $status = (int) $handlerResult['ret']['status'];
+    if ($status >= 100 && $status < 600) {
+        http_response_code($status);
+    }
+}
 // Prefer echoed content if handler didn't set 'content' explicitly
 if ($result['content'] === null && $handlerResult['content'] !== '') {
     $result['content'] = $handlerResult['content'];
 }
 
 // --- Decide which trustedShared keys to pass to the template (sharedForTemplate) ---
-$sharedForTemplate = TrustedShared::select($trustedShared, $shareSpec);
+$sharedForTemplate = [];
+try {
+    if (method_exists(TrustedShared::class, 'select')) {
+        $sharedForTemplate = TrustedShared::select($trustedShared, $shareSpec);
+    } else {
+        $sharedForTemplate = $shareSpec === true ? $trustedShared : [];
+    }
+} catch (Throwable $_) {
+    $sharedForTemplate = $shareSpec === true ? $trustedShared : [];
+}
 
 // --- Compose final variables for template ---
 // We want to PROTECT trustedShared from being overwritten by handler vars,
@@ -183,13 +431,8 @@ $sharedForTemplate = TrustedShared::select($trustedShared, $shareSpec);
 $contentVars = array_merge($result['vars'], $sharedForTemplate);
 
 // --- Ensure navActive is available to header/footer ---
-// Priority: handler-provided -> contentVars fallback -> route fallback
-if (!empty($contentVars['navActive'])) {
-    $trustedShared['navActive'] = $contentVars['navActive'];
-} else {
-    // fallback: použij route jako výchozí aktivní položku (nebo nastav '' pokud nechceš žádnou)
-    $trustedShared['navActive'] = $route;
-}
+$trustedShared['navActive'] = $contentVars['navActive']
+    ?? ($matchedRouteKey ?? $routeCandidate ?? '');
 
 // --- Render selection logic ---
 $contentHtml = '';
@@ -199,13 +442,13 @@ if (!empty($result['template'])) {
 
     // Prevent path traversal and absolute paths.
     if (strpos($template, '..') !== false || strpos($template, "\0") !== false || (isset($template[0]) && $template[0] === '/')) {
-        try { if (class_exists('Logger')) Logger::warn('Invalid template path returned by handler', null, ['template' => $template]); } catch (Throwable $_) {}
+        try { if (class_exists(Logger::class, true)) Logger::warn('Invalid template path returned by handler', null, ['template' => $template]); } catch (Throwable $_) {}
         $contentHtml = Templates::render('pages/error.php', ['message' => 'Invalid template', 'user' => $user]);
     } else {
         // Resolve to templates directory: templates/<template>
         $tplPath = __DIR__ . '/templates/' . ltrim($template, '/');
         if (!is_file($tplPath) || !is_readable($tplPath)) {
-            try { if (class_exists('Logger')) Logger::warn('Template file missing', null, ['template' => $template, 'path' => $tplPath]); } catch (Throwable $_) {}
+            try { if (class_exists(Logger::class, true)) Logger::warn('Template file missing', null, ['template' => $template, 'path' => $tplPath]); } catch (Throwable $_) {}
             $contentHtml = Templates::render('pages/error.php', ['message' => 'Template not found', 'user' => $user]);
         } else {
             // Call renderer with final vars so template receives db, categories, user, etc.
