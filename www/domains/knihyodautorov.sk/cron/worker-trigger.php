@@ -1,5 +1,8 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Cron\Worker;
 
 // ---------------------------------------------
 // public/worker-trigger.php
@@ -7,7 +10,6 @@ declare(strict_types=1);
 // Použití: public URL s ?token=LONG_SECRET_TOKEN&immediate=1&debug=1
 // ---------------------------------------------
 require_once realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
-require_once realpath(dirname(__DIR__, 4) . '/cron/Worker.php');
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -72,28 +74,6 @@ function debugLogger($level, $message, $userId = null, $context = null) {
         echo "<br>\n";
     }
 }
-
-// -------------------------------------------------
-// OVERRIDE Logger FOR VERBOSE
-// -------------------------------------------------
-if (!class_exists('Logger')) {
-    class Logger {
-        private static $callback;
-        public static function setCallback($cb) { self::$callback = $cb; }
-        public static function systemMessage($level, $msg, $userId = null, $ctx = null) {
-            if (is_callable(self::$callback)) call_user_func(self::$callback, $level, $msg, $userId, $ctx);
-        }
-        public static function systemError($e) {
-            if (is_callable(self::$callback)) {
-                call_user_func(self::$callback, 'error', $e->getMessage(), null, ['exception'=>$e]);
-            }
-        }
-    }
-
-    // Tady už globálně voláme Logger::setCallback
-    Logger::setCallback('debugLogger');
-}
-
 
 // -------------------------------------------------
 // BOOTSTRAP Worker

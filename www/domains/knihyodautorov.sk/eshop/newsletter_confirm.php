@@ -1,5 +1,8 @@
 <?php
+
 declare(strict_types=1);
+
+use BlackCat\Core\Log\Logger;
 
 require_once __DIR__ . '/inc/bootstrap.php';
 

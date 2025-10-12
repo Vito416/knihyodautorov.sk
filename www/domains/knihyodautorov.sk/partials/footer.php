@@ -173,7 +173,7 @@
 
       $siteKey = $config['capchav3']['site_key'] ?? $_ENV['CAPCHA_SITE_KEY'] ?? '';
       ?>
-      <form class="contact-form" action="/../partials/send.php" method="post" novalidate data-sitekey="<?= htmlspecialchars($siteKey) ?>">
+      <form class="contact-form" action="/../eshop/send" method="post" novalidate data-sitekey="<?= htmlspecialchars($siteKey) ?>">
         <!-- Flag že jde o kontaktní formulář -->
         <input type="hidden" name="contact_form" value="1">
 
@@ -241,7 +241,7 @@
       <div id="contact-feedback" class="contact-feedback section-subtitle" role="status" aria-live="polite"></div>
 
       </form>
-      <script src="https://www.google.com/recaptcha/api.js?render=<?= htmlspecialchars($siteKey) ?>"defer></script>
+      <script src="https://www.google.com/recaptcha/api.js?render=<?= htmlspecialchars($siteKey) ?>" defer></script>
     </div>
     <!-- social icons
     <div class="social-row">

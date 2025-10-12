@@ -6,6 +6,8 @@ use BlackCat\Core\Database;
 use BlackCat\Core\Log\Logger;
 use BlackCat\Core\Templates\Templates;
 use BlackCat\Core\TrustedShared;
+use BlackCat\Core\Security\CSRF;
+use BlackCat\Core\Security\Recaptcha;
 
 // index.php — frontcontroller
 if (php_sapi_name() === 'cli') return; // prevent CLI accidental run
@@ -200,6 +202,13 @@ $routes = [
     'vop'            => 'vop.php',
     'reklamacie'     => 'reklamacie.php',
     'gopay_return'         => '/gopay_return.php',
+    'contact_send' => [
+    'pattern' => 'send',
+    'file'    => 'actions/send.php',
+    'methods' => ['POST'],
+    'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF'],
+    'is_api'  => true,
+    ],
 ];
 
 // --- Find matching route (pattern matching + method check) ---
@@ -265,7 +274,8 @@ if (class_exists(TrustedShared::class, true)) {
         'user'         => $user,
         'userId'       => $currentUserId ?? null,
         'gopayAdapter' => $gopayAdapter ?? null,
-        'enrichUser'   => false, // pokud už máš manuální fetch výše; změň podle volby A/B
+        'enrichUser'   => false,
+        'config'       => $config ?? [],
     ]);
 } else {
     // fallback: keep minimal manual trustedShared to avoid fatal errors
@@ -331,6 +341,20 @@ try {
     $sharedForInclude = $shareSpec === true ? $trustedShared : [];
 }
 
+// --- Prepare $sharedForInclude using TrustedShared helper (centralized mapping) ---
+try {
+    // pass $config as opt so prepareForHandler can build config from it when needed
+    $sharedForInclude = TrustedShared::prepareForHandler($trustedShared, $shareSpec, ['config' => $config ?? []]);
+} catch (Throwable $e) {
+    // fallback to previous best-effort selection
+    try { if (class_exists(Logger::class, true)) Logger::warn('prepareForHandler failed, falling back', null, ['exception' => (string)$e]); } catch (Throwable $_) {}
+    if (method_exists(TrustedShared::class, 'select')) {
+        $sharedForInclude = TrustedShared::select($trustedShared, $shareSpec);
+    } else {
+        $sharedForInclude = $shareSpec === true ? $trustedShared : [];
+    }
+}
+
 // --- Route meta checks (auth, roles) ---
 $routeMeta = $routeCfg['meta'] ?? [];
 if (!empty($routeMeta['auth_required'])) {
@@ -387,6 +411,45 @@ $handlerResult = (function(string $handlerPath, array $sharedVars, array $params
 
     return ['ret' => $ret, 'content' => $out];
 })($handlerPath, $sharedForInclude, $params);
+
+// --- Special handling for handlers that return JSON (API style) ---
+// If the handler returned an array with a 'json' key, treat it as an API response.
+// Expected shape from handler: ['status'=>int, 'json'=>array, 'headers'=>array]
+if (is_array($handlerResult['ret']) && array_key_exists('json', $handlerResult['ret'])) {
+    $ret = $handlerResult['ret'];
+    // status
+    $status = isset($ret['status']) ? (int)$ret['status'] : 200;
+    if ($status < 100 || $status >= 600) $status = 200;
+    http_response_code($status);
+
+    // custom headers (if any)
+    $headers = $ret['headers'] ?? [];
+    if (is_array($headers)) {
+        foreach ($headers as $hn => $hv) {
+            // allow string or array values
+            if (is_array($hv)) {
+                foreach ($hv as $v) header((string)$hn . ': ' . (string)$v, false);
+            } else {
+                header((string)$hn . ': ' . (string)$hv, false);
+            }
+        }
+    }
+
+    // default content-type for API
+    if (!headers_sent()) header('Content-Type: application/json; charset=utf-8');
+
+    // encode JSON safely
+    $jsonBody = $handlerResult['ret']['json'];
+    $encoded = json_encode($jsonBody, JSON_UNESCAPED_UNICODE);
+    if ($encoded === false) {
+        // fallback minimal response
+        echo json_encode(['success' => false, 'message' => 'Server error (json encode)'], JSON_UNESCAPED_UNICODE);
+    } else {
+        echo $encoded;
+    }
+    // ensure we stop further processing
+    exit;
+}
 
 // --- If headers were already sent (redirect etc.), flush captured output and stop ---
 if (headers_sent()) {

@@ -4,12 +4,22 @@ declare(strict_types=1);
 
 use BlackCat\Core\Database;
 use BlackCat\Core\Log\Logger;
-use BlackCat\Core\Security\Crypto;
+use BlackCat\Core\Helpers\MailHelper;
+use BlackCat\Core\Security\Recaptcha;
 use BlackCat\Core\Security\KeyManager;
 use BlackCat\Core\Validation\Validator;
 use BlackCat\Core\Mail\Mailer;
 
-require_once realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
+$bootstrapPath = realpath(dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php');
+if ($bootstrapPath && is_file($bootstrapPath)) {
+    require_once $bootstrapPath;
+} else {
+    throw new \RuntimeException('Bootstrap not found at expected path: ' . (string)($bootstrapPath ?: dirname(__DIR__, 1) . '/eshop/inc/bootstrap.php'));
+}
+
+if (!isset($config) || !is_array($config)) {
+    $config = [];
+}
 
 /**
  * subscribe.php (production-ready, dedup HMAC candidates, memzero via KeyManager,
@@ -44,9 +54,9 @@ function emailHint(string $email): string {
  */
 function logAndRespond(string $userMsg, int $httpCode = 200, ?\Throwable $e = null, array $logCtx = []) : void {
     // zkresli citliviny v ctx - uživatelský e-mail by měl být anonymizován dříve
-    if (class_exists('Logger')) {
+    if (class_exists(Logger::class, true)) {
         try {
-            if ($e !== null && method_exists('Logger', 'systemError')) {
+            if ($e !== null && method_exists(Logger::class, 'systemError')) {
                 // systemError očekává Throwable (pokud má tvůj Logger jinou signaturu, uprav)
                 Logger::systemError($e, $logCtx['user_id'] ?? null, (string)$logCtx);
             } else {
@@ -68,14 +78,14 @@ function subscribeFeedback(string $msg, bool $success = false): void {
     exit;
 }
 // kritické závislosti
-$required = ['KeyManager', 'Logger', 'Validator'];
+$required = [KeyManager::class, Logger::class, Validator::class];
 $missing = [];
 foreach ($required as $c) {
-    if (!class_exists($c)) $missing[] = $c;
+    if (!class_exists($c, true)) $missing[] = $c;
 }
 if (!empty($missing)) {
 $msg = 'Interná chyba: chýbajú knižnice: ' . implode(', ', $missing) . '.';
-    if (class_exists('Logger')) {
+    if (class_exists(Logger::class, true)) {
         try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
     }
     logAndRespond('Služba momentálne nedostupná. Kontaktujte administrátora.', 503, null, ['missing' => $missing]);
@@ -94,15 +104,15 @@ try {
 
     // email verification key presence
     try {
-        if (method_exists('KeyManager','locateLatestKeyFile')) {
+        if (method_exists(KeyManager::class, 'locateLatestKeyFile')) {
             $info = KeyManager::locateLatestKeyFile(KEYS_DIR, 'email_verification_key');
             if (!empty($info['version'])) $haveEmailVer = true;
         }
-        if (!$haveEmailVer && method_exists('KeyManager','getEmailVerificationKeyInfo')) {
+        if (!$haveEmailVer && method_exists(KeyManager::class, 'getEmailVerificationKeyInfo')) {
             $info = KeyManager::getEmailVerificationKeyInfo(KEYS_DIR);
             if (!empty($info['raw']) && is_string($info['raw']) && strlen($info['raw']) === KeyManager::keyByteLen()) $haveEmailVer = true;
         }
-        if (!$haveEmailVer && method_exists('KeyManager','deriveHmacWithLatest')) {
+        if (!$haveEmailVer && method_exists(KeyManager::class, 'deriveHmacWithLatest')) {
             // capability exists; accept as present
             $haveEmailVer = true;
         }
@@ -110,15 +120,15 @@ try {
 
     // unsubscribe key presence
     try {
-        if (method_exists('KeyManager','locateLatestKeyFile')) {
+        if (method_exists(KeyManager::class, 'locateLatestKeyFile')) {
             $info = KeyManager::locateLatestKeyFile(KEYS_DIR, 'unsubscribe_key');
             if (!empty($info['version'])) $haveUnsub = true;
         }
-        if (!$haveUnsub && method_exists('KeyManager','getUnsubscribeKeyInfo')) {
+        if (!$haveUnsub && method_exists(KeyManager::class, 'getUnsubscribeKeyInfo')) {
             $info = KeyManager::getUnsubscribeKeyInfo(KEYS_DIR);
             if (!empty($info['raw']) && is_string($info['raw']) && strlen($info['raw']) === KeyManager::keyByteLen()) $haveUnsub = true;
         }
-        if (!$haveUnsub && method_exists('KeyManager','deriveHmacWithLatest')) {
+        if (!$haveUnsub && method_exists(KeyManager::class, 'deriveHmacWithLatest')) {
             $haveUnsub = true;
         }
     } catch (\Throwable $_) { $haveUnsub = false; }
@@ -142,7 +152,7 @@ $normalizeEmail = static function(string $e): string {
 $getPdo = static function() {
     try {
         $pdo = null;
-        if (class_exists('Database') && method_exists('Database', 'getInstance')) {
+        if (class_exists(Database::class, true) && method_exists(Database::class, 'getInstance')) {
             $dbInst = Database::getInstance();
             if ($dbInst instanceof \PDO) {
                 $pdo = $dbInst;
@@ -189,22 +199,23 @@ try {
     subscribeFeedback('Interná chyba (DB).');
 }
 
+// ---- recaptcha verification via Recaptcha class ----
 $recaptchaToken = (string)($_POST['g-recaptcha-response'] ?? '');
 if ($recaptchaToken === '') {
     subscribeFeedback('reCAPTCHA nebola poskytnutá.');
 }
-
 $recaptchaSecret = $config['capchav3']['secret_key'] ?? $_ENV['CAPCHA_SECRET_KEY'] ?? '';
 if ($recaptchaSecret === '') {
     try { Logger::error('reCAPTCHA secret not configured'); } catch (\Throwable $_) {}
     http_response_code(500);
     subscribeFeedback('Interná chyba (reCAPTCHA). Kontaktujte administrátora.');
 }
-// -------------------- get IP hash via centralized Logger helper --------------------
+
+// get ip hash via Logger helper (kept in place)
 $ipHashBin = null;
 $ipHashKeyVer = null;
 try {
-    if (class_exists('Logger') && method_exists('Logger', 'getHashedIp')) {
+    if (class_exists(Logger::class, true) && method_exists(Logger::class, 'getHashedIp')) {
         $ipInfo = Logger::getHashedIp(); // ['hash'=>binary|null, 'key_id'=>string|null, 'used'=>'keymanager'|'none']
         $ipHashBin = $ipInfo['hash'] ?? null;
         $ipHashKeyVer = $ipInfo['key_id'] ?? null;
@@ -214,51 +225,27 @@ try {
     $ipHashKeyVer = null;
 }
 
-$recaptchaMinScoreRaw = $config['capchav3']['min_score'] 
-                      ?? $_ENV['CAPCHA_MIN_SCORE'] 
-                      ?? 0.4;
-$recaptchaMinScore = (float) $recaptchaMinScoreRaw;
+$recaptchaMinScoreRaw = $config['capchav3']['min_score'] ?? $_ENV['CAPCHA_MIN_SCORE'] ?? 0.4;
+$recaptchaMinScore = (float)$recaptchaMinScoreRaw;
 if ($recaptchaMinScore < 0 || $recaptchaMinScore > 1) $recaptchaMinScore = 0.4;
 
-$ch = curl_init('https://www.google.com/recaptcha/api/siteverify');
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query([
-    'secret' => $recaptchaSecret,
-    'response' => $recaptchaToken,
-    'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
-]));
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-$response = curl_exec($ch);
-$curlErr = curl_errno($ch) ? curl_error($ch) : null;
-curl_close($ch);
-
-if ($response === false || $response === null) {
-    logAndRespond(
-        'Nepodarilo sa overiť reCAPTCHA.',
-        500,
-        null,
-        ['curl_error' => $curlErr, 'email_hint' => emailHint($email)]
-    );
+try {
+    // pass Logger::class (static) so Recaptcha can call static methods — Recaptcha supports class name/callable/object
+    $rec = new Recaptcha($recaptchaSecret, $recaptchaMinScore, ['logger' => Logger::class]);
+    $recResult = $rec->verify($recaptchaToken, $_SERVER['REMOTE_ADDR'] ?? '');
+} catch (\Throwable $e) {
+    try { Logger::error('Recaptcha verify threw exception', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+    logAndRespond('Nepodarilo sa overiť reCAPTCHA.', 500, $e, ['email_hint' => emailHint($email)]);
 }
 
-$respData = json_decode($response, true);
-if (!is_array($respData) || empty($respData['success']) || (($respData['score'] ?? 0) < $recaptchaMinScore)) {
-    logAndRespond(
-        'Nepodarilo sa overiť reCAPTCHA.',
-        400,
-        null,
-        [
-        'recaptcha_ok' => !empty($respData['success']),
-        'recaptcha_score' => isset($respData['score']) ? (float)$respData['score'] : null,
-        'recaptcha_action' => $respData['action'] ?? null,
-        'email_hint' => emailHint($email)
-        ]
-    );
+if (!is_array($recResult) || empty($recResult['ok'])) {
+    try { Logger::warn('reCAPTCHA verification failed', null, ['rec' => $recResult ?? null, 'email_hint' => emailHint($email)]); } catch (\Throwable $_) {}
+    logAndRespond('Nepodarilo sa overiť reCAPTCHA.', 400, null, ['rec' => $recResult ?? null, 'email_hint' => emailHint($email)]);
 }
 
 // -------------------- compute HMAC candidates ONCE (fail-fast, no fallback) --------------------
 try {
-    if (!method_exists('KeyManager', 'deriveHmacCandidates')) {
+    if (!method_exists(KeyManager::class, 'deriveHmacCandidates')) {
         throw new \RuntimeException('KeyManager::deriveHmacCandidates method not available');
     }
 
@@ -343,39 +330,22 @@ if ($existing && !empty($existing['confirmed_at']) && empty($existing['unsubscri
     subscribeFeedback('E-mail je už prihlásený na odber.');
 }
 
-// -------------------- připravit hash & šifrování pro uložení --------------------
-// email HMAC latest
-$emailHashBin = null;
-$emailHashVer = null;
+// --- prepare email crypto + hmac using MailHelper (centralized) ---
 try {
-    if (method_exists('KeyManager', 'deriveHmacWithLatest')) {
-        $hinfo = KeyManager::deriveHmacWithLatest('EMAIL_HASH_KEY', KEYS_DIR, 'email_hash_key', $email);
-        $emailHashBin = $hinfo['hash'] ?? null;
-        $emailHashVer = $hinfo['version'] ?? null;
-    }
+    $keysDir = $config['paths']['keys'] ?? (defined('KEYS_DIR') ? KEYS_DIR : null);
+    $cryptoInfo = MailHelper::prepareEmailCrypto([
+        'email' => $email,
+        'keysDir' => $keysDir,
+    ]);
+    // expected keys returned:
+    // ['email_hash_bin'=>binary|null,'email_hash_version'=>string|null,'email_enc'=>binary|null,'email_enc_key_version'=>string|null]
+    $emailHashBin = $cryptoInfo['email_hash_bin'] ?? null;
+    $emailHashVer = $cryptoInfo['email_hash_version'] ?? null;
+    $emailEnc = $cryptoInfo['email_enc'] ?? null;
+    $emailEncKeyVer = $cryptoInfo['email_enc_key_version'] ?? null;
 } catch (\Throwable $e) {
-    try { Logger::error('Derive email hash failed on subscribe (latest)', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-    $emailHashBin = null;
-    $emailHashVer = null;
-}
-
-// email encryption
-$emailEnc = null;
-$emailEncKeyVer = null;
-try {
-    if (class_exists('Crypto') && method_exists('Crypto', 'initFromKeyManager')) {
-        Crypto::initFromKeyManager(KEYS_DIR);
-        $emailEnc = Crypto::encrypt($email, 'binary');
-        if (method_exists('KeyManager', 'locateLatestKeyFile')) {
-            $info = KeyManager::locateLatestKeyFile(KEYS_DIR, 'email_key');
-            $emailEncKeyVer = $info['version'] ?? null;
-        }
-        Crypto::clearKey();
-    }
-} catch (\Throwable $e) {
-    try { Logger::error('Email encryption failed on subscribe', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-    $emailEnc = null;
-    $emailEncKeyVer = null;
+    try { Logger::error('MailHelper::prepareEmailCrypto failed', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+    logAndRespond('Interná chyba pri spracovaní e-mailu. Kontaktujte administrátora.', 500, $e, ['email_hint' => emailHint($email)]);
 }
 
 // create confirm tokens (selector+validator) and unsubscribe token
@@ -387,7 +357,7 @@ $validatorHex = bin2hex($validator); // for URL
 $confirmValidatorHash = null;
 $confirmValidatorKeyVer = null;
 try {
-    if (method_exists('KeyManager', 'deriveHmacWithLatest')) {
+    if (method_exists(KeyManager::class, 'deriveHmacWithLatest')) {
         $vinfo = KeyManager::deriveHmacWithLatest('EMAIL_VERIFICATION_KEY', KEYS_DIR, 'email_verification_key', $validator);
         if (!empty($vinfo['hash'])) {
             $confirmValidatorHash = $vinfo['hash'];
@@ -395,7 +365,7 @@ try {
         }
     }
 
-    if ($confirmValidatorHash === null && method_exists('KeyManager', 'getEmailVerificationKeyInfo')) {
+    if ($confirmValidatorHash === null && method_exists(KeyManager::class, 'getEmailVerificationKeyInfo')) {
         $ev = KeyManager::getEmailVerificationKeyInfo(KEYS_DIR);
         if (!empty($ev['raw']) && is_string($ev['raw']) && strlen($ev['raw']) === KeyManager::keyByteLen()) {
             $confirmValidatorHash = hash_hmac('sha256', $validator, $ev['raw'], true);
@@ -423,7 +393,7 @@ $unsubscribeToken = bin2hex($unsubscribeTokenBin);
 $unsubscribeTokenHash = null;
 $unsubscribeTokenKeyVer = null;
 try {
-    if (method_exists('KeyManager', 'deriveHmacWithLatest')) {
+    if (method_exists(KeyManager::class, 'deriveHmacWithLatest')) {
         $uinfo = KeyManager::deriveHmacWithLatest('UNSUBSCRIBE_KEY', KEYS_DIR, 'unsubscribe_key', $unsubscribeTokenBin);
         if (!empty($uinfo['hash'])) {
             $unsubscribeTokenHash = $uinfo['hash'];
@@ -431,7 +401,7 @@ try {
         }
     }
 
-    if ($unsubscribeTokenHash === null && method_exists('KeyManager', 'getUnsubscribeKeyInfo')) {
+    if ($unsubscribeTokenHash === null && method_exists(KeyManager::class, 'getUnsubscribeKeyInfo')) {
         $uv = KeyManager::getUnsubscribeKeyInfo(KEYS_DIR);
         if (!empty($uv['raw']) && is_string($uv['raw']) && strlen($uv['raw']) === KeyManager::keyByteLen()) {
             $unsubscribeTokenHash = hash_hmac('sha256', $unsubscribeTokenBin, $uv['raw'], true);
@@ -457,6 +427,7 @@ $expiresAt = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('
 
 // --- prepare origin + meta (minimální, kompatibilní s původní logikou) ---
 $origin = trim((string)($_POST['origin'] ?? $_SERVER['HTTP_REFERER'] ?? ''));
+if ($origin !== '') $origin = mb_substr($origin, 0, 200);
 $meta = [
     'origin' => $origin !== '' ? $origin : null,
     'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
@@ -585,25 +556,36 @@ try {
 
 // -------------------- cleanup sensitive variables (memzero + unset) --------------------
 try {
-    if (isset($validator)) { KeyManager::memzero($validator); unset($validator); }
+    if (isset($validator)) { if (method_exists(KeyManager::class, 'memzero')) KeyManager::memzero($validator); unset($validator); }
 } catch (\Throwable $_) {}
 try {
-    if (isset($unsubscribeTokenBin)) { KeyManager::memzero($unsubscribeTokenBin); unset($unsubscribeTokenBin); }
+    if (isset($unsubscribeTokenBin)) { if (method_exists(KeyManager::class, 'memzero')) KeyManager::memzero($unsubscribeTokenBin); unset($unsubscribeTokenBin); }
 } catch (\Throwable $_) {}
-try { foreach ($emailHashes as $h) { if (is_string($h)) KeyManager::memzero($h); } } catch (\Throwable $_) {}
-try { if (isset($confirmValidatorHash)) { KeyManager::memzero($confirmValidatorHash); unset($confirmValidatorHash); } } catch (\Throwable $_) {}
-try { if (isset($unsubscribeTokenHash)) { KeyManager::memzero($unsubscribeTokenHash); unset($unsubscribeTokenHash); } } catch (\Throwable $_) {}
-try { if (isset($emailHashBin)) { KeyManager::memzero($emailHashBin); unset($emailHashBin); } } catch (\Throwable $_) {}
+try {
+    foreach ($emailHashes as $h) { if (is_string($h) && method_exists(KeyManager::class, 'memzero')) KeyManager::memzero($h); }
+} catch (\Throwable $_) {}
+try {
+    if (isset($confirmValidatorHash) && method_exists(KeyManager::class, 'memzero')) { KeyManager::memzero($confirmValidatorHash); unset($confirmValidatorHash); }
+} catch (\Throwable $_) {}
+try {
+    if (isset($unsubscribeTokenHash) && method_exists(KeyManager::class, 'memzero')) { KeyManager::memzero($unsubscribeTokenHash); unset($unsubscribeTokenHash); }
+} catch (\Throwable $_) {}
+try {
+    if (isset($emailHashBin) && method_exists(KeyManager::class, 'memzero')) { KeyManager::memzero($emailHashBin); unset($emailHashBin); }
+} catch (\Throwable $_) {}
+try {
+    if (isset($emailEnc) && is_string($emailEnc) && method_exists(KeyManager::class, 'memzero')) { KeyManager::memzero($emailEnc); unset($emailEnc); }
+} catch (\Throwable $_) {}
 
 // -------------------- enqueue verification email (outside transaction) --------------------
 try {
-    if (class_exists('Mailer') && method_exists('Mailer', 'enqueue')) {
+    if (class_exists(Mailer::class, true) && method_exists(Mailer::class, 'enqueue')) {
         $base = rtrim((string)($_ENV['APP_URL'] ?? ''), '/');
-        $confirmUrl = $base . '/newsletter_confirm.php?selector=' . rawurlencode($selector) . '&validator=' . rawurlencode($validatorHex);
-        $unsubscribeUrl = $base . '/newsletter_unsubscribe.php?token=' . rawurlencode($unsubscribeToken);
+        $confirmUrl = $base . '/newsletter_confirm?selector=' . rawurlencode($selector) . '&validator=' . rawurlencode($validatorHex);
+        $unsubscribeUrl = $base . '/newsletter_unsubscribe?token=' . rawurlencode($unsubscribeToken);
 
-        $payloadArr = [
-            'target' => 'newsletter',
+        // build notification payload via MailHelper (ensures consistency & validation)
+        $payloadArr = \BlackCat\Core\Helpers\MailHelper::buildSubscribeNotificationPayload([
             'subscriber_id' => $nsId,
             'to' => $email,
             'subject' => 'Potvrďte prihlásenie na odber noviniek',
@@ -620,7 +602,6 @@ try {
                     'cid'  => 'logo'
                 ]
             ],
-            // meta for the worker: keep key versions and cipher info
             'meta' => [
                 'email_key_version' => $emailEncKeyVer ?? null,
                 'confirm_key_version' => $confirmValidatorKeyVer ?? null,
@@ -628,9 +609,9 @@ try {
                 'email_hash_key_version' => $emailHashVer ?? null,
                 'ip_hash_key_version' => $ipHashKeyVer ?? null,
                 'cipher_format' => 'aead_xchacha20poly1305_v1_binary',
-                'user_id' => $userId !== null ? $userId : null,
+                'user_id' => $userId ?? null,
             ],
-        ];
+        ]);
 
         // --- validate notification payload (using Validator) ---
         // Validator::validateNotificationPayload expects a JSON string and template name
