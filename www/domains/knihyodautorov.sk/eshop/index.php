@@ -209,6 +209,20 @@ $routes = [
     'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF'],
     'is_api'  => true,
     ],
+    'newsletter_subscribe' => [
+    'pattern' => 'subscribe',
+    'file'    => 'actions/subscribe.php',
+    'methods' => ['POST'],
+    'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF','csrf','db'],
+    'is_api'  => true,
+    ],
+    'csrf_token' => [
+    'pattern' => 'csrf_token',
+    'file'    => 'actions/csrf_token.php',
+    'methods' => ['GET'],
+    'share'   => ['CSRF'],
+    'is_api'  => true,
+    ],
 ];
 
 // --- Find matching route (pattern matching + method check) ---

@@ -57,16 +57,38 @@ if ($honeypot !== '') {
 }
 // if CSRF class passed as $CSRF, use it to verify; otherwise fall back to $csrf token value
 $postedCsrf = (string)($_POST['csrf'] ?? '');
-$csrfOk = true;
-if (!empty($CSRF) && is_string($CSRF) && class_exists($CSRF) && method_exists($CSRF, 'verify')) {
-    try {
-        $csrfOk = $CSRF::verify($postedCsrf);
-    } catch (\Throwable $_) {
-        $csrfOk = false;
+
+// defaultně nevalidní
+$csrfOk = false;
+
+if (!empty($CSRF)) {
+    // $CSRF může být FQCN (string) nebo objekt — normalizuj na class name
+    $csrfClass = is_string($CSRF) ? $CSRF : (is_object($CSRF) ? get_class($CSRF) : null);
+    if ($csrfClass && class_exists($csrfClass)) {
+        // prefer moderní metoda validate(), fallback na verify() pro legacy
+        if (method_exists($csrfClass, 'validate')) {
+            try {
+                $csrfOk = $csrfClass::validate($postedCsrf);
+            } catch (\Throwable $_) {
+                $csrfOk = false;
+            }
+        } elseif (method_exists($csrfClass, 'verify')) {
+            try {
+                $csrfOk = $csrfClass::verify($postedCsrf);
+            } catch (\Throwable $_) {
+                $csrfOk = false;
+            }
+        } else {
+            // class provided, ale žádná validační metoda — považuj za nevalidní
+            $csrfOk = false;
+        }
     }
 } elseif (isset($csrf) && $csrf !== null) {
+    // legacy shared single-token fallback
     $csrfOk = ($postedCsrf !== '' && $postedCsrf === $csrf);
 }
+
+// pokud CSRF selže, hned blokovat
 if (!$csrfOk) {
     return $resp(400, ['success'=>false,'message'=>'CSRF token invalid']);
 }

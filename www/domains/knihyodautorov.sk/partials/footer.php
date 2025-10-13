@@ -277,7 +277,7 @@
       <div class="footer-subscribe" aria-label="Prihlásenie k odberu">
       <p class="section-title" data-lines="2"><span>Prihlásiť</span> k odberu</p>
       <div class="footer-subscribe-book"></div>
-      <form class="subscribe-form" action="/../partials/subscribe.php" method="post" novalidate data-action="subscribe" data-sitekey="<?= htmlspecialchars($siteKey) ?>">
+      <form class="subscribe-form" action="/eshop/subscribe" method="post" novalidate data-action="subscribe" data-sitekey="<?= htmlspecialchars($siteKey) ?>">
         <label class="visually-hidden" for="subscribe-email-footer">E-mail</label>
         <div class="subscribe-row">
           <input type="hidden" name="subscribe_form" value="1">
@@ -285,6 +285,7 @@
           style="position:absolute;left:-9999px;top:auto;overflow:hidden;">
           <input id="subscribe-email-footer" name="email" type="email" placeholder="Váš e-mail" required autocomplete="email" class="input-field" />
           <input type="hidden" name="g-recaptcha-response" value="">
+          <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'utf-8') ?>">
           <button type="submit" class="btn-subscribe" aria-label="Prihlásiť k odberu">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
               <path d="M13.485 1.929a1.5 1.5 0 0 1 0 2.122L6.06 11.475l-3.182-3.182a1.5 1.5 0 0 1 2.122-2.122L6.06 8.232l5.303-5.303a1.5 1.5 0 0 1 2.122 0z"/>
