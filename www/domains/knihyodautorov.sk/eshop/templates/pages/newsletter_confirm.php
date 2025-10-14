@@ -6,7 +6,6 @@ $status = strtolower((string)($status ?? 'error'));
 $backUrl = $back_url ?? '/';
 $manageUrl = $manage_url ?? '/newsletter/preferences.php';
 
-include __DIR__ . '/../partials/header.php';
 ?>
 <section class="auth-card verify-card">
   <h1><?= $title ?></h1>
@@ -51,5 +50,3 @@ include __DIR__ . '/../partials/header.php';
 .small { font-size:.88rem; }
 .muted { color:#6b6b6b; }
 </style>
-
-<?php include __DIR__ . '/../partials/footer.php'; ?>

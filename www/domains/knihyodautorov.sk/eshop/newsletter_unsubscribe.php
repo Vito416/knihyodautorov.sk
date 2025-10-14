@@ -1,194 +1,286 @@
 <?php
 declare(strict_types=1);
-
-require_once __DIR__ . '/inc/bootstrap.php';
-
+// zvážit nullování i enc, aby se už nedal znovu dešifrovat email, ale prover jak dlouho uchovavat GDPR...
 /**
  * newsletter_unsubscribe.php
- * One-click unsubscribe (production-ready, efficient).
  *
- * GET param: token (hex, 64 chars)
+ * One-click unsubscribe handler intended to be included by frontcontroller.
+ * Returns: ['template'=>'pages/newsletter_unsubscribe.php','vars'=>[...], 'status'=>int?]
+ *
+ * Expects selected shared vars injected by frontcontroller (via TrustedShared::prepareForHandler),
+ * e.g. $pdo or $db/$database (PDO or wrapper), $KEYS_DIR or constant KEYS_DIR, $KeyManager (FQCN|string or object),
+ * optional $Logger (FQCN|string or object).
  */
 
-$required = ['KeyManager', 'Logger'];
-$missing = [];
-foreach ($required as $c) {
-    if (!class_exists($c)) $missing[] = $c;
+// response builder (same shape as confirm)
+$makeResp = function(array $vars = [], int $status = 200, ?string $template = 'pages/newsletter_unsubscribe.php') {
+    $ret = ['template' => $template, 'vars' => $vars];
+    if ($status !== 200) $ret['status'] = $status;
+    return $ret;
+};
+
+/** call method whether $target is class name or object; returns null on failure */
+$call = function($target, string $method, array $args = []) {
+    try {
+        if (is_string($target) && class_exists($target) && method_exists($target, $method)) {
+            return forward_static_call_array([$target, $method], $args);
+        }
+        if (is_object($target) && method_exists($target, $method)) {
+            return call_user_func_array([$target, $method], $args);
+        }
+    } catch (\Throwable $_) {}
+    return null;
+};
+
+/** resolve injected target or fallback to global class if available */
+$resolveTarget = function($injected, string $fallbackClass) {
+    if (!empty($injected)) {
+        if (is_string($injected) && class_exists($injected)) return $injected;
+        if (is_object($injected)) return $injected;
+    }
+    if (class_exists($fallbackClass)) return $fallbackClass;
+    return null;
+};
+
+/** safe logger invoker: accepts class-name (static) or object with methods */
+$loggerInvoke = function(?string $method, string $msg, $userId = null, array $ctx = []) use (&$Logger, $call, $resolveTarget) {
+    if (empty($Logger)) return;
+    try {
+        $target = $resolveTarget($Logger, \BlackCat\Core\Log\Logger::class ?? 'BlackCat\Core\Log\Logger');
+        if ($target === null) return;
+        if ($method === 'systemMessage') {
+            if (is_string($target)) {
+                if (method_exists($target, 'systemMessage')) {
+                    return $call($target, 'systemMessage', [$ctx['level'] ?? 'notice', $msg, $userId, $ctx]);
+                }
+            } else {
+                if (method_exists($target, 'systemMessage')) {
+                    return $target->systemMessage($ctx['level'] ?? 'notice', $msg, $userId, $ctx);
+                }
+            }
+            return;
+        }
+        if (is_string($target) && method_exists($target, $method)) {
+            return $call($target, $method, [$msg, $userId, $ctx]);
+        }
+        if (is_object($target) && method_exists($target, $method)) {
+            return $target->{$method}($msg, $userId, $ctx);
+        }
+    } catch (\Throwable $_) {}
+    return null;
+};
+
+/** safe memzero helper */
+$safeMemzero = function(&$buf) use (&$KeyManager, $call) : void {
+    try {
+        if ($buf === null) return;
+        if (!empty($KeyManager)) {
+            $km = $KeyManager;
+            if (is_string($km) && class_exists($km) && method_exists($km, 'memzero')) {
+                $call($km, 'memzero', [$buf]);
+                $buf = null;
+                return;
+            }
+            if (is_object($km) && method_exists($km, 'memzero')) {
+                $km->memzero($buf);
+                $buf = null;
+                return;
+            }
+        }
+        if (function_exists('sodium_memzero')) {
+            @sodium_memzero($buf);
+            $buf = null;
+            return;
+        }
+        if (is_string($buf)) {
+            $len = strlen($buf);
+            $buf = str_repeat("\0", $len);
+            $buf = null;
+        }
+    } catch (\Throwable $_) {
+        // intentionally silent
+        $buf = null;
+    }
+};
+
+// normalize injected KEYS_DIR / KeyManager
+$keysDir = $KEYS_DIR ?? (defined('KEYS_DIR') ? KEYS_DIR : null);
+$KeyManager = $KeyManager ?? (\BlackCat\Core\Security\KeyManager::class ?? null);
+
+// validate preconditions (return responses — frontcontroller will render)
+if (!($keysDir && is_string($keysDir))) {
+    $loggerInvoke('error', 'newsletter_unsubscribe: KEYS_DIR missing', null, []);
+    return $makeResp(['error' => 'Interná chyba: kľúče nie sú nakonfigurované.'], 500);
 }
-if (!empty($missing)) {
-    $msg = 'Interná chyba: chýbajú knižnice: ' . implode(', ', $missing) . '.';
-    if (class_exists('Logger')) { try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {} }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => $msg]);
-    exit;
+if (!($KeyManager && (is_string($KeyManager) ? class_exists($KeyManager) : is_object($KeyManager)))) {
+    $loggerInvoke('error', 'newsletter_unsubscribe: KeyManager missing', null, []);
+    return $makeResp(['error' => 'Interná chyba: KeyManager nie je dostupný.'], 500);
 }
 
-if (!defined('KEYS_DIR') || !is_string(KEYS_DIR) || KEYS_DIR === '') {
-    $msg = 'Interná chyba: KEYS_DIR nie je nastavený.';
-    try { Logger::systemError(new \RuntimeException($msg)); } catch (\Throwable $_) {}
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => $msg]);
-    exit;
-}
-
-$tokenHex = isset($_GET['token']) ? trim((string)$_GET['token']) : '';
-if ($tokenHex === '' || !preg_match('/^[0-9a-fA-F]{64}$/', $tokenHex)) {
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['error' => 'Neplatný odhlašovací token.']);
-    exit;
-}
-
-$tokenBin = @hex2bin($tokenHex);
-if ($tokenBin === false) {
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['error' => 'Neplatný token.']);
-    exit;
-}
-
-// get PDO
+// resolve PDO from injected shared variables ($db, $database, or TrustedShared-provided 'db' / 'Database')
+$pdo = null;
 try {
-    $pdo = null;
-    if (class_exists('Database') && method_exists('Database', 'getInstance')) {
-        $dbInst = Database::getInstance();
-        if ($dbInst instanceof \PDO) {
-            $pdo = $dbInst;
-        } elseif (is_object($dbInst) && method_exists($dbInst, 'getPdo')) {
-            $pdo = $dbInst->getPdo();
+    if (isset($db) && $db !== null) {
+        if ($db instanceof \PDO) $pdo = $db;
+        elseif (is_object($db) && method_exists($db, 'getPdo')) {
+            $maybe = $db->getPdo();
+            if ($maybe instanceof \PDO) $pdo = $maybe;
         }
     }
-    if ($pdo === null && isset($GLOBALS['pdo']) && $GLOBALS['pdo'] instanceof \PDO) {
-        $pdo = $GLOBALS['pdo'];
+    if ($pdo === null && isset($database) && $database !== null) {
+        if ($database instanceof \PDO) $pdo = $database;
+        elseif (is_object($database) && method_exists($database, 'getPdo')) {
+            $maybe = $database->getPdo();
+            if ($maybe instanceof \PDO) $pdo = $maybe;
+        }
+    }
+    if ($pdo === null && class_exists(\BlackCat\Core\Database::class, true) && method_exists(\BlackCat\Core\Database::class, 'getInstance')) {
+        $dbInst = \BlackCat\Core\Database::getInstance();
+        if ($dbInst instanceof \PDO) $pdo = $dbInst;
+        elseif (is_object($dbInst) && method_exists($dbInst, 'getPdo')) {
+            $maybe = $dbInst->getPdo();
+            if ($maybe instanceof \PDO) $pdo = $maybe;
+        }
     }
     if (!($pdo instanceof \PDO)) {
-        throw new \RuntimeException('Databázové pripojenie nie je dostupné vo forme PDO.');
+        $loggerInvoke('error', 'newsletter_unsubscribe: PDO not available', null, []);
+        return $makeResp(['error' => 'Interná chyba (DB).'], 500);
     }
 } catch (\Throwable $e) {
-    try { Logger::systemError($e); } catch (\Throwable $_) {}
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Interná chyba (DB).']);
-    exit;
+    $loggerInvoke('error', 'newsletter_unsubscribe: DB getPdo failed', null, ['ex' => (string)$e]);
+    return $makeResp(['error' => 'Interná chyba (DB).'], 500);
 }
 
-// build candidate hashes for token (support key rotation)
+// read token param from GET (already normalized by frontcontroller's routing but be defensive)
+$tokenHex = isset($_GET['token']) ? trim((string)$_GET['token']) : '';
+if ($tokenHex === '' || !preg_match('/^[0-9a-fA-F]{64}$/', $tokenHex)) {
+    return $makeResp(['error' => 'Neplatný odhlašovací token.'], 400);
+}
+$tokenBin = @hex2bin($tokenHex);
+if ($tokenBin === false) {
+    return $makeResp(['error' => 'Neplatný token.'], 400);
+}
+
+// derive candidate hashes (rotation-aware). CLEAR PATH: prefer deriveHmacCandidates/withLatest,
+// fallback only to explicit getUnsubscribeKeyInfo (no generic pepper fallback).
 $candidateHashes = [];
 try {
-    if (method_exists('KeyManager', 'deriveHmacCandidates')) {
-        $candidateHashes = KeyManager::deriveHmacCandidates('UNSUBSCRIBE_KEY', KEYS_DIR, 'unsubscribe_key', $tokenBin);
-    } elseif (method_exists('KeyManager', 'deriveHmacWithLatest')) {
-        $v = KeyManager::deriveHmacWithLatest('UNSUBSCRIBE_KEY', KEYS_DIR, 'unsubscribe_key', $tokenBin);
+    if (is_string($KeyManager) && method_exists($KeyManager, 'deriveHmacCandidates')) {
+        $candidateHashes = $KeyManager::deriveHmacCandidates('UNSUBSCRIBE_KEY', $keysDir, 'unsubscribe_key', $tokenBin);
+    } elseif (is_string($KeyManager) && method_exists($KeyManager, 'deriveHmacWithLatest')) {
+        $v = $KeyManager::deriveHmacWithLatest('UNSUBSCRIBE_KEY', $keysDir, 'unsubscribe_key', $tokenBin);
+        if (!empty($v['hash'])) $candidateHashes[] = $v;
+    } elseif (is_object($KeyManager) && method_exists($KeyManager, 'deriveHmacCandidates')) {
+        $candidateHashes = $KeyManager->deriveHmacCandidates('UNSUBSCRIBE_KEY', $keysDir, 'unsubscribe_key', $tokenBin);
+    } elseif (is_object($KeyManager) && method_exists($KeyManager, 'deriveHmacWithLatest')) {
+        $v = $KeyManager->deriveHmacWithLatest('UNSUBSCRIBE_KEY', $keysDir, 'unsubscribe_key', $tokenBin);
         if (!empty($v['hash'])) $candidateHashes[] = $v;
     }
 } catch (\Throwable $e) {
-    try { Logger::error('deriveHmacCandidates failed on unsubscribe', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
+    $loggerInvoke('error', 'deriveHmacCandidates failed on unsubscribe', null, ['ex' => (string)$e]);
 }
 
-// fallback raw key / pepper / sha256
-if (empty($candidateHashes) && method_exists('KeyManager', 'getUnsubscribeKeyInfo')) {
-    try {
-        $uv = KeyManager::getUnsubscribeKeyInfo(KEYS_DIR);
-        if (!empty($uv['raw']) && is_string($uv['raw'])) {
-            $h = hash_hmac('sha256', $tokenBin, $uv['raw'], true);
-            $candidateHashes[] = ['hash' => $h, 'version' => $uv['version'] ?? null];
-            try { KeyManager::memzero($uv['raw']); } catch (\Throwable $_) {}
-        }
-    } catch (\Throwable $_) {}
-}
-if (empty($candidateHashes) && method_exists('KeyManager', 'getPasswordPepperInfo')) {
-    try {
-        $pinfo = KeyManager::getPasswordPepperInfo(KEYS_DIR);
-        if (!empty($pinfo['raw']) && is_string($pinfo['raw'])) {
-            $h = hash_hmac('sha256', $tokenBin, $pinfo['raw'], true);
-            $candidateHashes[] = ['hash' => $h, 'version' => $pinfo['version'] ?? null];
-            try { KeyManager::memzero($pinfo['raw']); } catch (\Throwable $_) {}
-        }
-    } catch (\Throwable $_) {}
-}
+// explicit fallback: only if KeyManager exposes unsubscribe key info
 if (empty($candidateHashes)) {
-    $candidateHashes[] = ['hash' => hash('sha256', $tokenBin, true), 'version' => null];
-    try { Logger::warn('Unsubscribe: using sha256 fallback for token hash comparison'); } catch (\Throwable $_) {}
+    try {
+        if (is_string($KeyManager) && method_exists($KeyManager, 'getUnsubscribeKeyInfo')) {
+            $uv = $KeyManager::getUnsubscribeKeyInfo($keysDir);
+            if (!empty($uv['raw']) && is_string($uv['raw'])) {
+                $h = hash_hmac('sha256', $tokenBin, $uv['raw'], true);
+                $candidateHashes[] = ['hash' => $h, 'version' => $uv['version'] ?? null];
+                if (method_exists($KeyManager, 'memzero')) {
+                    try { $KeyManager::memzero($uv['raw']); } catch (\Throwable $_) {}
+                }
+            }
+        } elseif (is_object($KeyManager) && method_exists($KeyManager, 'getUnsubscribeKeyInfo')) {
+            $uv = $KeyManager->getUnsubscribeKeyInfo($keysDir);
+            if (!empty($uv['raw']) && is_string($uv['raw'])) {
+                $h = hash_hmac('sha256', $tokenBin, $uv['raw'], true);
+                $candidateHashes[] = ['hash' => $h, 'version' => $uv['version'] ?? null];
+                if (method_exists($KeyManager, 'memzero')) {
+                    try { $KeyManager->memzero($uv['raw']); } catch (\Throwable $_) {}
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        $loggerInvoke('error', 'getUnsubscribeKeyInfo failed on unsubscribe', null, ['ex' => (string)$e]);
+    }
 }
 
-// if no candidates, token invalid
+// If still empty => configuration problem (do not accept sha256 pepper fallback)
+if (empty($candidateHashes)) {
+    $safeMemzero($tokenBin);
+    $loggerInvoke('error', 'No unsubscribe key available (deriveHmacCandidates/withLatest/getUnsubscribeKeyInfo missing)', null, []);
+    return $makeResp(['error' => 'Interná chyba: kľúč pre odhlásenie nie je dostupný.'], 500);
+}
+
+// gather unique binary hashes
 $hashes = [];
-foreach ($candidateHashes as $c) {
-    if (isset($c['hash'])) $hashes[] = $c['hash'];
-}
-if (empty($hashes)) {
-    // memzero token before exit
-    try { KeyManager::memzero($tokenBin); } catch (\Throwable $_) {}
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['error' => 'Token neplatný alebo už ste odhlásení.']);
-    exit;
-}
-
-// dedupe by hex to avoid duplicate placeholders
 $uniq = [];
-foreach ($hashes as $h) {
-    $k = bin2hex($h);
-    if (!isset($uniq[$k])) $uniq[$k] = $h;
+foreach ($candidateHashes as $c) {
+    if (!isset($c['hash'])) continue;
+    $hex = bin2hex($c['hash']);
+    if (isset($uniq[$hex])) continue;
+    $uniq[$hex] = $c['hash'];
+    $hashes[] = $c['hash'];
 }
-$hashes = array_values($uniq);
 
-// IN(...) query
+// nothing to compare?
+if (empty($hashes)) {
+    $safeMemzero($tokenBin);
+    foreach ($candidateHashes as $c) { if (isset($c['hash'])) { $safeMemzero($c['hash']); } }
+    return $makeResp(['error' => 'Token neplatný alebo už ste odhlásení.'], 400);
+}
+
+// perform transactional lookup + update with FOR UPDATE to avoid races
 try {
     $placeholders = implode(',', array_fill(0, count($hashes), '?'));
-    $sql = 'SELECT * FROM newsletter_subscribers WHERE unsubscribe_token_hash IN (' . $placeholders . ') LIMIT 1';
-    $stmt = $pdo->prepare($sql);
+    $selectSql = 'SELECT * FROM newsletter_subscribers WHERE unsubscribe_token_hash IN (' . $placeholders . ') LIMIT 1 FOR UPDATE';
+
+    $pdo->beginTransaction();
+
+    $stmt = $pdo->prepare($selectSql);
     $i = 1;
     foreach ($hashes as $h) {
         $stmt->bindValue($i++, $h, \PDO::PARAM_LOB);
     }
     $stmt->execute();
     $foundRow = $stmt->fetch(\PDO::FETCH_ASSOC);
-} catch (\Throwable $e) {
-    try { Logger::error('Error querying newsletter_subscribers (IN) for unsubscribe', null, ['exception' => (string)$e]); } catch (\Throwable $_) {}
-    // memzero sensitive
-    try { KeyManager::memzero($tokenBin); } catch (\Throwable $_) {}
-    if (!empty($candidateHashes)) {
-        foreach ($candidateHashes as $c) { try { if (isset($c['hash'])) KeyManager::memzero($c['hash']); } catch (\Throwable $_) {} }
-    }
-    http_response_code(500);
-    echo Templates::render('pages/error.php', ['message' => 'Interná chyba.']);
-    exit;
-}
 
-if (empty($foundRow)) {
-    // memzero sensitive
-    try { KeyManager::memzero($tokenBin); } catch (\Throwable $_) {}
-    if (!empty($candidateHashes)) {
-        foreach ($candidateHashes as $c) { try { if (isset($c['hash'])) KeyManager::memzero($c['hash']); } catch (\Throwable $_) {} }
+    if (empty($foundRow)) {
+        // commit empty (no change) and return friendly message
+        $pdo->commit();
+        $safeMemzero($tokenBin);
+        foreach ($candidateHashes as $c) { if (isset($c['hash'])) { $safeMemzero($c['hash']); } }
+        return $makeResp(['error' => 'Token neplatný alebo už ste odhlásení.'], 404);
     }
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['error' => 'Token neplatný alebo už ste odhlásení.']);
-    exit;
-}
 
-// mark unsubscribed
-try {
-    $pdo->beginTransaction();
+    // mark unsubscribed
     $upd = $pdo->prepare("UPDATE newsletter_subscribers
-        SET unsubscribed_at = UTC_TIMESTAMP(6),
+        SET unsubscribe_token_hash = null,
+            unsubscribe_token_key_version = null,
+            unsubscribed_at = UTC_TIMESTAMP(6),
             updated_at = UTC_TIMESTAMP(6)
         WHERE id = :id");
     $upd->bindValue(':id', (int)$foundRow['id'], \PDO::PARAM_INT);
     $upd->execute();
+
     $pdo->commit();
 
-    try { Logger::systemMessage('notice', 'Newsletter unsubscribe', $foundRow['user_id'] ?? null, ['subscriber_id' => (int)$foundRow['id']]); } catch (\Throwable $_) {}
+    // log
+    $loggerInvoke('systemMessage', 'Newsletter unsubscribe', $foundRow['user_id'] ?? null, ['subscriber_id' => (int)$foundRow['id']]);
 
-    // memzero sensitive (token and candidate hashes)
-    try { KeyManager::memzero($tokenBin); } catch (\Throwable $_) {}
-    if (!empty($candidateHashes)) {
-        foreach ($candidateHashes as $c) { try { if (isset($c['hash'])) KeyManager::memzero($c['hash']); } catch (\Throwable $_) {} }
-    }
+    // cleanup sensitive buffers
+    $safeMemzero($tokenBin);
+    foreach ($candidateHashes as $c) { if (isset($c['hash'])) { $safeMemzero($c['hash']); } }
 
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['status'=> 'Unsubscribed']);
-    exit;
+    return $makeResp(['status' => 'Unsubscribed', 'subscriber_id' => (int)$foundRow['id']], 200);
+
 } catch (\Throwable $e) {
     try { if ($pdo->inTransaction()) $pdo->rollBack(); } catch (\Throwable $_) {}
-    try { Logger::systemError($e); } catch (\Throwable $_) {}
-    // memzero sensitive
-    try { KeyManager::memzero($tokenBin); } catch (\Throwable $_) {}
-    if (!empty($candidateHashes)) {
-        foreach ($candidateHashes as $c) { try { if (isset($c['hash'])) KeyManager::memzero($c['hash']); } catch (\Throwable $_) {} }
-    }
-    http_response_code(500);
-    echo Templates::render('pages/newsletter_unsubscribe.php', ['error' => 'Serverová chyba pri odhlasovaní.']);
-    exit;
+    $loggerInvoke('error', 'newsletter_unsubscribe exception', null, ['ex' => (string)$e]);
+    // cleanup sensitive
+    $safeMemzero($tokenBin);
+    foreach ($candidateHashes as $c) { if (isset($c['hash'])) { $safeMemzero($c['hash']); } }
+    return $makeResp(['error' => 'Serverová chyba pri odhlasovaní.'], 500);
 }

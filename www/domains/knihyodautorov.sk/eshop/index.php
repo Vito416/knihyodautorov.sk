@@ -190,7 +190,6 @@ $routes = [
     'order'          => 'order.php',
     'login'          => 'login.php',
     'logout'         => 'logout.php',
-    'register'       => 'register.php',
     'verify'         => 'verify.php',
     'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
@@ -213,7 +212,7 @@ $routes = [
     'pattern' => 'subscribe',
     'file'    => 'actions/subscribe.php',
     'methods' => ['POST'],
-    'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF','csrf','db'],
+    'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF','db'],
     'is_api'  => true,
     ],
     'csrf_token' => [
@@ -222,6 +221,27 @@ $routes = [
     'methods' => ['GET'],
     'share'   => ['CSRF'],
     'is_api'  => true,
+    ],
+    'newsletter_confirm' => [
+    'pattern' => 'newsletter_confirm',
+    'file'    => 'newsletter_confirm.php',
+    'methods' => ['GET'],
+    'share'   => ['db','database','KEYS_DIR','KeyManager','Logger','Mailer','Crypto'],
+    'is_api'  => false,
+    ],
+    'newsletter_unsubscribe' => [
+    'pattern' => 'newsletter_unsubscribe',
+    'file'    => 'newsletter_unsubscribe.php',
+    'methods' => ['GET'],
+    'share'   => ['db','database','KEYS_DIR','KeyManager','Logger'],
+    'is_api'  => false,
+    ],
+    'register' => [
+        'pattern' => 'register',
+        'file'    => 'actions/register.php',
+        'methods' => ['GET', 'POST'],
+        'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF','csrfToken','db','KeyManager','Validator','LoginLimiter','Crypto'],
+        'is_api'  => true,
     ],
 ];
 

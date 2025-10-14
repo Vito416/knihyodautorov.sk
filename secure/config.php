@@ -66,7 +66,8 @@ $config = [
     'pass' => $_ENV['SMTP_PASS'] ?? '',
     'from_email' => $_ENV['SMTP_FROM_EMAIL'] ?? '',
     'from_name' => $_ENV['SMTP_FROM_NAME'] ?? '',
-    'secure' => $_ENV['SMTP_SECURE'] ?? '', // 'ssl'|'tls' or ''
+    'to_mail' => $_ENV['SMTP_TO_MAIL'] ?? '',
+    'secure' => $_ENV['SMTP_SECURE'] ?? '', // 'ssl'|'tls' or ''s
     'timeout' => 10,
     'max_retries' => 6,
     ],

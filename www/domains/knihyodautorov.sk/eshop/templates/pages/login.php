@@ -9,8 +9,6 @@
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Přihlášení';
 $navActive = $navActive ?? 'account';
-$csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
-
 ?>
 <article class="auth-page login-page">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -32,7 +30,7 @@ $csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
             <input id="password" name="password" type="password" required autocomplete="current-password" value="">
         </div>
 
-        <?= CSRF::hiddenInput('csrf') ?>
+        <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 
         <div class="form-row">
             <button type="submit" class="btn btn-primary">Přihlásit</button>
@@ -43,5 +41,9 @@ $csrf = isset($csrf_token) && is_string($csrf_token) ? $csrf_token : null;
             <span> | </span>
             <a href="/eshop/register">Registrovat se</a>
         </div>
+        <?php if (!empty($_SESSION['register_success'])): ?>
+            <div class="success">Registrácia úspešná. Skontrolujte svoj e-mail pre overenie účtu.</div>
+            <?php unset($_SESSION['register_success']); ?>
+        <?php endif; ?>
     </form>
 </article>

@@ -78,6 +78,7 @@ $appName = $_ENV['APP_DOMAIN'] ?? 'Knižnica Stratégov';
 <script defer src="/eshop/js/app.js"></script>
 <script defer src="/eshop/js/main-page.js"></script>
 <script defer src="/eshop/js/header.js"></script>
+<script defer src="/eshop/js/register.js"></script>
 <script defer src="/eshop/js/header-cart.js"></script>
 <script defer src="/eshop/js/catalog.js"></script>
 <script defer src="/eshop/js/cart-ajax-flash.js"></script>

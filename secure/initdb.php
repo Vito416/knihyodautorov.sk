@@ -150,16 +150,6 @@ if (isset($_POST['create_db'])) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "user_identities");
 
-    // Tabuľka roles
-    $sql = "CREATE TABLE IF NOT EXISTS roles (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        nazov VARCHAR(100) NOT NULL UNIQUE,
-        popis TEXT NULL,
-        created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-    createTable($pdo, $sql, "roles");
-
     // Tabuľka permissions
     $sql = "CREATE TABLE IF NOT EXISTS permissions (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -169,28 +159,6 @@ if (isset($_POST['create_db'])) {
         updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
     createTable($pdo, $sql, "permissions");
-
-    // Tabuľka user_roles
-    $sql = "CREATE TABLE IF NOT EXISTS user_roles (
-        user_id BIGINT UNSIGNED NOT NULL,
-        role_id BIGINT UNSIGNED NOT NULL,
-        assigned_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-        PRIMARY KEY (user_id, role_id),
-        FOREIGN KEY (user_id) REFERENCES pouzivatelia(id) ON DELETE CASCADE,
-        FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-    createTable($pdo, $sql, "user_roles");
-
-    // Tabuľka role_permissions
-    $sql = "CREATE TABLE IF NOT EXISTS role_permissions (
-        role_id BIGINT UNSIGNED NOT NULL,
-        permission_id BIGINT UNSIGNED NOT NULL,
-        PRIMARY KEY (role_id, permission_id),
-        FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
-        FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE,
-        INDEX idx_role_permissions_permission_id (permission_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-    createTable($pdo, $sql, "role_permissions");
 
     // Tabuľka two_factor
     $sql = "CREATE TABLE IF NOT EXISTS two_factor (
@@ -1042,11 +1010,6 @@ if (isset($_POST['create_db'])) {
 if (isset($_POST['insert_demo'])) {
     // 2. Vloží demo dáta
     if (!defined('KEYS_DIR')) define('KEYS_DIR', $config['paths']['keys']);
-    // Používateľské roly
-    executeQuery($pdo, "INSERT IGNORE INTO roles (nazov, popis) VALUES
-        ('Majiteľ','Najvyššia rola'),
-        ('Správca','Admin účtu'),
-        ('Zákazník','Bežný používateľ')", "Role");
 
     // --- vytvoření admin účtu se zahashovaným + zašifrovaným emailem ---
     // Pozn.: tento skript VYPOVÍDÁ plain heslo (jak požaduješ).
@@ -1068,7 +1031,7 @@ if (isset($_POST['insert_demo'])) {
         // ----- získat pepper (KeyManager preferred, fallback env) -----
         $pepRaw = null;
         $hesloKeyVer = null;
-        if (class_exists('KeyManager')) {
+        if (class_exists(KeyManager::class, true)) {
             try {
                 $pinfo = KeyManager::getRawKeyBytes('PASSWORD_PEPPER', $keysDir, 'password_pepper', false, 32);
                 if (!empty($pinfo['raw']) && is_string($pinfo['raw']) && strlen($pinfo['raw']) === 32) {
@@ -1103,7 +1066,7 @@ if (isset($_POST['insert_demo'])) {
         $pwAlgo = $pwInfo['algoName'] ?? null;
 
         // uvolnit paměť pepperu pokud to KeyManager podporuje
-        if ($pepRaw !== null && class_exists('KeyManager')) {
+        if ($pepRaw !== null && class_exists(KeyManager::class, true)) {
             try { KeyManager::memzero($pepRaw); } catch (Throwable $_) {}
         }
 
@@ -1111,7 +1074,7 @@ if (isset($_POST['insert_demo'])) {
         $emailNorm = strtolower(trim($adminEmail));
         $emailHashBin = null;
         $emailHashVer = null;
-        if (class_exists('KeyManager')) {
+        if (class_exists(KeyManager::class, true)) {
             try {
                 $h = KeyManager::deriveHmacWithLatest('EMAIL_HASH_KEY', $keysDir, 'email_hash_key', $emailNorm);
                 $emailHashBin = $h['hash'] ?? null;
@@ -1125,7 +1088,7 @@ if (isset($_POST['insert_demo'])) {
         // ----- optional email encryption (Crypto) -----
         $emailEncPayload = null;
         $emailEncKeyVer = null;
-        if (class_exists('Crypto') && class_exists('KeyManager')) {
+        if (class_exists(Crypto::class, true) && class_exists(KeyManager::class, true)) {
             try {
                 Crypto::initFromKeyManager($keysDir);
                 $emailEncPayload = Crypto::encrypt($emailNorm, 'binary'); // versioned binary payload
@@ -1168,13 +1131,6 @@ if (isset($_POST['insert_demo'])) {
 
         $stmt->execute();
         $adminId = $pdo->lastInsertId();
-
-        // přidání role (původní logika)
-        $roleSpravca = $pdo->query("SELECT id FROM roles WHERE nazov = 'Majiteľ'")->fetchColumn();
-        if ($roleSpravca) {
-            $ins = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)");
-            $ins->execute([$adminId, $roleSpravca]);
-        }
 
         $pdo->commit();
 

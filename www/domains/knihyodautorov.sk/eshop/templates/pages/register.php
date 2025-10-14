@@ -1,21 +1,17 @@
 <?php
 // templates/pages/register.php
-// TODO: potvrzení newsletteru se objevuje i když už existuje, 
-// není nutné obe hesla stejné ani potvrzení hesla není vyžadováno
-// přidat capcha / nechat LoginLimiter záleží...
-// Expects (optional):
-//  - $pageTitle (string|null)
-//  - $user (array|null)
-//  - $navActive (string|null)
-//  - $error (string|null)        // chybová zpráva nebo null
+// defensive register template
 
 $pageTitle = isset($pageTitle) ? (string)$pageTitle : 'Registrácia';
-$navActive = $navActive ?? 'account';
+$navActive  = $navActive ?? 'account';
 
-// safe prefill from previous POST (controllers may pass explicit values instead)
-$pref_given  = htmlspecialchars($_POST['given_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$pref_family = htmlspecialchars($_POST['family_name'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-$pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+// ensure these are defined and safe
+$existingNewsletter = $existingNewsletter ?? false;
+$form_pref = $form_pref ?? (is_array($form_pref ?? null) ? $form_pref : []);
+// safe prefill order: handler-provided form_pref -> POST -> empty
+$pref_given  = htmlspecialchars($form_pref['given_name'] ?? ($_POST['given_name'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$pref_family = htmlspecialchars($form_pref['family_name'] ?? ($_POST['family_name'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+$pref_email  = htmlspecialchars($form_pref['email'] ?? ($_POST['email'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 ?>
 <article class="auth-page register-page">
     <h1><?= htmlspecialchars($pageTitle, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></h1>
@@ -24,7 +20,7 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
         <div class="form-error" role="alert"><?= htmlspecialchars((string)$error, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div>
     <?php endif; ?>
 
-    <form method="post" action="/eshop/register" class="form form-register" autocomplete="off" novalidate>
+    <form method="post" action="/actions/register" onsubmit="event.preventDefault(); submitRegistration(this);" class="form form-register" autocomplete="off" novalidate>
         <div class="form-row">
             <label for="given_name">Meno</label>
             <input id="given_name" name="given_name" type="text" required maxlength="100" value="<?= $pref_given ?>">
@@ -52,7 +48,7 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
         </div>
 
         <div class="form-row">
-            <?= CSRF::hiddenInput('csrf') ?>
+            <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
             <input type="hidden" name="newsletter_subscribe" id="newsletter_subscribe" value="0">
         </div>
 
@@ -63,18 +59,25 @@ $pref_email  = htmlspecialchars($_POST['email'] ?? '', ENT_QUOTES | ENT_SUBSTITU
         <div class="form-row form-links">
             <a href="/eshop/login">Už mám účet — prihlásiť sa</a>
         </div>
+        <div id="register-message" class="form-message"></div>
     </form>
-<?php if (empty($existingNewsletter) || !$existingNewsletter): ?>
+
+<?php if (empty($existingNewsletter)): ?>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.querySelector('.form-register');
         if (!form) return;
 
         form.addEventListener('submit', function(e) {
-            // jen pokud checkbox/skrytý popup ještě nebyl potvrzen
-            let subscribe = confirm("Chcete dostávať náš newsletter?");
-            document.getElementById('newsletter_subscribe').value = subscribe ? "1" : "0";
-            // pokračujeme v odeslání
+            // jednoduché potvrdenie — môžeš nahradiť modalom / reCAPTCHA
+            try {
+                var subscribe = confirm("Chcete dostávať náš newsletter?");
+                document.getElementById('newsletter_subscribe').value = subscribe ? "1" : "0";
+            } catch (err) {
+                // ak niečo zlyhá, necháme predvolenú hodnotu "0"
+                document.getElementById('newsletter_subscribe').value = "0";
+            }
+            // pokračujeme v odoslaní
         });
     });
     </script>
