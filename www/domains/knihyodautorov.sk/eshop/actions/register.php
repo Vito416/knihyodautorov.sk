@@ -17,7 +17,7 @@ function respondJson(array $payload, int $status = 200): void {
         header('Content-Type: application/json; charset=utf-8');
     }
     http_response_code($status);
-     $payload['csrfToken'] = \BlackCat\Core\Security\CSRF::token();
+    try { $payload['csrfToken'] = \BlackCat\Core\Security\CSRF::token();} catch (\Throwable $_) {}
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     // Ensure script stops after sending
     exit;

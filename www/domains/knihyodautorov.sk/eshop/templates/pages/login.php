@@ -45,5 +45,9 @@ $navActive = $navActive ?? 'account';
             <div class="success">Registrácia úspešná. Skontrolujte svoj e-mail pre overenie účtu.</div>
             <?php unset($_SESSION['register_success']); ?>
         <?php endif; ?>
+        <?php if (!empty($_SESSION['verify_success'])): ?>
+            <div class="success">Váš e‑mail bol úspešne overený a účet aktivovaný.</div>
+            <?php unset($_SESSION['verify_success']); ?>
+        <?php endif; ?>
     </form>
 </article>

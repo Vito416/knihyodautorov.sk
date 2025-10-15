@@ -188,9 +188,7 @@ $routes = [
     'checkout'       => 'checkout.php',
     'order_submit'       => '/actions/order_submit.php',
     'order'          => 'order.php',
-    'login'          => 'login.php',
     'logout'         => 'logout.php',
-    'verify'         => 'verify.php',
     'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
     'faq'         => 'faq.php',
@@ -242,6 +240,20 @@ $routes = [
         'methods' => ['GET', 'POST'],
         'share'   => ['config','Logger','MailHelper','Mailer','Recaptcha','KEYS_DIR','CSRF','csrfToken','db','KeyManager','Validator','LoginLimiter','Crypto'],
         'is_api'  => true,
+    ],
+    'login' => [
+    'pattern' => 'login',
+    'file'    => 'actions/login.php',
+    'methods' => ['GET', 'POST'],
+    'share'   => ['config','Logger','db','Auth','SessionManager','KeyManager','CSRF','csrfToken','KEYS_DIR','Crypto'],
+    'is_api'  => true,
+    ],
+    'verify' => [
+    'pattern' => 'verify',
+    'file'    => 'actions/verify.php',
+    'methods' => ['GET', 'POST'],
+    'share'   => ['KeyManager','Logger','CSRF','db','KEYS_DIR','csrfToken'],
+    'is_api'  => true,
     ],
 ];
 
