@@ -83,6 +83,164 @@
     });
   };
 
+  // Robustní extraktor počtu — umísti to do vyššího scope (před CartBadge IIFE)
+  // (zajistí, že ho uvidí i fetchMiniCart()/clearCart() atd.)
+  function extractCount(payload) {
+    if (payload == null) return 0;
+
+    if (typeof payload === 'number' && Number.isFinite(payload)) return Math.max(0, Math.floor(payload));
+    if (typeof payload === 'string') {
+      const n = Number(payload);
+      if (!Number.isNaN(n) && Number.isFinite(n)) return Math.max(0, Math.floor(n));
+    }
+
+    const obj = payload;
+
+    const tryNum = (v) => (v === undefined || v === null) ? undefined : (Number(v) || 0);
+
+    const candidates = [
+      tryNum(obj.total_count),
+      tryNum(obj.items_total_qty),
+      tryNum(obj.items_count),
+      tryNum(obj.count),
+      tryNum(obj.total)
+    ];
+    for (const c of candidates) {
+      if (c !== undefined && !Number.isNaN(c)) return Math.max(0, Math.floor(c));
+    }
+
+    if (obj.cart && typeof obj.cart === 'object') {
+      const fromCart = extractCount(obj.cart);
+      if (fromCart > 0) return fromCart;
+    }
+
+    if (Array.isArray(obj.items) && obj.items.length) {
+      const sum = obj.items.reduce((s, it) => {
+        if (!it) return s;
+        const q = Number(it.qty ?? it.quantity ?? it.amount ?? it.qty_sum ?? 0);
+        return s + (Number.isFinite(q) ? Math.max(0, q) : 0);
+      }, 0);
+      if (sum > 0) return sum;
+      return obj.items.length;
+    }
+
+    if (Array.isArray(payload)) {
+      const sum = payload.reduce((s, it) => {
+        if (!it) return s;
+        const q = Number(it.qty ?? it.quantity ?? 0);
+        return s + (Number.isFinite(q) ? Math.max(0, q) : 0);
+      }, 0);
+      if (sum > 0) return sum;
+      return payload.length;
+    }
+
+    return 0;
+  }
+
+  /* ### Unified CartBadge manager ### */
+  (function () {
+    const getBadgeEl = () => document.querySelector('[data-header-badge]') || document.querySelector('[data-header-badge]');
+
+    // bezpečný update DOMu jedno místo
+    function applyBadge(count, { pulse = false } = {}) {
+      const badge = getBadgeEl();
+      const cartLink = document.querySelector('[data-header-link="cart"]');
+
+      // pokud neexistuje badge -> vytvoř ji
+      let b = badge;
+      if (!b && cartLink) {
+        const el = document.createElement('span');
+        el.className = 'header_cart-badge header_cart-badge--empty visually-hidden';
+        el.setAttribute('data-header-badge', '0');
+        el.setAttribute('aria-hidden', 'true');
+        el.textContent = '0';
+        cartLink.appendChild(el);
+        b = el;
+      }
+      if (!b) return;
+
+      const n = Number(count) || 0;
+      b.textContent = String(n > 0 ? n : '0');
+      b.setAttribute('data-header-badge', String(n));
+      b.dataset.headerBadge = String(n);
+
+      if (n > 0) {
+        b.classList.remove('header_cart-badge--empty', 'visually-hidden');
+        b.removeAttribute('aria-hidden');
+        b.setAttribute('role','status');
+        b.setAttribute('aria-live','polite');
+        b.setAttribute('aria-atomic','true');
+        if (cartLink) {
+          cartLink.setAttribute('data-header-cart-count', String(n));
+          cartLink.setAttribute('aria-label', `Košík, ${n} položiek`);
+          cartLink.setAttribute('title', `Košík, ${n} položiek`);
+        }
+      } else {
+        b.classList.add('header_cart-badge--empty', 'visually-hidden');
+        b.setAttribute('aria-hidden','true');
+        if (cartLink) {
+          cartLink.removeAttribute('data-header-cart-count');
+          cartLink.setAttribute('aria-label','Košík');
+          cartLink.setAttribute('title','Košík');
+        }
+      }
+
+      if (pulse) {
+        try { b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); setTimeout(()=> b.classList.remove('pulse'), 900); } catch(_) {}
+      }
+    }
+
+    // in-flight protection: pouze poslední odpověď se uplatní
+    let lastReqId = 0;
+    async function fetchAndApply({ pulse = false } = {}) {
+      const reqId = ++lastReqId;
+      try {
+        const res = await fetch('/eshop/cart_mini', { credentials: 'same-origin' });
+        if (reqId !== lastReqId) return; // stale
+        if (!res.ok) {
+          console.warn('Cart fetch failed', res.status);
+          return;
+        }
+        const json = await res.json().catch(()=>null);
+        if (reqId !== lastReqId) return;
+        const cnt = extractCount(json);
+        applyBadge(cnt, { pulse });
+        // emit event for backward compatibility
+        try { document.dispatchEvent(new CustomEvent('cart:updated', { detail: { cart: json || null } })); } catch(_) {}
+      } catch (err) {
+        if (reqId !== lastReqId) return;
+        console.warn('Cart fetch error', err);
+      }
+    }
+
+    // veřejné API (jediné místo které používej v dalších skriptech)
+    window.CartBadge = window.CartBadge || {
+      update: (count, doPulse = false) => applyBadge(count, { pulse: !!doPulse }),
+      fetchAndUpdate: (opts = {}) => fetchAndApply(opts),
+      // helper pro start polling — vrátí stop funkci
+      startPolling: (interval = 30_000) => {
+        let stopped = false;
+        const tick = async () => { if (stopped) return; await fetchAndApply({ pulse: false }); if (!stopped) timer = setTimeout(tick, interval); };
+        let timer = setTimeout(tick, 0);
+        return () => { stopped = true; clearTimeout(timer); };
+      }
+    };
+
+    // INITIAL: použij server-rendered data-header-cart-count pokud je, jinak udělej fetch
+    try {
+      const cartLink = document.querySelector('[data-header-link="cart"]');
+      const initCountAttr = cartLink?.getAttribute('data-header-cart-count');
+      if (typeof initCountAttr !== 'undefined' && initCountAttr !== null) {
+        window.CartBadge.update(Number(initCountAttr) || 0, false);
+        // pokud je >0, synchronizuj kompletní stav (nepovinné)
+        if ((Number(initCountAttr) || 0) > 0) window.CartBadge.fetchAndUpdate();
+      } else {
+        // žádný server-side count => načti
+        window.CartBadge.fetchAndUpdate();
+      }
+    } catch (_) {}
+  })();
+
   /* -------------------- THEME -------------------- */
   const THEME_KEY = 'epic:theme';
   const themeToggle = $('[data-header-action="theme-toggle"]');
@@ -341,24 +499,45 @@
   };
   createMinicartStructure(miniCartEl);
 
-  const updateCartBadge = (n) => {
-    const count = Number(n) || 0;
-    if (cartBadge) {
-      cartBadge.textContent = count > 0 ? String(count) : '';
-      cartBadge.setAttribute('data-header-badge', String(count));
-      if (count > 0) {
-        cartBadge.classList.remove('header_cart-badge--empty');
-        cartBadge.removeAttribute('aria-hidden');
-        cartBadge.setAttribute('role','status');
-        cartBadge.setAttribute('aria-live','polite');
-        rafPulse(cartBadge);
-      } else {
-        cartBadge.classList.add('header_cart-badge--empty');
-        cartBadge.setAttribute('aria-hidden','true');
-      }
+// --- REPLACEMENT: delegator to unified CartBadge (hotfix) ---
+const updateCartBadge = (n, doPulse = true) => {
+  const count = Number(n) || 0;
+  // preferované jediné místo: window.CartBadge.update
+  if (window.CartBadge && typeof window.CartBadge.update === 'function') {
+    try {
+      window.CartBadge.update(count, !!doPulse);
+      return;
+    } catch (_) { /* fallback dál */ }
+  }
+
+  // fallback (stará logika, bez pulse)
+  const b = document.querySelector('[data-header-badge]');
+  if (b) {
+    b.textContent = count > 0 ? String(count) : '';
+    b.setAttribute('data-header-badge', String(count));
+    if (count > 0) {
+      b.classList.remove('header_cart-badge--empty', 'visually-hidden');
+      b.removeAttribute('aria-hidden');
+      b.setAttribute('role','status');
+      b.setAttribute('aria-live','polite');
+      b.setAttribute('aria-atomic','true');
+    } else {
+      b.classList.add('header_cart-badge--empty', 'visually-hidden');
+      b.setAttribute('aria-hidden','true');
     }
-    if (cartLink) { cartLink.setAttribute('data-header-cart-count', String(count)); cartLink.setAttribute('aria-label', count > 0 ? `Košík, ${count} položiek` : 'Košík'); }
-  };
+  }
+  if (cartLink) {
+    if (count > 0) {
+      cartLink.setAttribute('data-header-cart-count', String(count));
+      cartLink.setAttribute('aria-label', `Košík, ${count} položiek`);
+      cartLink.setAttribute('title', `Košík, ${count} položiek`);
+    } else {
+      cartLink.removeAttribute('data-header-cart-count');
+      cartLink.setAttribute('aria-label', 'Košík');
+      cartLink.setAttribute('title', 'Košík');
+    }
+  }
+};
 
   // remove single item by id (rowid or id)
   const removeCartItem = (id) => {
@@ -416,8 +595,7 @@ const applyCsrfToDOM = (token) => {
 
       // update badge immediately using returned cart summary (robust)
       if (data && data.cart) {
-        const newCount = Number(data.cart.items_total_qty ?? data.cart.items_count ?? 0);
-        updateCartBadge(newCount);
+        updateCartBadge(extractCount(data.cart ?? data));
       } else {
         updateCartBadge(0);
       }
@@ -530,7 +708,7 @@ const applyCsrfToDOM = (token) => {
 
           // show actions (clear/view/checkout)
           if (actions) actions.style.display = 'flex';
-          updateCartBadge(json.total_count || json.items.length || 0);
+          updateCartBadge(extractCount(json));
         } else {
           emptyEl.setAttribute('aria-hidden','false');
           listEl.setAttribute('aria-hidden','true');
@@ -671,26 +849,6 @@ const applyCsrfToDOM = (token) => {
     miniCartEl.addEventListener('focusin', () => { clearTimeout(closeTimer); }, true);
     miniCartEl.addEventListener('focusout', () => { clearTimeout(openTimer); closeTimer = setTimeout(()=> doClose(), HOVER_CLOSE_DELAY); }, true);
   }
-
-  try {
-    const initialCount = Number(document.querySelector('[data-header-cart-count]')?.getAttribute('data-header-cart-count')) || 0;
-    if (initialCount > 0) fetchMiniCart();
-  } catch (_) {}
-
-  /* SSE placeholder — unchanged but safe */
-  (function setupSSE() {
-    if (!('EventSource' in window)) return;
-    try {
-      const es = new EventSource('/eshop/api/events.php');
-      es.addEventListener('message', (e) => {
-        try {
-          const d = JSON.parse(e.data);
-          if (d && d.type === 'cart') updateCartBadge(d.count);
-        } catch (_) {}
-      });
-      es.addEventListener('error', () => { es.close(); });
-    } catch (_) {}
-  })();
 
   /* header shrink on scroll */
   const headerRoot = document.querySelector('.header_root');

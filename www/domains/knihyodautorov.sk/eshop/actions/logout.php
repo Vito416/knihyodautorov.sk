@@ -74,7 +74,6 @@ if ($csrfValid !== true) {
 // --- destroy session ---
 try {
     $call($SessionManager,'destroySession', [$db]);
-    $loggerInvoke('session','User logged out successfully', $_SESSION['user_id'] ?? null);
 } catch (\Throwable $e) {
     $loggerInvoke('systemError','logout exception: '.(string)$e, $_SESSION['user_id'] ?? null);
     respondJson(['ok'=>false,'error'=>'Server error při odhlášení.'],500);

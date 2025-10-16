@@ -191,7 +191,6 @@ $routes = [
     'checkout'       => 'checkout.php',
     'order_submit'       => '/actions/order_submit.php',
     'order'          => 'order.php',
-    'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
     'faq'         => 'faq.php',
     'google'         => 'google_auth.php',
@@ -255,6 +254,13 @@ $routes = [
     'file'    => 'actions/logout.php',
     'methods' => ['POST'],
     'share'   => ['Logger','db','SessionManager','KeyManager','CSRF'],
+    'is_api'  => true,
+    ],
+    'password_reset' => [
+    'pattern' => 'password_reset',
+    'file'    => 'actions/password_reset.php',
+    'methods' => ['GET', 'POST'],
+    'share'   => ['KeyManager','Logger','Validator','CSRF','db','Mailer','MailHelper','KEYS_DIR','csrfToken'],
     'is_api'  => true,
     ],
     'verify' => [

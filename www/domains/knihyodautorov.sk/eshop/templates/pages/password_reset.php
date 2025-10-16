@@ -38,9 +38,7 @@ $message = isset($message) ? (string)$message : null;
                 <label for="website">Web</label>
                 <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" value="">
             </div>
-
-            <?= CSRF::hiddenInput('csrf') ?>
-
+            <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
             <div class="form-row">
                 <button type="submit" class="btn btn-primary">Požiadať o obnovenie hesla</button>
             </div>

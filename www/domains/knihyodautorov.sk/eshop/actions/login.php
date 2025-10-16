@@ -16,7 +16,9 @@ function respondJson(array $payload, int $status = 200): void {
         header('Content-Type: application/json; charset=utf-8');
     }
     http_response_code($status);
-    $payload['csrfToken'] = \BlackCat\Core\Security\CSRF::token();
+    if (!isset($payload['success']) || $payload['success'] !== true) {
+        $payload['csrfToken'] = \BlackCat\Core\Security\CSRF::token();
+    }
     echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -195,7 +197,7 @@ try {
     $safeMemzero($password);
     $loggerInvoke('auth', 'login_success', $userId);
 
-    respondJson(['success' => true, 'redirect' => '/eshop'], 200);
+    respondJson(['success' => true, 'message' => 'Úspešne prihlásený.'], 200);
 } catch (\Throwable $e) {
     $loggerInvoke('systemError', 'login: exception', null, ['ex' => (string)$e]);
     respondJson(['success' => false, 'message' => 'Chyba pri prihlásení (server).'], 500);

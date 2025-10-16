@@ -231,52 +231,33 @@
     on(document, 'keydown', function (ev) { if (ev.key === 'Escape' && modal.classList.contains('open')) close(); });
   }
 
-  /* ---------- ambient audio ---------- */
-  function initAmbient() {
-    const btn = qs('#ambient-toggle');
-    if (!btn) return;
-    const audio = new Audio('/assets/ambient.mp3');
-    audio.loop = true;
-    audio.preload = 'auto';
-    let playing = false;
-    function setState(p) {
-      playing = !!p;
-      btn.setAttribute('aria-pressed', String(playing));
-      btn.textContent = playing ? '🔊 Ambient' : '🎵 Ambient';
-    }
-    on(btn, 'click', function () {
-      if (!playing) {
-        audio.play().then(()=> setState(true)).catch(()=> setState(false));
-      } else {
-        audio.pause();
-        setState(false);
-      }
-    });
-    // stop on page hide
-    document.addEventListener('visibilitychange', function () {
-      if (document.hidden && playing) { audio.pause(); setState(false); }
-    });
-  }
+  // připojíme jen polling, ale použijeme existující CartBadge.update
+  function initCartBadgeWrapper() {
+    let stopped = false;
+    const timerInterval = 30_000;
 
-  /* ---------- cart badge updater (kept) ---------- */
-  function initCartBadge(options = {}) {
-    const badge = qs('.cart-badge');
-    if (!badge) return () => {};
-    const url = options.endpoint || '/eshop/api/cart_count.php';
-    const refreshInterval = options.interval || 30 * 1000;
-    async function updateOnce() {
+    async function update() {
+      if (stopped) return;
       try {
-        const res = await safeFetch(url, { method: 'GET', credentials: 'same-origin' });
-        if (!res || !res.ok) return;
-        const json = await res.json();
-        const count = parseInt((json && json.count) || 0, 10) || 0;
-        badge.textContent = count > 0 ? String(count) : '';
-        badge.setAttribute('aria-label', count + ' položiek v košíku');
-      } catch (e) {}
+        const res = await safeFetch('/eshop/cart_mini', { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => null);
+        const count = json ? Number(json.items_total_qty ?? json.items_count ?? 0) : 0;
+        if (window.CartBadge?.update) window.CartBadge.update(count, false);
+      } catch (e) {
+        console.warn('Cart badge refresh failed', e);
+      }
     }
-    updateOnce();
-    const timer = setInterval(updateOnce, refreshInterval);
-    return () => clearInterval(timer);
+
+    // start polling
+    update();
+    const timer = setInterval(update, timerInterval);
+
+    // stop function
+    return function stop() {
+      stopped = true;
+      clearInterval(timer);
+    };
   }
 
   /* ---------- init all ---------- */
@@ -287,25 +268,16 @@
     try { initThemeToggle(); } catch (e) { console.warn('theme',e); }
     try { initPreviewModal(); } catch (e) { console.warn('preview',e); }
     try { initAmbient(); } catch (e) { /* ignore */ }
-    let stopCart = () => {};
-    try { stopCart = initCartBadge(); } catch (e) { console.warn('cart',e); }
-    window.App = window.App || {};
-    window.App.safeFetch = safeFetch;
-    window.App.updateCartBadge = function () {
-      const badge = qs('.cart-badge');
-      if (!badge) return;
-      safeFetch('/eshop/api/cart_count.php', { method: 'GET', credentials: 'same-origin' })
-        .then(r => (r && r.ok) ? r.json() : null)
-        .then(json => {
-          const count = parseInt((json && json.count) || 0, 10) || 0;
-          badge.textContent = count > 0 ? String(count) : '';
-          badge.setAttribute('aria-label', count + ' položiek v košíku');
-        })
-        .catch(()=>{});
-    };
-    window.App.stopCartBadge = stopCart;
+
+    try { 
+      window.App = window.App || {};
+      window.App.stopCartBadge = initCartBadgeWrapper(); 
+    } catch (e) { 
+      console.warn('cart wrapper', e); 
+    }
   }
 
+  // spustíme initAll jen jednou
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAll);
   } else {
