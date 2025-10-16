@@ -909,9 +909,9 @@ if (isset($_POST['create_db'])) {
     $sql = "CREATE TABLE IF NOT EXISTS email_verifications (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         user_id BIGINT UNSIGNED NOT NULL,
-        token_hash CHAR(64) NOT NULL,
+        token_hash CHAR(64) NULL,
         selector CHAR(12) NOT NULL,
-        validator_hash VARBINARY(32) NOT NULL, -- raw HMAC-SHA256
+        validator_hash VARBINARY(32) NULL, -- raw HMAC-SHA256
         key_version VARCHAR(64) DEFAULT NULL,
         expires_at DATETIME(6) NOT NULL,
         created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),

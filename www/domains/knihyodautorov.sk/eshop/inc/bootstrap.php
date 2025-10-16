@@ -110,11 +110,23 @@ try {
     // continue as guest
     $userId = null;
 }
+// -------------------- FileCache pro CSRF (šifrovaná) --------------------
+$csrfCacheDir = $PROJECT_ROOT . '/cache/csrf';
+if (!is_dir($csrfCacheDir)) {
+    if (!@mkdir($csrfCacheDir, 0700, true) && !is_dir($csrfCacheDir)) {
+        $logBootstrapError('Failed to create CSRF cache dir: ' . $csrfCacheDir);
+        http_response_code(500);
+        exit;
+    }
+}
+
+// FileCache instance (už se šifrováním)
+$csrfFileCache = new FileCache($csrfCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KEY', 'cache_crypto', 2, 500*1024*1024, 200000, 2*1024*1024);
 
 // -------------------- CSRF init using loader (best-effort) --------------------
 require_once __DIR__ . '/loaders/csrf_loader.php';
 try {
-    init_csrf_from_session();
+    init_csrf_from_session($csrfFileCache, $loggerShim);
 } catch (Throwable $e) {
     $logBootstrapError('CSRF init failed', $e);
 }

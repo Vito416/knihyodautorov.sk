@@ -7,7 +7,6 @@ $appName       = $_ENV['APP_NAME'] ?? 'Knižnica Stratégov';
 $navActive     = $navActive ?? 'home';
 $user          = is_array($user ?? null) ? $user : null;
 $cart_count    = isset($cart_count) ? (int) $cart_count : 0;
-$csrf_token    = isset($csrf_token) ? (string) $csrf_token : null;
 
 $displayName = $user['display_name'] ?? (($user['given_name'] ?? '') . ' ' . ($user['family_name'] ?? ''));
 $displayName = trim($displayName) ?: null;
@@ -20,6 +19,7 @@ $activeClass = fn(string $k) => $navActive === $k ? ' active header_nav-item--ac
 $nav_list_id = 'header_nav_list';
 $categories_dropdown_id = 'header_nav_categories';
 $mobile_nav_id = 'header_nav_mobile';
+// odkomentuj si to až bude potřeba... echo('header: user type=' . gettype($user) . ' dump=' . print_r($user, true));
 ?>
 <!doctype html>
 <html lang="sk">
@@ -34,9 +34,7 @@ $mobile_nav_id = 'header_nav_mobile';
   <link rel="stylesheet" href="/eshop/css/catalog.css" media="screen">
   <link rel="stylesheet" href="/eshop/css/flash.css">
   <link rel="stylesheet" href="/eshop/css/checkout.css">
-  <?php if ($csrf_token): ?>
-    <meta name="csrf-token" content="<?= htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-  <?php endif; ?>
+  <meta name="csrf-token" content="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 </head>
 <body class="page-<?= htmlspecialchars(preg_replace('/[^a-z0-9_-]/', '', strtolower($navActive)), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?> epic-theme">
 
@@ -56,9 +54,7 @@ $mobile_nav_id = 'header_nav_mobile';
     <!-- search -->
     <div class="header_center">
       <form class="header_search-form" action="/eshop/catalog" method="get" role="search" aria-label="Vyhľadávanie kníh" data-header-form="search">
-        <?php if ($csrf_token): ?>
-          <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-        <?php endif; ?>
+        <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
         <div class="header_search-wrap">
           <label for="header_search_q" class="visually-hidden">Hľadať knihy</label>
           <input id="header_search_q" name="q" type="search" class="header_search-input" placeholder="Hľadať knihy…"
@@ -110,11 +106,7 @@ $mobile_nav_id = 'header_nav_mobile';
         </div>
 
         <form action="/eshop/logout" method="post" class="header_logout-form" data-header-form="logout">
-          <?php if (class_exists('CSRF') && method_exists('CSRF', 'hiddenInput')) {
-              try { echo CSRF::hiddenInput('csrf'); } catch (\Throwable $_) {}
-          } elseif ($csrf_token) {
-              echo '<input type="hidden" name="csrf" value="'.htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'">';
-          } ?>
+          <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
           <button type="submit" class="header_btn header_btn-ghost" aria-label="Odhlásiť sa">Odhlásiť</button>
         </form>
       <?php else: ?>

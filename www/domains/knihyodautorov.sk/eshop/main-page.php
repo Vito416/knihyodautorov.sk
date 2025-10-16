@@ -125,6 +125,7 @@ return [
     'template' => 'pages/main-page.php',
     'vars' => [
         'navActive' => 'home',
+        'csrfToken' => $csrfToken,
         'books' => $books,
         'page' => $page,
         'perPage' => $perPage,

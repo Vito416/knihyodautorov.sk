@@ -29,7 +29,7 @@
 
   // small POST helper (JSON) with CSRF auto-injection and form fallback
   const postJson = (url, payload = {}) => {
-    const csrf = (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]') || {}).value
+    const csrf = (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrfToken"]') || {}).value
               || document.querySelector('meta[name="csrf-token"], meta[name="csrf"]')?.getAttribute('content')
               || window.__csrfToken || null;
 
@@ -47,13 +47,13 @@
       return r.json().catch(()=>({}));
     }).then(json => {
       // update token if server returned new one
-      if (json && json.csrf_token) {
-        document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
-          try { i.value = json.csrf_token; } catch(_) {}
+      if (json && json.csrfToken) {
+        document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrfToken"]').forEach(i => {
+          try { i.value = json.csrfToken; } catch(_) {}
         });
         const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
-        if (meta) try { meta.setAttribute('content', json.csrf_token); } catch(_) {}
-        try { window.__csrfToken = json.csrf_token; } catch(_) {}
+        if (meta) try { meta.setAttribute('content', json.csrfToken); } catch(_) {}
+        try { window.__csrfToken = json.csrfToken; } catch(_) {}
       }
       return json;
     }).catch(err => {
@@ -67,13 +67,13 @@
             if (!r.ok) return r.text().then(t => Promise.reject(new Error(t || r.statusText)));
             return r.json().catch(()=>({}));
           }).then(json => {
-            if (json && json.csrf_token) {
-              document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
-                try { i.value = json.csrf_token; } catch(_) {}
+            if (json && json.csrfToken) {
+              document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrfToken"]').forEach(i => {
+                try { i.value = json.csrfToken; } catch(_) {}
               });
               const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
-              if (meta) try { meta.setAttribute('content', json.csrf_token); } catch(_) {}
-              try { window.__csrfToken = json.csrf_token; } catch(_) {}
+              if (meta) try { meta.setAttribute('content', json.csrfToken); } catch(_) {}
+              try { window.__csrfToken = json.csrfToken; } catch(_) {}
             }
             return json;
           });
@@ -376,14 +376,14 @@
 
 // --- clear cart (with CSRF) + UI update + event dispatch ---
 const getCsrfFromDOM = () => {
-  return (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]') || {}).value
+  return (document.querySelector('input[name="csrf"], input[name="_csrf"], input[name="csrfToken"]') || {}).value
     || document.querySelector('meta[name="csrf-token"], meta[name="csrf"]')?.getAttribute('content')
     || window.__csrfToken || null;
 };
 
 const applyCsrfToDOM = (token) => {
   if (!token) return;
-  document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrf_token"]').forEach(i => {
+  document.querySelectorAll('input[name="csrf"], input[name="_csrf"], input[name="csrfToken"]').forEach(i => {
     try { i.value = token; } catch (_) {}
   });
   const meta = document.querySelector('meta[name="csrf-token"], meta[name="csrf"]');
@@ -412,7 +412,7 @@ const applyCsrfToDOM = (token) => {
       try { data = txt ? JSON.parse(txt) : {}; } catch(_) { data = {}; }
 
       // update CSRF
-      if (data && data.csrf_token) applyCsrfToDOM(data.csrf_token);
+      if (data && data.csrfToken) applyCsrfToDOM(data.csrfToken);
 
       // update badge immediately using returned cart summary (robust)
       if (data && data.cart) {

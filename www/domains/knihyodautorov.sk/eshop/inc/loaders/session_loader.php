@@ -16,7 +16,8 @@ function setSessionCookieDefaults(): void
 {
     $defaults = session_get_cookie_params();
 
-    $secure = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    $proto = strtolower($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '');
+    $secure = $proto === 'https' || (!empty($_SERVER['HTTPS']) && strtolower($_SERVER['HTTPS']) !== 'off') || (isset($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
     $httponly = true;
     $samesite = 'Lax'; // nebo 'Strict' podle potřeby
     $lifetime = 0; // until browser closes

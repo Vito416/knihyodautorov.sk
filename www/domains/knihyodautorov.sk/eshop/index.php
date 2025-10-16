@@ -177,18 +177,20 @@ $routes = [
         'share'   => false,
         'is_api'  => true,
     ], */
-    'home'        => 'main-page.php',
+    'home' => [
+    'pattern' => 'home',
+    'file'    => 'main-page.php',
+    'methods' => ['GET'],
+    'share'   => ['db','csrfToken'],
+    'is_api'  => false,
+    ],
     'catalog'        => 'catalog.php',
     'contact'           => 'contact.php',
     'detail'         => 'detail.php',
     'cart'           => 'cart.php',
-    'cart_add'           => '/actions/cart_add.php',
-    'cart_clear'           => '/actions/cart_clear.php',
-    'cart_mini'           => '/actions/cart_mini.php',
     'checkout'       => 'checkout.php',
     'order_submit'       => '/actions/order_submit.php',
     'order'          => 'order.php',
-    'logout'         => 'logout.php',
     'password_reset' => 'password_reset.php',
     'password_reset_confirm' => 'password_reset_confirm.php',
     'faq'         => 'faq.php',
@@ -248,11 +250,39 @@ $routes = [
     'share'   => ['config','Logger','db','Auth','SessionManager','KeyManager','CSRF','csrfToken','KEYS_DIR','Crypto'],
     'is_api'  => true,
     ],
+    'logout' => [
+    'pattern' => 'logout',
+    'file'    => 'actions/logout.php',
+    'methods' => ['POST'],
+    'share'   => ['Logger','db','SessionManager','KeyManager','CSRF'],
+    'is_api'  => true,
+    ],
     'verify' => [
     'pattern' => 'verify',
     'file'    => 'actions/verify.php',
     'methods' => ['GET', 'POST'],
     'share'   => ['KeyManager','Logger','CSRF','db','KEYS_DIR','csrfToken'],
+    'is_api'  => true,
+    ],
+    'cart_add' => [
+    'pattern' => 'cart_add',
+    'file'    => 'actions/cart_add.php',
+    'methods' => ['POST'],
+    'share'   => ['Logger','db','CSRF','user'],
+    'is_api'  => true,
+    ],
+    'cart_clear' => [
+    'pattern' => 'cart_clear',
+    'file'    => 'actions/cart_clear.php',
+    'methods' => ['POST'],
+    'share'   => ['Logger','db','CSRF','user'],
+    'is_api'  => true,
+    ],
+    'cart_mini' => [
+    'pattern' => 'cart_mini',
+    'file'    => 'actions/cart_mini.php',
+    'methods' => ['GET'],
+    'share'   => ['Logger','db','user'],
     'is_api'  => true,
     ],
 ];
@@ -264,6 +294,21 @@ $shareSpec = true;
 $params = [];
 
 foreach ($routes as $key => $cfg) {
+    // pokud se jméno trasy přesně rovná kandidátovi, použij ho přímo (podporuje i array configy)
+    if ($routeCandidate === $key) {
+        if (is_string($cfg)) {
+            $matchedRouteKey = $key;
+            $handlerPath = __DIR__ . '/' . ltrim($cfg, '/');
+            $shareSpec = true;
+            break;
+        } elseif (is_array($cfg) && !empty($cfg['file'])) {
+            $matchedRouteKey = $key;
+            $handlerPath = __DIR__ . '/' . ltrim($cfg['file'], '/');
+            $shareSpec = $cfg['share'] ?? true;
+            // pokud má pattern, nechme také params prázdné
+            break;
+        }
+    }
     // normalize cfg to uniform array
     if (is_string($cfg)) {
         // allow either 'home' => 'main-page.php' or 'contact' => 'contact.php'
@@ -320,7 +365,7 @@ if (class_exists(TrustedShared::class, true)) {
         'user'         => $user,
         'userId'       => $currentUserId ?? null,
         'gopayAdapter' => $gopayAdapter ?? null,
-        'enrichUser'   => false,
+        'enrichUser'   => true,
         'config'       => $config ?? [],
     ]);
 } else {

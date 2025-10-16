@@ -106,14 +106,7 @@ $baseUrl = '/eshop'; // pokud frontend controller bere /eshop jako root
                                 novalidate>
                             <input type="hidden" name="book_id" value="<?= $bookId ?>">
                             <input type="hidden" name="qty" value="1">
-                            <?php
-                                // vloží CSRF pole pokud je k dispozici
-                                if (class_exists('CSRF') && method_exists('CSRF', 'hiddenInput')) {
-                                try { echo CSRF::hiddenInput('csrf'); } catch (\Throwable $_) {}
-                                } elseif (!empty($csrf_token)) {
-                                echo '<input type="hidden" name="csrf" value="'.htmlspecialchars($csrf_token, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'">';
-                                }
-                            ?>
+                            <input type="hidden" name="csrf" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
                             <div class="card-actions" style="display:flex;gap:.5rem;margin-top:.5rem;">
                                 <button type="submit" class="btn btn-primary btn-add" aria-label="Pridať do košíka">Pridať do košíka</button>
 
