@@ -100,16 +100,29 @@ if (!($db instanceof PDO)) {
     http_response_code(500);
     exit;
 }
+// -------------------- FileCache pro Session (šifrovaná) --------------------
+$sessionCacheDir = $PROJECT_ROOT . '/cache/session';
+if (!is_dir($sessionCacheDir)) {
+    if (!@mkdir($sessionCacheDir, 0700, true) && !is_dir($sessionCacheDir)) {
+        $logBootstrapError('Failed to create CSRF cache dir: ' . $sessionCacheDir);
+        http_response_code(500);
+        exit;
+    }
+}
+
+// FileCache instance (už se šifrováním)
+$sessionFileCache = new FileCache($sessionCacheDir, true, KEYS_DIR, 'CACHE_CRYPTO_KEY', 'cache_crypto', 2, 500*1024*1024, 200000, 2*1024*1024);
 
 // -------------------- Session restore using loader (best-effort) --------------------
 require_once __DIR__ . '/loaders/session_loader.php';
 try {
-    $userId = init_session_and_restore($db);
+    $userId = init_session_and_restore($db, $sessionFileCache);
 } catch (Throwable $e) {
     $logBootstrapError('Session restore failed', $e);
     // continue as guest
     $userId = null;
 }
+
 // -------------------- FileCache pro CSRF (šifrovaná) --------------------
 $csrfCacheDir = $PROJECT_ROOT . '/cache/csrf';
 if (!is_dir($csrfCacheDir)) {

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/**
+/**NEAKTUALIZUJE SE KOŠÍK USERID PO PŘIHLÁŠENÍ
  * actions/login.php
  * Strict handler — používá výhradně předané sdílené proměnné.
  *

@@ -16,10 +16,10 @@ use BlackCat\Core\Log\Logger;
  *   init_csrf_from_session($csrfFileCache, $loggerShim);
  */
 
-function init_csrf_from_session(?CacheInterface $cache = null, ?LoggerInterface $logger = null): void
+function init_csrf_from_session(?CacheInterface $cache = null, ?LoggerInterface $logger = null): bool
 {
     if (!class_exists(CSRF::class, true)) {
-        return;
+        return false;
     }
 
     // ensure session started
@@ -27,39 +27,54 @@ function init_csrf_from_session(?CacheInterface $cache = null, ?LoggerInterface 
         try { session_start(); } catch (\Throwable $_) {}
     }
     if (session_status() !== PHP_SESSION_ACTIVE) {
-        return;
+        return false;
     }
 
     try {
-        // if logger provided, hand it to CSRF (idempotent)
+        // attach logger if provided (idempotent)
         if ($logger !== null) {
             try {
                 CSRF::setLogger($logger);
             } catch (\Throwable $_) {
-                // ignore non-fatal
+                // ignore
             }
         }
 
-        // pass reference to the real session array (preserves reference semantics)
+        // pass reference to the real session array
         $ref = &$_SESSION;
 
-        // If cache provided and is a PSR-16 implementation, pass it to init()
+        // call init with cache if provided; keep existing behaviour if already init'd
         if ($cache instanceof CacheInterface) {
-            CSRF::init($ref, null, null, $cache);
+            try {
+                CSRF::init($ref, null, null, $cache);
+            } catch (\Throwable $e) {
+                // fallback: try init without cache to avoid breaking the app
+                try { CSRF::init($ref); } catch (\Throwable $_) {}
+            }
         } else {
-            // no cache given -> init session-only behavior
-            CSRF::init($ref);
+            try {
+                CSRF::init($ref);
+            } catch (\Throwable $e) {
+                // if init fails, log and continue (we don't want to break whole bootstrap)
+                error_log('CSRF::init failed: ' . $e->getMessage());
+            }
         }
 
-        // optional cheap cleanup
-        if (method_exists(CSRF::class, 'cleanup')) {
-            CSRF::cleanup();
+        // cheap cleanup (best-effort)
+        try {
+            if (method_exists(CSRF::class, 'cleanup')) {
+                CSRF::cleanup();
+            }
+        } catch (\Throwable $_) {
+            // ignore
         }
+
+        return true;
     } catch (\Throwable $e) {
-        // use error_log to avoid dependency on Logger class here
         error_log('init_csrf_from_session error: ' . $e->getMessage());
         if (class_exists(Logger::class, true) && method_exists(Logger::class, 'systemError')) {
-            try {Logger::systemError($e); } catch (\Throwable $_) {}
+            try { Logger::systemError($e); } catch (\Throwable $_) {}
         }
+        return false;
     }
 }
