@@ -122,11 +122,45 @@ $cartId = null;
 
 try {
     if (!empty($sessionCartId)) {
-        $exists = $db->fetch('SELECT id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
+        // když je uživatel přihlášen, načteme i user_id (potřebné k rozhodnutí o UPDATE),
+        // jinak načteme jen id (menší I/O pro anonymní volání).
+        if ($userId !== null) {
+            $exists = $db->fetch('SELECT id, user_id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
+        } else {
+            $exists = $db->fetch('SELECT id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
+        }
+
         if ($exists) {
+            // pokud jsme přihlášeni a košík nemá ownera, pokusíme se ho atomicky přiřadit.
+            // UPDATE provedeme pouze pokud $db podporuje execute(), a jen když je skutečná potřeba.
+            if ($userId !== null && ($exists['user_id'] ?? null) === null) {
+                try {
+                    if (method_exists($db, 'execute')) {
+                        $db->execute(
+                            'UPDATE carts
+                            SET user_id = :uid, updated_at = NOW(6)
+                            WHERE id = :id AND (user_id IS NULL OR user_id = :uid2)',
+                            [
+                                'uid'  => (int)$userId,
+                                'uid2' => (int)$userId,
+                                'id'   => (string)$sessionCartId,
+                            ]
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    $loggerInvoke(
+                        'systemMessage',
+                        'cart_mini: failed to attach cart to user',
+                        $userId,
+                        ['ex' => (string)$e, 'cart_id' => $sessionCartId]
+                    );
+                }
+            }
+            // znovu nastavíme session cart_id (idempotentní) a použijeme ho
+            $_SESSION['cart_id'] = $sessionCartId;
             $cartId = $sessionCartId;
         } else {
-            // session contains invalid cart id - do not start session here; frontcontroller expected to manage session lifecycle
+            // session obsahovala neplatné id
             unset($_SESSION['cart_id']);
             $cartId = null;
         }

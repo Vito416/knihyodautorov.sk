@@ -78,3 +78,26 @@ function init_csrf_from_session(?CacheInterface $cache = null, ?LoggerInterface 
         return false;
     }
 }
+
+// --- register CSRF cleanup on shutdown (placed in csrf_loader.php, executed when loader is included) ---
+if (!defined('CSRF_CLEANUP_SHUTDOWN_REGISTERED')) {
+    define('CSRF_CLEANUP_SHUTDOWN_REGISTERED', true);
+
+    register_shutdown_function(function(): void {
+        try {
+            if (class_exists(CSRF::class, true)
+                && method_exists(CSRF::class, 'cleanup')) {
+                CSRF::cleanup();
+            }
+        } catch (\Throwable $e) {
+            // best-effort logging; swallow errors to avoid breaking shutdown
+            if (class_exists(Logger::class, true) && method_exists(Logger::class, 'systemMessage')) {
+                try {
+                    Logger::systemMessage('warning', 'CSRF::cleanup() failed on shutdown', null, ['exception' => $e]);
+                } catch (\Throwable $_) {
+                    // swallow
+                }
+            }
+        }
+    });
+}

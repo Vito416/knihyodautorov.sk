@@ -189,13 +189,37 @@ $userId = $user['id'] ?? null;
 // --- create or reuse cart (transactional using injected $db) ---
 try {
     $cartId = $db->transaction(function($dbtx) use (&$sessionCartId, $userId) {
-        // if session cart present and exists, reuse
+        // pokud je v session cart_id, pokusíme se ho použít (a případně přiřadit uživatele pokud je dosud NULL)
         if (!empty($sessionCartId)) {
-            $exists = $dbtx->fetch('SELECT id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
+            // načteme i user_id aby jsme věděli, zda je třeba aktualizovat
+            $exists = $dbtx->fetch('SELECT id, user_id FROM carts WHERE id = :id LIMIT 1', ['id' => $sessionCartId]);
             if ($exists) {
+                // pokud byl košík vytvořen jako guest (user_id IS NULL) a nyní je uživatel přihlášen,
+                // připojíme ho (jen jednou) - provádíme to v téže transakci aby bylo atomic
+                if ($userId !== null && (empty($exists['user_id']) || $exists['user_id'] === null)) {
+                    try {
+                        $dbtx->execute(
+                            'UPDATE carts
+                            SET user_id = :uid, updated_at = NOW(6)
+                            WHERE id = :id AND (user_id IS NULL OR user_id = :uid2)',
+                            [
+                                'uid'  => $userId,
+                                'uid2' => $userId,
+                                'id'   => $sessionCartId,
+                            ]
+                        );
+                        // volitelně: můžeš logovat že byl cart připojen
+                    } catch (\Throwable $_) {
+                        // nepropouštět výjimku sem — hlavní flow pokračuje
+                    }
+                }
+
+                // stále reuseujeme cart_id z session
+                $_SESSION['cart_id'] = $sessionCartId;
                 return $sessionCartId;
             }
-            // if not found, clear session key (frontcontroller/session management expected)
+
+            // pokud cart id v session neexistuje v DB, smažeme session klíč a pokračujeme
             unset($_SESSION['cart_id']);
             $sessionCartId = null;
         }
